@@ -4,18 +4,18 @@
  */
 
 import { query, type SDKMessage, type Query, type Options } from '@anthropic-ai/claude-agent-sdk';
-import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
-const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Resolve aegis-router paths from npm package
-const aegisRouterPkg = require.resolve('aegis-router/package.json');
-const aegisRouterRoot = aegisRouterPkg.replace('/package.json', '');
-
+// Resolve paths relative to project root (one level up from src/)
+const projectRoot = join(__dirname, '..');
 const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-  `${aegisRouterRoot}/dist/mcp-server.js`;
+  join(projectRoot, 'dist', 'mcp-server.js');
 const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
-  `${aegisRouterRoot}/config.json`;
+  join(projectRoot, 'config.json');
 
 export interface AgentConfig {
   model?: string;
