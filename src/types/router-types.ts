@@ -539,3 +539,108 @@ export interface ListRolesResult {
   /** Default role ID */
   defaultRole: string;
 }
+
+// ============================================================================
+// Skill Manifest (v2: Skill-Driven Architecture)
+// ============================================================================
+
+/**
+ * Skill definition from Skill MCP Server
+ * Skills define which roles can use them (inverted RBAC)
+ */
+export interface SkillDefinition {
+  /** Unique skill identifier */
+  id: string;
+
+  /** Human-readable display name */
+  displayName: string;
+
+  /** Skill description */
+  description: string;
+
+  /** Roles that can use this skill (["*"] = all roles) */
+  allowedRoles: string[];
+
+  /** Tools this skill uses (MCP tool format) */
+  allowedTools: string[];
+
+  /** Skill metadata */
+  metadata?: SkillMetadata;
+}
+
+/**
+ * Skill metadata
+ */
+export interface SkillMetadata {
+  /** Skill version */
+  version?: string;
+
+  /** Skill category for grouping */
+  category?: string;
+
+  /** Skill author */
+  author?: string;
+
+  /** Tags for discovery */
+  tags?: string[];
+}
+
+/**
+ * Result of get_skill_manifest from Skill MCP Server
+ */
+export interface SkillManifest {
+  /** All available skills */
+  skills: SkillDefinition[];
+
+  /** Manifest version */
+  version: string;
+
+  /** When the manifest was generated */
+  generatedAt: Date;
+}
+
+/**
+ * Dynamically generated role from skill definitions
+ * Role = aggregation of skills that allow it
+ */
+export interface DynamicRole {
+  /** Role ID (extracted from skill.allowedRoles) */
+  id: string;
+
+  /** Skills available for this role */
+  skills: string[];
+
+  /** Aggregated tools from all skills */
+  tools: string[];
+}
+
+/**
+ * Role manifest generated from skill definitions
+ * Maps role IDs to their available skills and tools
+ */
+export interface RoleManifest {
+  /** Dynamic roles derived from skills */
+  roles: Record<string, DynamicRole>;
+
+  /** Source skill manifest version */
+  sourceVersion: string;
+
+  /** When this manifest was generated */
+  generatedAt: Date;
+}
+
+/**
+ * Interface for Skill MCP Server client
+ */
+export interface SkillMcpClient {
+  /**
+   * Fetch skill manifest from Skill MCP Server
+   */
+  getSkillManifest(): Promise<SkillManifest>;
+
+  /**
+   * Generate role manifest from skills
+   * Aggregates skills by allowedRoles and combines their tools
+   */
+  generateRoleManifest(skills: SkillDefinition[]): RoleManifest;
+}

@@ -7,6 +7,11 @@
     "playwright": {
       "command": "npx",
       "args": ["@playwright/mcp@latest"]
+    },
+    "aegis-skills": {
+      "command": "node",
+      "args": ["node_modules/aegis-skills/dist/mcp-server.js"],
+      "comment": "Skill MCP Server - provides get_skill_manifest tool"
     }
   },
   "roles": {
