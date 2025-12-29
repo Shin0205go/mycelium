@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "aegis-router": {
+      "command": "node",
+      "args": ["node_modules/aegis-router/dist/mcp-server.js"],
+      "env": {
+        "AEGIS_CONFIG_PATH": "node_modules/aegis-router/config.json"
+      }
+    }
+  }
+}

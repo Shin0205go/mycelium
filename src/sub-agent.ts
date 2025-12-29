@@ -3,14 +3,21 @@
  * Used when spawned as a child process by an orchestrator agent
  */
 
+import { createRequire } from 'module';
 import { MCPClient } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo } from './agent.js';
 import type { CliArgs } from './args.js';
 
+const require = createRequire(import.meta.url);
+
+// Resolve aegis-router paths from npm package
+const aegisRouterPkg = require.resolve('aegis-router/package.json');
+const aegisRouterRoot = aegisRouterPkg.replace('/package.json', '');
+
 const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-  '/Users/shingo/Develop/Aegis-router/dist/mcp-server.js';
+  `${aegisRouterRoot}/dist/mcp-server.js`;
 const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
-  '/Users/shingo/Develop/Aegis-router/config.json';
+  `${aegisRouterRoot}/config.json`;
 
 export interface SubAgentResult {
   success: boolean;
