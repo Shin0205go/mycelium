@@ -1,6 +1,13 @@
 /**
  * Tool Filtering Tests
- * Tests for dynamic tool filtering based on roles
+ *
+ * Tests for ツール制御 (Tool Control) - the 4th RBAC perspective
+ * Validates that each role has appropriate tool access based on:
+ * - Allow/deny patterns
+ * - Server restrictions
+ * - Wildcard matching
+ *
+ * Other perspectives are tested in role-config.test.ts
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';

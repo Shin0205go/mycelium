@@ -1,6 +1,12 @@
 /**
  * Role Configuration Tests
- * Tests for role-based access control and tool filtering
+ *
+ * Tests covering 3 of 4 RBAC perspectives:
+ * 1. ロール定義 (Role Definition) - Role loading, metadata, groups
+ * 2. サーバー制御 (Server Control) - Server access per role
+ * 3. スキル制御 (Skill Control) - Agent skill filtering
+ *
+ * Note: ツール制御 (Tool Control) is tested in tool-filtering.test.ts
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -77,46 +83,15 @@ describe('RoleConfigManager', () => {
     });
   });
 
-  describe('Tool Permission Patterns', () => {
+  describe('System Tools', () => {
     it('system tool get_agent_manifest should always be allowed', () => {
-      // System tools should be allowed for all roles
+      // System tools should be allowed for all roles regardless of other permissions
       expect(roleManager.isToolAllowedForRole('orchestrator', 'get_agent_manifest', 'aegis-router')).toBe(true);
       expect(roleManager.isToolAllowedForRole('guest', 'get_agent_manifest', 'aegis-router')).toBe(true);
     });
-
-    it('frontend should allow read/write/list/search tools', () => {
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__read_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__write_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__list_directory', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__search_files', 'filesystem')).toBe(true);
-    });
-
-    it('frontend should deny delete/execute tools', () => {
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__delete_file', 'filesystem')).toBe(false);
-      expect(roleManager.isToolAllowedForRole('frontend', 'any__execute_command', 'filesystem')).toBe(false);
-    });
-
-    it('security should only allow read operations', () => {
-      expect(roleManager.isToolAllowedForRole('security', 'filesystem__read_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('security', 'filesystem__list_directory', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('security', 'filesystem__write_file', 'filesystem')).toBe(false);
-      expect(roleManager.isToolAllowedForRole('security', 'filesystem__delete_file', 'filesystem')).toBe(false);
-    });
-
-    it('guest should only allow specific tools', () => {
-      // Guest allows only filesystem__read_file and filesystem__list_directory
-      expect(roleManager.isToolAllowedForRole('guest', 'filesystem__read_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('guest', 'filesystem__list_directory', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('guest', 'filesystem__write_file', 'filesystem')).toBe(false);
-      expect(roleManager.isToolAllowedForRole('guest', 'filesystem__search_files', 'filesystem')).toBe(false);
-    });
-
-    it('db_admin should have read-only filesystem access', () => {
-      expect(roleManager.isToolAllowedForRole('db_admin', 'filesystem__read_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('db_admin', 'filesystem__list_directory', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('db_admin', 'filesystem__write_file', 'filesystem')).toBe(false);
-    });
   });
+
+  // Note: Detailed tool permission tests are in tool-filtering.test.ts
 
   describe('Agent Skill Filtering', () => {
     it('formatter agent should have specific skills', () => {
