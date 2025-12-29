@@ -22,6 +22,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "aegis-router": "github:Shin0205go/Aegis-router",
     "chalk": "^5.3.0",
     "zod": "^4.2.1"
   },
