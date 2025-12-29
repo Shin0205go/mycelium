@@ -4,14 +4,21 @@
 
 import * as readline from 'readline';
 import chalk from 'chalk';
+import { createRequire } from 'module';
 import { MCPClient, AgentManifest, ListRolesResult } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig } from './agent.js';
 import type { SDKMessage, ApiKeySource } from '@anthropic-ai/claude-agent-sdk';
 
+const require = createRequire(import.meta.url);
+
+// Resolve aegis-router paths from npm package
+const aegisRouterPkg = require.resolve('aegis-router/package.json');
+const aegisRouterRoot = aegisRouterPkg.replace('/package.json', '');
+
 const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-  '/Users/shingo/Develop/Aegis-router/dist/mcp-server.js';
+  `${aegisRouterRoot}/dist/mcp-server.js`;
 const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
-  '/Users/shingo/Develop/Aegis-router/config.json';
+  `${aegisRouterRoot}/config.json`;
 
 export class AegisCLI {
   private mcp: MCPClient;
