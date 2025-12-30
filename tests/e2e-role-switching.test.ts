@@ -246,4 +246,278 @@ describe('E2E: list_skills → set_role Flow', () => {
       expect(roleManager.isToolAllowedForRole('admin', 'set_role', 'aegis-router')).toBe(true);
     });
   });
+
+  // ============================================================================
+  // Error Cases (異常系)
+  // ============================================================================
+
+  describe('Error Cases: Invalid Role', () => {
+    it('should return undefined for non-existent role', async () => {
+      const skillManifest = mockListSkillsResponse();
+      await roleManager.loadFromSkillManifest(skillManifest);
+
+      const invalidRole = roleManager.getRole('non-existent-role');
+      expect(invalidRole).toBeUndefined();
+    });
+
+    it('should return false for hasRole with invalid role', async () => {
+      const skillManifest = mockListSkillsResponse();
+      await roleManager.loadFromSkillManifest(skillManifest);
+
+      expect(roleManager.hasRole('invalid-role')).toBe(false);
+      expect(roleManager.hasRole('')).toBe(false);
+    });
+
+    it('should deny tool access for non-existent role', async () => {
+      const skillManifest = mockListSkillsResponse();
+      await roleManager.loadFromSkillManifest(skillManifest);
+
+      // Non-existent role should deny all tools
+      expect(roleManager.isToolAllowedForRole('fake-role', 'filesystem__read_file', 'filesystem')).toBe(false);
+    });
+  });
+
+  describe('Error Cases: Empty/Invalid Skill Manifest', () => {
+    it('should handle empty skills array', async () => {
+      const emptyManifest: SkillManifest = {
+        skills: [],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(emptyManifest);
+
+      // No roles should be created
+      expect(roleManager.getRoleIds()).toHaveLength(0);
+    });
+
+    it('should handle skill with empty allowedRoles', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'orphan-skill',
+            displayName: 'Orphan Skill',
+            description: 'No roles can use this',
+            allowedRoles: [],  // Empty!
+            allowedTools: ['some__tool']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // No roles should be created from empty allowedRoles
+      expect(roleManager.getRoleIds()).toHaveLength(0);
+    });
+
+    it('should handle skill with empty allowedTools', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'no-tools-skill',
+            displayName: 'No Tools Skill',
+            description: 'Has no tools',
+            allowedRoles: ['empty-role'],
+            allowedTools: []  // Empty!
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Role should exist but have no tools
+      expect(roleManager.hasRole('empty-role')).toBe(true);
+      const role = roleManager.getRole('empty-role');
+      expect(role?.toolPermissions?.allowPatterns || []).toHaveLength(0);
+      expect(role?.allowedServers).toHaveLength(0);
+    });
+  });
+
+  describe('Error Cases: Invalid Tool Format', () => {
+    it('should handle tools without server prefix', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'bad-tools-skill',
+            displayName: 'Bad Tools',
+            description: 'Tools without proper format',
+            allowedRoles: ['test-role'],
+            allowedTools: ['no_prefix_tool', 'another_bad_tool']  // No __ separator
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const role = roleManager.getRole('test-role');
+      // Should still create the role, tools are stored as-is
+      expect(role).not.toBeUndefined();
+    });
+
+    it('should handle mixed valid and invalid tools', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'mixed-tools',
+            displayName: 'Mixed Tools',
+            description: 'Some valid, some invalid',
+            allowedRoles: ['mixed-role'],
+            allowedTools: [
+              'filesystem__read_file',  // Valid
+              'invalid_tool',            // Invalid (no __)
+              'git__status'              // Valid
+            ]
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const role = roleManager.getRole('mixed-role');
+      // Valid servers should be extracted
+      expect(role?.allowedServers).toContain('filesystem');
+      expect(role?.allowedServers).toContain('git');
+    });
+  });
+
+  describe('Error Cases: Server Access', () => {
+    it('should deny access to server not in allowedServers', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'limited-skill',
+            displayName: 'Limited Skill',
+            description: 'Only filesystem access',
+            allowedRoles: ['limited'],
+            allowedTools: ['filesystem__read_file']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Should have filesystem access
+      expect(roleManager.isServerAllowedForRole('limited', 'filesystem')).toBe(true);
+
+      // Should NOT have other server access
+      expect(roleManager.isServerAllowedForRole('limited', 'git')).toBe(false);
+      expect(roleManager.isServerAllowedForRole('limited', 'docker')).toBe(false);
+      expect(roleManager.isServerAllowedForRole('limited', 'random-server')).toBe(false);
+    });
+  });
+
+  describe('Error Cases: Tool Access Boundary', () => {
+    it('should deny tool from wrong server', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'git-only',
+            displayName: 'Git Only',
+            description: 'Only git tools',
+            allowedRoles: ['git-user'],
+            allowedTools: ['git__status', 'git__commit']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Should allow git tools
+      expect(roleManager.isToolAllowedForRole('git-user', 'git__status', 'git')).toBe(true);
+
+      // Should deny filesystem tools (not in skill)
+      expect(roleManager.isToolAllowedForRole('git-user', 'filesystem__read_file', 'filesystem')).toBe(false);
+
+      // Should deny even git-prefixed tools that weren't specified
+      expect(roleManager.isToolAllowedForRole('git-user', 'git__push', 'git')).toBe(false);
+    });
+
+    it('should deny tool access after role has no matching skill', async () => {
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'skill-a',
+            displayName: 'Skill A',
+            description: 'For role A',
+            allowedRoles: ['role-a'],
+            allowedTools: ['server__tool_a']
+          },
+          {
+            id: 'skill-b',
+            displayName: 'Skill B',
+            description: 'For role B',
+            allowedRoles: ['role-b'],
+            allowedTools: ['server__tool_b']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Role A cannot use Role B's tools
+      expect(roleManager.isToolAllowedForRole('role-a', 'server__tool_b', 'server')).toBe(false);
+
+      // Role B cannot use Role A's tools
+      expect(roleManager.isToolAllowedForRole('role-b', 'server__tool_a', 'server')).toBe(false);
+    });
+  });
+
+  describe('Error Cases: Reload/Override', () => {
+    it('should clear previous roles when loading new manifest', async () => {
+      // First load
+      const manifest1: SkillManifest = {
+        skills: [
+          {
+            id: 'skill-v1',
+            displayName: 'Skill V1',
+            description: 'Version 1',
+            allowedRoles: ['old-role'],
+            allowedTools: ['old__tool']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest1);
+      expect(roleManager.hasRole('old-role')).toBe(true);
+
+      // Second load with different roles
+      const manifest2: SkillManifest = {
+        skills: [
+          {
+            id: 'skill-v2',
+            displayName: 'Skill V2',
+            description: 'Version 2',
+            allowedRoles: ['new-role'],
+            allowedTools: ['new__tool']
+          }
+        ],
+        version: '2.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest2);
+
+      // Old role should be gone
+      expect(roleManager.hasRole('old-role')).toBe(false);
+
+      // New role should exist
+      expect(roleManager.hasRole('new-role')).toBe(true);
+    });
+  });
 });
