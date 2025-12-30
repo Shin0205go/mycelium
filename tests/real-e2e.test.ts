@@ -30,23 +30,8 @@ interface SkillData {
   allowedTools?: string[];
 }
 
-/**
- * Extract server name from tool pattern (same logic as production code)
- * Format: mcp__plugin_<plugin>_<server>__<tool> or server__tool
- */
-function extractServerFromTool(tool: string): string | null {
-  // Match MCP tool format: mcp__plugin_xxx_servername__toolname
-  const match = tool.match(/^mcp__plugin_[^_]+_([^_]+)__/);
-  if (match) {
-    return match[1];
-  }
-  // Try simpler format: servername__toolname
-  const simpleMatch = tool.match(/^([^_]+)__/);
-  if (simpleMatch) {
-    return simpleMatch[1];
-  }
-  return null;
-}
+// Use production code's server extraction logic
+const { extractServerFromTool } = RoleConfigManager;
 
 describe('Real E2E: aegis-skills Server Integration', () => {
   let serverProcess: ChildProcess | null = null;

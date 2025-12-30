@@ -794,6 +794,25 @@ IMPORTANT: With great power comes great responsibility.
   }
 
   /**
+   * Extract server name from a single MCP tool name
+   * Format: mcp__plugin_<plugin>_<server>__<tool> or server__tool
+   * @public - exported for testing
+   */
+  static extractServerFromTool(tool: string): string | null {
+    // Match MCP tool format: mcp__plugin_xxx_servername__toolname
+    const match = tool.match(/^mcp__plugin_[^_]+_([^_]+)__/);
+    if (match) {
+      return match[1];
+    }
+    // Try simpler format: servername__toolname
+    const simpleMatch = tool.match(/^([^_]+)__/);
+    if (simpleMatch) {
+      return simpleMatch[1];
+    }
+    return null;
+  }
+
+  /**
    * Extract server names from MCP tool names
    * Format: mcp__plugin_<plugin>_<server>__<tool>
    */
@@ -801,16 +820,9 @@ IMPORTANT: With great power comes great responsibility.
     const servers = new Set<string>();
 
     for (const tool of tools) {
-      // Match MCP tool format: mcp__plugin_xxx_servername__toolname
-      const match = tool.match(/^mcp__plugin_[^_]+_([^_]+)__/);
-      if (match) {
-        servers.add(match[1]);
-      } else {
-        // Try simpler format: servername__toolname
-        const simpleMatch = tool.match(/^([^_]+)__/);
-        if (simpleMatch) {
-          servers.add(simpleMatch[1]);
-        }
+      const server = RoleConfigManager.extractServerFromTool(tool);
+      if (server) {
+        servers.add(server);
       }
     }
 
