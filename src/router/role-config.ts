@@ -167,9 +167,8 @@ export class RoleConfigManager {
       });
 
     } catch (error) {
-      // Config file doesn't exist - create default configuration
-      this.logger.warn('No role configuration found, creating default roles');
-      await this.createDefaultRoles();
+      // Config file doesn't exist - v2: skill-driven mode
+      this.logger.info('No static role configuration. Roles will be loaded from skill manifest via list_skills.');
     }
 
     this.initialized = true;

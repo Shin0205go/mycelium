@@ -21,7 +21,6 @@ describe('Role Switching - Tool and Skill Changes', () => {
   beforeEach(async () => {
     roleManager = new RoleConfigManager(testLogger, {
       rolesDir: join(process.cwd(), 'roles'),
-      configFile: join(process.cwd(), 'roles', 'aegis-roles.json'),
     });
   });
 
