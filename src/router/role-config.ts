@@ -271,7 +271,7 @@ You are operating in the default role with full access to all available tools an
 
 Please use the tools responsibly and follow best practices for security and data handling.
 
-To switch to a specialized role, use the get_agent_manifest tool with the desired role name.`,
+To switch to a specialized role, use the set_role tool with the desired role name.`,
       metadata: {
         priority: 0,
         active: true,
@@ -599,7 +599,7 @@ IMPORTANT: With great power comes great responsibility.
    */
   isToolAllowedForRole(roleId: string, toolName: string, serverName: string): boolean {
     // System tools are always allowed regardless of role
-    const SYSTEM_TOOLS = ['get_agent_manifest'];
+    const SYSTEM_TOOLS = ['set_role'];
     if (SYSTEM_TOOLS.includes(toolName)) {
       return true;
     }

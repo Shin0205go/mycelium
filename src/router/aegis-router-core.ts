@@ -17,7 +17,7 @@ import type {
   ManifestTool,
   RoleSwitchEvent,
   ToolsChangedEvent,
-  GetAgentManifestOptions,
+  SetRoleOptions,
   ListRolesResult,
   RoleNotFoundError,
   ToolNotAccessibleError,
@@ -34,7 +34,7 @@ import { v4 as uuidv4 } from 'uuid';
  * This class serves as the "司令塔" (command center) that:
  * 1. Manages connections to multiple sub-MCP servers
  * 2. Maintains a virtual tool table filtered by current role
- * 3. Handles role switching via get_agent_manifest
+ * 3. Handles role switching via set_role
  * 4. Emits notifications when tools change
  */
 export class AegisRouterCore extends EventEmitter {
@@ -331,7 +331,7 @@ export class AegisRouterCore extends EventEmitter {
     // Update state and discover tools
     await this.updateConnectedServersState();
     await this.discoverAllTools();
-    // Note: Don't call updateVisibleTools() here - let getAgentManifest handle it
+    // Note: Don't call updateVisibleTools() here - let setRole handle it
     // because currentRole hasn't been updated yet
 
     // Set up the prompt router
@@ -492,7 +492,7 @@ export class AegisRouterCore extends EventEmitter {
 
     this.logger.info(`🔍 Filtered out ${filtered} tools, ${this.state.visibleTools.size} visible`);
 
-    // Always add the get_agent_manifest tool
+    // Always add the set_role tool
     this.addManifestTool();
 
     // Check if tools changed
@@ -528,11 +528,11 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   /**
-   * Add the get_agent_manifest tool to visible tools
+   * Add the set_role tool to visible tools
    */
   private addManifestTool(): void {
     const manifestTool: Tool = {
-      name: 'get_agent_manifest',
+      name: 'set_role',
       description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
         'Use this tool to change your operational context and capabilities.',
       inputSchema: {
@@ -555,12 +555,12 @@ export class AegisRouterCore extends EventEmitter {
     const toolInfo: ToolInfo = {
       tool: manifestTool,
       sourceServer: 'aegis-router',
-      prefixedName: 'get_agent_manifest',
+      prefixedName: 'set_role',
       visible: true,
       visibilityReason: 'system_tool'
     };
 
-    this.state.visibleTools.set('get_agent_manifest', toolInfo);
+    this.state.visibleTools.set('set_role', toolInfo);
   }
 
   /**
@@ -575,11 +575,11 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   // ============================================================================
-  // get_agent_manifest - Role Switching Implementation
+  // set_role - Role Switching Implementation
   // ============================================================================
 
   /**
-   * Execute get_agent_manifest - the core role switching function
+   * Execute set_role - the core role switching function
    *
    * This is the key function that:
    * 1. Fetches remote instruction (SKILL.md) from backend if configured
@@ -594,7 +594,7 @@ export class AegisRouterCore extends EventEmitter {
    * 4. AEGIS sends tools/list_changed to client
    * 5. Client receives combined instruction + available tools
    */
-  async getAgentManifest(options: GetAgentManifestOptions): Promise<AgentManifest> {
+  async setRole(options: SetRoleOptions): Promise<AgentManifest> {
     const { role: roleId, includeToolDescriptions = true } = options;
 
     this.logger.info(`🔄 Role switch requested: ${roleId}`);
@@ -762,8 +762,8 @@ export class AegisRouterCore extends EventEmitter {
     const { method, params } = request;
 
     // Handle internal tools
-    if (method === 'tools/call' && params?.name === 'get_agent_manifest') {
-      return await this.handleGetAgentManifest(params.arguments || {});
+    if (method === 'tools/call' && params?.name === 'set_role') {
+      return await this.handleSetRole(params.arguments || {});
     }
 
     // Handle tools/list - return filtered tools
@@ -884,11 +884,11 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   /**
-   * Handle get_agent_manifest tool call
+   * Handle set_role tool call
    */
-  private async handleGetAgentManifest(args: Record<string, any>): Promise<any> {
+  private async handleSetRole(args: Record<string, any>): Promise<any> {
     try {
-      const manifest = await this.getAgentManifest({
+      const manifest = await this.setRole({
         role: args.role_id,
         includeToolDescriptions: args.includeToolDescriptions !== false
       });
@@ -939,9 +939,9 @@ export class AegisRouterCore extends EventEmitter {
   private getFilteredToolsList(): any {
     const tools: Tool[] = [];
 
-    // Always include get_agent_manifest (system tool)
+    // Always include set_role (system tool)
     tools.push({
-      name: 'get_agent_manifest',
+      name: 'set_role',
       description: 'Switch to a specific role and get the system instruction and available tools for that role. Use "list" to see available roles.',
       inputSchema: {
         type: 'object' as const,
@@ -972,8 +972,8 @@ export class AegisRouterCore extends EventEmitter {
    * Throws an error if access is denied
    */
   private checkToolAccess(toolName: string): void {
-    // get_agent_manifest is always accessible
-    if (toolName === 'get_agent_manifest') {
+    // set_role is always accessible
+    if (toolName === 'set_role') {
       return;
     }
 
@@ -983,7 +983,7 @@ export class AegisRouterCore extends EventEmitter {
       const currentRole = this.state.currentRole?.id || 'none';
       throw new Error(
         `Tool '${toolName}' is not accessible for role '${currentRole}'. ` +
-        `Use get_agent_manifest to switch roles or check available tools.`
+        `Use set_role to switch roles or check available tools.`
       );
     }
   }

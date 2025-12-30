@@ -162,7 +162,7 @@ async function spawnInteractiveSubAgent(
   const escapedCliPath = escapeForAppleScript(AEGIS_CLI_PATH);
 
   // Build a prompt that instructs Claude to first switch roles, then execute the task
-  const fullPrompt = `まず get_agent_manifest を使って "${role}" ロールに切り替えてください。その後、以下のタスクを実行してください：
+  const fullPrompt = `まず set_role を使って "${role}" ロールに切り替えてください。その後、以下のタスクを実行してください：
 
 ${initialPrompt}`;
 
@@ -261,9 +261,9 @@ async function main() {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.info('ListTools request received');
 
-    // Add the get_agent_manifest tool (always available)
+    // Add the set_role tool (always available)
     const manifestTool = {
-      name: 'get_agent_manifest',
+      name: 'set_role',
       description: 'Switch agent role and get the manifest with available tools and system instruction',
       inputSchema: {
         type: 'object' as const,
@@ -310,8 +310,8 @@ async function main() {
     try {
       const response = await routerCore.routeRequest({ method: 'tools/list' });
       const rawTools = response?.result?.tools || response?.tools || [];
-      // Filter out get_agent_manifest from backend to avoid duplicates
-      backendTools = rawTools.filter((t: any) => t.name !== 'get_agent_manifest');
+      // Filter out set_role from backend to avoid duplicates
+      backendTools = rawTools.filter((t: any) => t.name !== 'set_role');
       logger.info(`Got ${backendTools.length} tools from backend servers`);
     } catch (error) {
       logger.warn('Failed to get tools from backend servers:', error);
@@ -391,9 +391,9 @@ async function main() {
       }
     }
 
-    // Handle get_agent_manifest (check both exact match and suffix)
-    if (name === 'get_agent_manifest' || name.endsWith('__get_agent_manifest')) {
-      logger.info(`✅ Handling get_agent_manifest (matched: ${name})`);
+    // Handle set_role (check both exact match and suffix)
+    if (name === 'set_role' || name.endsWith('__set_role')) {
+      logger.info(`✅ Handling set_role (matched: ${name})`);
       logger.info(`📋 Arguments: ${JSON.stringify(args)}`);
       const roleId = (args as any)?.role_id;
       logger.info(`🎭 Role ID: ${roleId}`);
@@ -416,7 +416,7 @@ async function main() {
         await routerCore.startServersForRole(roleId);
 
         // Get manifest (this updates currentRole and visibleTools)
-        const manifest = await routerCore.getAgentManifest({ role: roleId });
+        const manifest = await routerCore.setRole({ role: roleId });
 
         // Notify client that tools have changed AFTER role is updated
         try {

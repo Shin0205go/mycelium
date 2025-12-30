@@ -158,8 +158,8 @@ describe('Tool Filtering by Role (Skill-Driven)', () => {
       }
     });
 
-    it('should allow get_agent_manifest system tool', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'get_agent_manifest', 'aegis-router')).toBe(true);
+    it('should allow set_role system tool', () => {
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
     });
   });
 
@@ -317,10 +317,10 @@ describe('Pattern Matching (Skill-Driven)', () => {
   });
 
   describe('System Tools Always Allowed', () => {
-    it('should always allow get_agent_manifest regardless of role', () => {
+    it('should always allow set_role regardless of role', () => {
       const allRoles = ['orchestrator', 'frontend', 'security', 'guest', 'devops', 'db_admin', 'formatter'];
       for (const role of allRoles) {
-        expect(roleManager.isToolAllowedForRole(role, 'get_agent_manifest', 'aegis-router')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'aegis-router')).toBe(true);
       }
     });
   });

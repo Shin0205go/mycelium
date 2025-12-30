@@ -153,9 +153,9 @@ describe('RoleConfigManager (Skill-Driven)', () => {
   });
 
   describe('System Tools', () => {
-    it('system tool get_agent_manifest should always be allowed', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'get_agent_manifest', 'aegis-router')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('guest', 'get_agent_manifest', 'aegis-router')).toBe(true);
+    it('system tool set_role should always be allowed', () => {
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('guest', 'set_role', 'aegis-router')).toBe(true);
     });
   });
 
