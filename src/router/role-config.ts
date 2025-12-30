@@ -85,7 +85,7 @@ export class RoleConfigManager {
 
   /**
    * Initialize the role configuration system
-   * Loads configuration file and all role definitions
+   * v2: Roles are loaded dynamically from skill manifest via loadFromSkillManifest()
    */
   async initialize(): Promise<void> {
     if (this.initialized) {
@@ -94,83 +94,7 @@ export class RoleConfigManager {
     }
 
     this.logger.info('Initializing role configuration system...');
-
-    try {
-      // Check if config file exists
-      await access(this.configFile);
-
-      // Load configuration (supports both legacy RolesConfig and ExtendedRolesConfig)
-      const configContent = await readFile(this.configFile, 'utf-8');
-      const config = JSON.parse(configContent) as ExtendedRolesConfig;
-
-      // Store config metadata
-      this.configVersion = config.version || '1.0.0';
-      this.defaultRole = config.defaultRole || 'default';
-
-      // Load server groups
-      if (config.serverGroups) {
-        for (const [groupName, servers] of Object.entries(config.serverGroups)) {
-          this.serverGroups.set(groupName, servers);
-        }
-        this.logger.debug(`Loaded ${this.serverGroups.size} server groups`);
-      }
-
-      // Load legacy roles
-      if (config.roles) {
-        for (const roleConfig of config.roles) {
-          try {
-            // Store original config for later refetching
-            this.roleConfigs.set(roleConfig.id, roleConfig);
-
-            const role = await this.loadRole(roleConfig);
-            this.roles.set(role.id, role);
-
-            const hasRemote = !!roleConfig.remoteInstruction;
-            this.logger.debug(`Loaded role: ${role.id}`, {
-              name: role.name,
-              servers: role.allowedServers.length,
-              hasRemoteInstruction: hasRemote
-            });
-          } catch (error) {
-            this.logger.error(`Failed to load role ${roleConfig.id}:`, error);
-          }
-        }
-      }
-
-      // Load agents (new format - converts to roles with dynamic tool filtering)
-      if (config.agents) {
-        for (const agentConfig of config.agents) {
-          try {
-            // Store agent config
-            this.agents.set(agentConfig.id, agentConfig);
-
-            // Convert agent to role
-            const role = this.agentToRole(agentConfig);
-            this.roles.set(role.id, role);
-
-            this.logger.debug(`Loaded agent as role: ${role.id}`, {
-              name: role.name,
-              servers: role.allowedServers,
-              skills: agentConfig.allowedSkills
-            });
-          } catch (error) {
-            this.logger.error(`Failed to load agent ${agentConfig.id}:`, error);
-          }
-        }
-      }
-
-      const agentCount = config.agents?.length || 0;
-      const roleCount = config.roles?.length || 0;
-      this.logger.info(`Configuration loaded: ${roleCount} roles, ${agentCount} agents`, {
-        defaultRole: this.defaultRole,
-        version: this.configVersion
-      });
-
-    } catch (error) {
-      // Config file doesn't exist - v2: skill-driven mode
-      this.logger.info('No static role configuration. Roles will be loaded from skill manifest via list_skills.');
-    }
-
+    // v2: No static config - roles loaded via loadFromSkillManifest()
     this.initialized = true;
   }
 
