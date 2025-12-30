@@ -586,7 +586,7 @@ export interface SkillMetadata {
 }
 
 /**
- * Result of get_skill_manifest from Skill MCP Server
+ * Result of list_skills from Skill MCP Server
  */
 export interface SkillManifest {
   /** All available skills */
@@ -634,9 +634,9 @@ export interface RoleManifest {
  */
 export interface SkillMcpClient {
   /**
-   * Fetch skill manifest from Skill MCP Server
+   * Fetch skill list from Skill MCP Server (called at startup)
    */
-  getSkillManifest(): Promise<SkillManifest>;
+  listSkills(): Promise<SkillManifest>;
 
   /**
    * Generate role manifest from skills

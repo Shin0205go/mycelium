@@ -11,7 +11,7 @@
     "aegis-skills": {
       "command": "node",
       "args": ["node_modules/aegis-skills/dist/mcp-server.js"],
-      "comment": "Skill MCP Server - provides get_skill_manifest tool"
+      "comment": "Skill MCP Server - provides list_skills tool"
     }
   },
   "roles": {
