@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-manager.js';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
 import type { SkillManifest, Role } from '../src/types/router-types.js';
@@ -16,10 +16,10 @@ process.env.LOG_SILENT = 'true';
 const testLogger = new Logger();
 
 describe('Role Switching - Tool and Skill Changes', () => {
-  let roleManager: RoleConfigManager;
+  let roleManager: RoleManager;
 
   beforeEach(async () => {
-    roleManager = new RoleConfigManager(testLogger, {
+    roleManager = new RoleManager(testLogger, {
       rolesDir: join(process.cwd(), 'roles'),
     });
   });

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-manager.js';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
 import type { SkillManifest } from '../src/types/router-types.js';
@@ -131,10 +131,10 @@ const toolFilteringManifest: SkillManifest = {
 };
 
 describe('Tool Filtering by Role (Skill-Driven)', () => {
-  let roleManager: RoleConfigManager;
+  let roleManager: RoleManager;
 
   beforeEach(async () => {
-    roleManager = new RoleConfigManager(testLogger, {
+    roleManager = new RoleManager(testLogger, {
       rolesDir: join(process.cwd(), 'roles'),
     });
     await roleManager.initialize();
@@ -284,10 +284,10 @@ describe('Tool Filtering by Role (Skill-Driven)', () => {
 });
 
 describe('Pattern Matching (Skill-Driven)', () => {
-  let roleManager: RoleConfigManager;
+  let roleManager: RoleManager;
 
   beforeEach(async () => {
-    roleManager = new RoleConfigManager(testLogger, {
+    roleManager = new RoleManager(testLogger, {
       rolesDir: join(process.cwd(), 'roles'),
     });
     await roleManager.initialize();

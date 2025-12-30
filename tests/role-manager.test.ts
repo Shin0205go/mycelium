@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-manager.js';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
 import type { SkillManifest } from '../src/types/router-types.js';
@@ -18,8 +18,8 @@ import type { SkillManifest } from '../src/types/router-types.js';
 process.env.LOG_SILENT = 'true';
 const testLogger = new Logger();
 
-describe('RoleConfigManager (Skill-Driven)', () => {
-  let roleManager: RoleConfigManager;
+describe('RoleManager (Skill-Driven)', () => {
+  let roleManager: RoleManager;
 
   // Standard skill manifest for tests
   const standardManifest: SkillManifest = {
@@ -93,7 +93,7 @@ describe('RoleConfigManager (Skill-Driven)', () => {
   };
 
   beforeEach(async () => {
-    roleManager = new RoleConfigManager(testLogger, {
+    roleManager = new RoleManager(testLogger, {
       rolesDir: join(process.cwd(), 'roles'),
     });
     await roleManager.initialize();

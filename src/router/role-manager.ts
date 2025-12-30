@@ -359,7 +359,7 @@ Available tools are filtered based on your role.`;
 }
 
 // ============================================================================
-// Factory & Backward Compatibility
+// Factory
 // ============================================================================
 
 /**
@@ -368,7 +368,3 @@ Available tools are filtered based on your role.`;
 export function createRoleManager(logger: Logger): RoleManager {
   return new RoleManager(logger);
 }
-
-// Backward compatibility aliases
-export { RoleManager as RoleConfigManager };
-export { createRoleManager as createRoleConfigManager };

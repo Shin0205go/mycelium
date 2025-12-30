@@ -7,7 +7,7 @@
 export { AegisRouterCore, createAegisRouterCore } from './aegis-router-core.js';
 
 // Role management
-export { RoleManager, createRoleManager, RoleConfigManager, createRoleConfigManager } from './role-manager.js';
+export { RoleManager, createRoleManager } from './role-manager.js';
 
 // Tool visibility management
 export { ToolVisibilityManager, createToolVisibilityManager } from './tool-visibility-manager.js';

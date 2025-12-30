@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
-import { RoleConfigManager } from '../src/router/role-manager.js';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import type { SkillManifest } from '../src/types/router-types.js';
 
@@ -31,7 +31,7 @@ interface SkillData {
 }
 
 // Use production code's server extraction logic
-const { extractServerFromTool } = RoleConfigManager;
+const { extractServerFromTool } = RoleManager;
 
 describe('Real E2E: aegis-skills Server Integration', () => {
   let serverProcess: ChildProcess | null = null;
@@ -278,8 +278,8 @@ describe('Real E2E: aegis-skills Server Integration', () => {
     });
   });
 
-  describe('RoleConfigManager Integration with Real Skills', () => {
-    it('should load real skills into RoleConfigManager', async () => {
+  describe('RoleManager Integration with Real Skills', () => {
+    it('should load real skills into RoleManager', async () => {
       if (!serverReady) {
         console.log('Skipping: server not ready');
         return;
@@ -306,8 +306,8 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      // Load into RoleConfigManager
-      const roleManager = new RoleConfigManager(testLogger, {
+      // Load into RoleManager
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -344,7 +344,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -397,7 +397,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -440,7 +440,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -489,7 +489,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -529,7 +529,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -587,7 +587,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);
@@ -659,7 +659,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
         generatedAt: new Date()
       };
 
-      const roleManager = new RoleConfigManager(testLogger, {
+      const roleManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
       await roleManager.loadFromSkillManifest(manifest);

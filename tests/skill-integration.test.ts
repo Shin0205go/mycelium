@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-manager.js';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
 import type { SkillManifest, SkillDefinition } from '../src/types/router-types.js';
@@ -15,11 +15,11 @@ process.env.LOG_SILENT = 'true';
 const testLogger = new Logger();
 
 describe('Skill-Driven Role Generation', () => {
-  let roleManager: RoleConfigManager;
+  let roleManager: RoleManager;
 
   beforeAll(async () => {
     const projectRoot = process.cwd();
-    roleManager = new RoleConfigManager(testLogger, {
+    roleManager = new RoleManager(testLogger, {
       rolesDir: join(projectRoot, 'roles'),
     });
     await roleManager.initialize();
@@ -135,7 +135,7 @@ describe('Skill-Driven Role Generation', () => {
   describe('loadFromSkillManifest', () => {
     it('should create roles from skill manifest', async () => {
       // Create a fresh manager for this test
-      const freshManager = new RoleConfigManager(testLogger, {
+      const freshManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
 
@@ -167,7 +167,7 @@ describe('Skill-Driven Role Generation', () => {
 
   describe('Role Switching with Dynamic Roles', () => {
     it('should switch between dynamically generated roles', async () => {
-      const freshManager = new RoleConfigManager(testLogger, {
+      const freshManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
 
@@ -219,7 +219,7 @@ describe('Skill-Driven Role Generation', () => {
     });
 
     it('should update default role when switching from skill manifest', async () => {
-      const freshManager = new RoleConfigManager(testLogger, {
+      const freshManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
 
@@ -246,7 +246,7 @@ describe('Skill-Driven Role Generation', () => {
     });
 
     it('should generate correct system instruction for dynamic roles', async () => {
-      const freshManager = new RoleConfigManager(testLogger, {
+      const freshManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
 
@@ -280,7 +280,7 @@ describe('Skill-Driven Role Generation', () => {
     });
 
     it('should extract server names from tool patterns', async () => {
-      const freshManager = new RoleConfigManager(testLogger, {
+      const freshManager = new RoleManager(testLogger, {
         rolesDir: join(process.cwd(), 'roles'),
       });
 
