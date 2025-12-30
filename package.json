@@ -30,6 +30,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "aegis-skills": "github:Shin0205go/Aegis-skills",
     "chalk": "^5.3.0",
     "uuid": "^9.0.0",
     "winston": "^3.11.0",
