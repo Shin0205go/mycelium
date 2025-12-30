@@ -16,7 +16,11 @@ import type {
   AgentConfig,
   ExtendedRolesConfig,
   ListRolesOptions,
-  ListRolesResult
+  ListRolesResult,
+  SkillDefinition,
+  SkillManifest,
+  DynamicRole,
+  RoleManifest
 } from '../types/router-types.js';
 import { RemotePromptFetcher, createRemotePromptFetcher, PromptRouter } from './remote-prompt-fetcher.js';
 
@@ -665,6 +669,180 @@ IMPORTANT: With great power comes great responsibility.
 
     const regex = new RegExp(`^${regexStr}$`);
     return regex.test(str);
+  }
+
+  // ============================================================================
+  // v2: Skill-Driven Dynamic Role Generation
+  // ============================================================================
+
+  /**
+   * Generate dynamic roles from skill manifest
+   * Skills define allowedRoles, and roles are aggregated from all skills
+   *
+   * @param manifest - Skill manifest from Skill MCP Server
+   * @returns Role manifest with dynamically generated roles
+   */
+  generateRoleManifest(manifest: SkillManifest): RoleManifest {
+    const roles: Record<string, DynamicRole> = {};
+
+    for (const skill of manifest.skills) {
+      for (const roleId of skill.allowedRoles) {
+        // Handle wildcard role
+        const targetRoleId = roleId === '*' ? '__all__' : roleId;
+
+        if (!roles[targetRoleId]) {
+          roles[targetRoleId] = {
+            id: targetRoleId,
+            skills: [],
+            tools: []
+          };
+        }
+
+        // Add skill to role
+        if (!roles[targetRoleId].skills.includes(skill.id)) {
+          roles[targetRoleId].skills.push(skill.id);
+        }
+
+        // Add tools to role (deduplicated)
+        for (const tool of skill.allowedTools) {
+          if (!roles[targetRoleId].tools.includes(tool)) {
+            roles[targetRoleId].tools.push(tool);
+          }
+        }
+      }
+    }
+
+    // If there's a wildcard role, merge its skills/tools into all other roles
+    const wildcardRole = roles['__all__'];
+    if (wildcardRole) {
+      for (const roleId of Object.keys(roles)) {
+        if (roleId !== '__all__') {
+          // Merge wildcard skills
+          for (const skill of wildcardRole.skills) {
+            if (!roles[roleId].skills.includes(skill)) {
+              roles[roleId].skills.push(skill);
+            }
+          }
+          // Merge wildcard tools
+          for (const tool of wildcardRole.tools) {
+            if (!roles[roleId].tools.includes(tool)) {
+              roles[roleId].tools.push(tool);
+            }
+          }
+        }
+      }
+      // Remove the __all__ placeholder
+      delete roles['__all__'];
+    }
+
+    const roleManifest: RoleManifest = {
+      roles,
+      sourceVersion: manifest.version,
+      generatedAt: new Date()
+    };
+
+    this.logger.info(`Generated role manifest from ${manifest.skills.length} skills`, {
+      roleCount: Object.keys(roles).length,
+      roles: Object.keys(roles)
+    });
+
+    return roleManifest;
+  }
+
+  /**
+   * Load roles dynamically from skill manifest
+   * Replaces static role definitions with skill-derived roles
+   *
+   * @param manifest - Skill manifest from Skill MCP Server
+   */
+  async loadFromSkillManifest(manifest: SkillManifest): Promise<void> {
+    const roleManifest = this.generateRoleManifest(manifest);
+
+    // Clear existing roles (keep only system roles if needed)
+    this.roles.clear();
+    this.agents.clear();
+
+    // Create Role objects from dynamic roles
+    for (const [roleId, dynamicRole] of Object.entries(roleManifest.roles)) {
+      const role: Role = {
+        id: roleId,
+        name: roleId.charAt(0).toUpperCase() + roleId.slice(1), // Capitalize
+        description: `Dynamic role with access to: ${dynamicRole.skills.join(', ')}`,
+        allowedServers: this.extractServersFromTools(dynamicRole.tools),
+        systemInstruction: this.generateRoleInstruction(roleId, dynamicRole),
+        toolPermissions: {
+          allowPatterns: dynamicRole.tools
+        },
+        metadata: {
+          active: true,
+          tags: ['dynamic', 'skill-driven']
+        }
+      };
+
+      this.roles.set(roleId, role);
+      this.logger.debug(`Created dynamic role: ${roleId}`, {
+        skills: dynamicRole.skills.length,
+        tools: dynamicRole.tools.length
+      });
+    }
+
+    // Set first role as default if none specified
+    if (this.roles.size > 0 && !this.roles.has(this.defaultRole)) {
+      this.defaultRole = Array.from(this.roles.keys())[0];
+    }
+
+    this.logger.info(`Loaded ${this.roles.size} roles from skill manifest`);
+  }
+
+  /**
+   * Extract server names from MCP tool names
+   * Format: mcp__plugin_<plugin>_<server>__<tool>
+   */
+  private extractServersFromTools(tools: string[]): string[] {
+    const servers = new Set<string>();
+
+    for (const tool of tools) {
+      // Match MCP tool format: mcp__plugin_xxx_servername__toolname
+      const match = tool.match(/^mcp__plugin_[^_]+_([^_]+)__/);
+      if (match) {
+        servers.add(match[1]);
+      } else {
+        // Try simpler format: servername__toolname
+        const simpleMatch = tool.match(/^([^_]+)__/);
+        if (simpleMatch) {
+          servers.add(simpleMatch[1]);
+        }
+      }
+    }
+
+    return Array.from(servers);
+  }
+
+  /**
+   * Generate system instruction for a dynamic role
+   */
+  private generateRoleInstruction(roleId: string, role: DynamicRole): string {
+    return `# ${roleId.charAt(0).toUpperCase() + roleId.slice(1)} Role
+
+You are operating as the ${roleId} role with access to the following skills:
+${role.skills.map(s => `- ${s}`).join('\n')}
+
+Available tools are filtered based on your role. Use the tools responsibly.`;
+  }
+
+  /**
+   * Get available skills for a role (v2)
+   */
+  getSkillsForRole(roleId: string): string[] {
+    // For now, check if role was created from dynamic loading
+    const role = this.roles.get(roleId);
+    if (!role) return [];
+
+    // Extract skills from tool patterns if available
+    // This is a placeholder - actual implementation depends on how skills are stored
+    return role.metadata?.tags?.includes('skill-driven')
+      ? (role.toolPermissions?.allowPatterns || [])
+      : [];
   }
 
   /**
