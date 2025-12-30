@@ -9,7 +9,7 @@ import type { MCPServerConfig } from '../types/mcp-types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type {
   AgentManifest,
-  GetAgentManifestOptions,
+  SetRoleOptions,
   ListRolesResult
 } from '../types/router-types.js';
 
@@ -18,7 +18,7 @@ import type {
  *
  * This adapter:
  * 1. Wraps the Router Core for easy integration with MCPStdioPolicyProxy
- * 2. Provides methods to handle get_agent_manifest tool calls
+ * 2. Provides methods to handle set_role tool calls
  * 3. Manages tools/list_changed notifications
  * 4. Filters tool lists based on current role
  */
@@ -120,22 +120,22 @@ export class RouterAdapter {
   }
 
   /**
-   * Check if a tool call is for get_agent_manifest
+   * Check if a tool call is for set_role
    */
   isManifestTool(toolName: string): boolean {
-    return toolName === 'get_agent_manifest';
+    return toolName === 'set_role';
   }
 
   /**
-   * Handle get_agent_manifest tool call
+   * Handle set_role tool call
    */
-  async handleGetAgentManifest(args: Record<string, any>): Promise<{
+  async handleSetRole(args: Record<string, any>): Promise<{
     content: Array<{ type: string; text: string }>;
     isError: boolean;
     metadata?: Record<string, any>;
   }> {
     try {
-      const manifest = await this.routerCore.getAgentManifest({
+      const manifest = await this.routerCore.setRole({
         role: args.role_id,
         includeToolDescriptions: args.includeToolDescriptions !== false
       });
@@ -226,7 +226,7 @@ export class RouterAdapter {
       return null; // Pass-through mode
     }
 
-    // get_agent_manifest is always accessible
+    // set_role is always accessible
     if (this.isManifestTool(toolName)) {
       return null;
     }
@@ -274,7 +274,7 @@ export class RouterAdapter {
    */
   getManifestToolDefinition(): Tool {
     return {
-      name: 'get_agent_manifest',
+      name: 'set_role',
       description:
         'Switch to a specific role and get the system instruction and available tools for that role. ' +
         'Use this tool to change your operational context and capabilities. ' +
@@ -304,7 +304,7 @@ export class RouterAdapter {
     return {
       name: 'list_roles',
       description:
-        'List all available roles that can be activated using get_agent_manifest. ' +
+        'List all available roles that can be activated using set_role. ' +
         'Shows role ID, name, description, and whether it is currently active.',
       inputSchema: {
         type: 'object' as const,

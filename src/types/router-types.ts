@@ -318,11 +318,11 @@ export interface RouterStateMetadata {
 }
 
 // ============================================================================
-// Agent Manifest (get_agent_manifest result)
+// Agent Manifest (set_role result)
 // ============================================================================
 
 /**
- * Result of get_agent_manifest tool call
+ * Result of set_role tool call
  */
 export interface AgentManifest {
   /** Role that was activated */
@@ -495,9 +495,9 @@ export class ToolNotAccessibleError extends Error {
 // ============================================================================
 
 /**
- * Options for get_agent_manifest tool
+ * Options for set_role tool
  */
-export interface GetAgentManifestOptions {
+export interface SetRoleOptions {
   /** Role to activate */
   role: string;
 

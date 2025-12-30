@@ -1,19 +1,18 @@
 /**
- * Tool Filtering Tests
+ * Tool Filtering Tests (v2: Skill-Driven)
  *
  * Tests for ツール制御 (Tool Control) - the 4th RBAC perspective
  * Validates that each role has appropriate tool access based on:
- * - Allow/deny patterns
- * - Server restrictions
+ * - Skills assigned to each role
+ * - Allow patterns from skills
  * - Wildcard matching
- *
- * Other perspectives are tested in role-config.test.ts
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-config.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { RoleManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
+import type { SkillManifest } from '../src/types/router-types.js';
 
 // Mock tools from backend servers
 const MOCK_FILESYSTEM_TOOLS = [
@@ -49,16 +48,97 @@ const ALL_TOOLS = [
 process.env.LOG_SILENT = 'true';
 const testLogger = new Logger();
 
-describe('Tool Filtering by Role', () => {
-  let roleManager: RoleConfigManager;
+// Standard skill manifest for tool filtering tests
+const toolFilteringManifest: SkillManifest = {
+  skills: [
+    {
+      id: 'orchestration',
+      displayName: 'Orchestration',
+      description: 'Task delegation only',
+      allowedRoles: ['orchestrator'],
+      allowedTools: []  // No tools - delegation only
+    },
+    {
+      id: 'frontend-dev',
+      displayName: 'Frontend Development',
+      description: 'Frontend development tasks',
+      allowedRoles: ['frontend'],
+      allowedTools: [
+        'filesystem__read_file',
+        'filesystem__write_file',
+        'filesystem__list_directory',
+        'filesystem__search_files'
+      ]
+    },
+    {
+      id: 'security-audit',
+      displayName: 'Security Audit',
+      description: 'Security auditing (read-only)',
+      allowedRoles: ['security'],
+      allowedTools: [
+        'filesystem__read_file',
+        'filesystem__list_directory',
+        'filesystem__search_files'
+      ]
+    },
+    {
+      id: 'guest-access',
+      displayName: 'Guest Access',
+      description: 'Minimal read-only access',
+      allowedRoles: ['guest'],
+      allowedTools: [
+        'filesystem__read_file',
+        'filesystem__list_directory'
+      ]
+    },
+    {
+      id: 'devops-full',
+      displayName: 'DevOps Full Access',
+      description: 'Full infrastructure access',
+      allowedRoles: ['devops'],
+      allowedTools: [
+        'filesystem__*',
+        'execution__*',
+        'playwright__*'
+      ]
+    },
+    {
+      id: 'db-admin',
+      displayName: 'Database Admin',
+      description: 'Database admin with read-only filesystem',
+      allowedRoles: ['db_admin'],
+      allowedTools: [
+        'filesystem__read_file',
+        'filesystem__list_directory',
+        'database__query',
+        'database__explain'
+      ]
+    },
+    {
+      id: 'agent-formatter',
+      displayName: 'Code Formatter',
+      description: 'Format code files',
+      allowedRoles: ['formatter'],
+      allowedTools: [
+        'agent-skills__*',
+        'filesystem__read_file',
+        'filesystem__write_file'
+      ]
+    }
+  ],
+  version: '2.0.0',
+  generatedAt: new Date()
+};
 
-  beforeAll(async () => {
-    const projectRoot = process.cwd();
-    roleManager = new RoleConfigManager(testLogger, {
-      rolesDir: join(projectRoot, 'roles'),
-      configFile: join(projectRoot, 'roles', 'aegis-roles.json'),
+describe('Tool Filtering by Role (Skill-Driven)', () => {
+  let roleManager: RoleManager;
+
+  beforeEach(async () => {
+    roleManager = new RoleManager(testLogger, {
+      rolesDir: join(process.cwd(), 'roles'),
     });
     await roleManager.initialize();
+    await roleManager.loadFromSkillManifest(toolFilteringManifest);
   });
 
   /**
@@ -71,18 +151,15 @@ describe('Tool Filtering by Role', () => {
   }
 
   describe('Orchestrator Role', () => {
-    it('should deny all tools except system tools', () => {
-      const role = roleManager.getRole('orchestrator');
-      expect(role?.toolPermissions?.denyPatterns).toContain('*');
-
+    it('should deny all tools (no tools in skill)', () => {
       // All regular tools should be denied
       for (const tool of MOCK_FILESYSTEM_TOOLS) {
         expect(roleManager.isToolAllowedForRole('orchestrator', tool, 'filesystem')).toBe(false);
       }
     });
 
-    it('should allow get_agent_manifest system tool', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'get_agent_manifest', 'aegis-router')).toBe(true);
+    it('should allow set_role system tool', () => {
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
     });
   });
 
@@ -97,13 +174,13 @@ describe('Tool Filtering by Role', () => {
       expect(allowed).toContain('filesystem__search_files');
     });
 
-    it('should deny delete tools', () => {
+    it('should deny delete tools (not in skill)', () => {
       const allowed = filterToolsForRole('frontend', filesystemTools);
       expect(allowed).not.toContain('filesystem__delete_file');
     });
 
     it('should deny execution tools (no server access)', () => {
-      const execTools = MOCK_EXECUTION_TOOLS.map(name => ({ name, server: 'execution-server' }));
+      const execTools = MOCK_EXECUTION_TOOLS.map(name => ({ name, server: 'execution' }));
       const allowed = filterToolsForRole('frontend', execTools);
       expect(allowed).toHaveLength(0);
     });
@@ -119,7 +196,7 @@ describe('Tool Filtering by Role', () => {
       expect(allowed).toContain('filesystem__search_files');
     });
 
-    it('should deny all write/delete/execute operations', () => {
+    it('should deny all write/delete operations', () => {
       const allowed = filterToolsForRole('security', filesystemTools);
       expect(allowed).not.toContain('filesystem__write_file');
       expect(allowed).not.toContain('filesystem__delete_file');
@@ -133,7 +210,9 @@ describe('Tool Filtering by Role', () => {
 
     it('should only allow read_file and list_directory', () => {
       const allowed = filterToolsForRole('guest', filesystemTools);
-      expect(allowed).toEqual(['filesystem__read_file', 'filesystem__list_directory']);
+      expect(allowed).toContain('filesystem__read_file');
+      expect(allowed).toContain('filesystem__list_directory');
+      expect(allowed).toHaveLength(2);
     });
 
     it('should deny all other filesystem tools', () => {
@@ -145,15 +224,14 @@ describe('Tool Filtering by Role', () => {
   });
 
   describe('DevOps Role', () => {
-    it('should have access to all servers', () => {
+    it('should have access to all servers via wildcard patterns', () => {
       expect(roleManager.isServerAllowedForRole('devops', 'filesystem')).toBe(true);
-      expect(roleManager.isServerAllowedForRole('devops', 'execution-server')).toBe(true);
+      expect(roleManager.isServerAllowedForRole('devops', 'execution')).toBe(true);
       expect(roleManager.isServerAllowedForRole('devops', 'playwright')).toBe(true);
-      expect(roleManager.isServerAllowedForRole('devops', 'any-server')).toBe(true);
     });
 
-    it('should allow all tools (no restrictions)', () => {
-      // DevOps has no toolPermissions defined, so all tools are allowed
+    it('should allow all tools via wildcard patterns', () => {
+      // DevOps has wildcard patterns for all servers
       for (const tool of ALL_TOOLS) {
         const server = tool.split('__')[0];
         expect(roleManager.isToolAllowedForRole('devops', tool, server)).toBe(true);
@@ -175,6 +253,11 @@ describe('Tool Filtering by Role', () => {
       expect(allowed).not.toContain('filesystem__write_file');
       expect(allowed).not.toContain('filesystem__delete_file');
     });
+
+    it('should allow database tools', () => {
+      expect(roleManager.isToolAllowedForRole('db_admin', 'database__query', 'database')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('db_admin', 'database__explain', 'database')).toBe(true);
+    });
   });
 
   describe('Tool Count Summary', () => {
@@ -189,52 +272,56 @@ describe('Tool Filtering by Role', () => {
         summary[roleId] = allowed.length;
       }
 
-      // Verify expected counts (adjust based on actual config)
-      expect(summary.orchestrator).toBe(0); // Denies all
-      expect(summary.frontend).toBeGreaterThan(0); // Has read/write/list/search
-      expect(summary.security).toBeGreaterThan(0); // Has read/list/search
-      expect(summary.guest).toBe(2); // Only read_file and list_directory
-      expect(summary.devops).toBe(MOCK_FILESYSTEM_TOOLS.length); // All tools
-      expect(summary.db_admin).toBeGreaterThan(0); // Has read/list
+      // Verify expected counts
+      expect(summary.orchestrator).toBe(0); // No tools
+      expect(summary.frontend).toBe(4); // read, write, list, search
+      expect(summary.security).toBe(3); // read, list, search
+      expect(summary.guest).toBe(2); // read, list
+      expect(summary.devops).toBe(MOCK_FILESYSTEM_TOOLS.length); // All via wildcard
+      expect(summary.db_admin).toBe(2); // read, list
     });
   });
 });
 
-describe('Pattern Matching', () => {
-  let roleManager: RoleConfigManager;
+describe('Pattern Matching (Skill-Driven)', () => {
+  let roleManager: RoleManager;
 
-  beforeAll(async () => {
-    const projectRoot = process.cwd();
-    roleManager = new RoleConfigManager(testLogger, {
-      rolesDir: join(projectRoot, 'roles'),
-      configFile: join(projectRoot, 'roles', 'aegis-roles.json'),
+  beforeEach(async () => {
+    roleManager = new RoleManager(testLogger, {
+      rolesDir: join(process.cwd(), 'roles'),
     });
     await roleManager.initialize();
+    await roleManager.loadFromSkillManifest(toolFilteringManifest);
   });
 
   describe('Wildcard Patterns', () => {
-    it('should match * pattern to all tools', () => {
-      // Orchestrator has denyPatterns: ["*"]
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'any_tool', 'any_server')).toBe(false);
+    it('should match * suffix pattern (filesystem__*)', () => {
+      // DevOps has filesystem__* pattern
+      expect(roleManager.isToolAllowedForRole('devops', 'filesystem__any_tool', 'filesystem')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('devops', 'filesystem__read_file', 'filesystem')).toBe(true);
     });
 
-    it('should match prefix patterns like filesystem__read*', () => {
-      // Frontend has allowPatterns including filesystem__read*
+    it('should match exact tool names', () => {
+      // Frontend has specific tools, not wildcards
       expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__read_file', 'filesystem')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__read_directory', 'filesystem')).toBe(true);
-    });
-
-    it('should match suffix patterns like *__delete*', () => {
-      // Frontend has denyPatterns: ["*__delete*"]
       expect(roleManager.isToolAllowedForRole('frontend', 'filesystem__delete_file', 'filesystem')).toBe(false);
-      expect(roleManager.isToolAllowedForRole('frontend', 'any__delete_stuff', 'filesystem')).toBe(false);
     });
   });
 
   describe('Server Prefix Patterns', () => {
     it('should match agent-skills__* for agent tools', () => {
-      // formatter agent has allowPatterns: ["agent-skills__*"]
-      expect(roleManager.isToolAllowedForRole('formatter', 'agent-skills__some_tool', 'agent-skills')).toBe(true);
+      // formatter agent has allowedTools: ["agent-skills__*"]
+      expect(roleManager.isToolAllowedForRole('formatter', 'agent-skills__format_code', 'agent-skills')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('formatter', 'agent-skills__any_tool', 'agent-skills')).toBe(true);
+    });
+  });
+
+  describe('System Tools Always Allowed', () => {
+    it('should always allow set_role regardless of role', () => {
+      const allRoles = ['orchestrator', 'frontend', 'security', 'guest', 'devops', 'db_admin', 'formatter'];
+      for (const role of allRoles) {
+        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'aegis-router')).toBe(true);
+      }
     });
   });
 });

@@ -6,8 +6,11 @@
 // Core router
 export { AegisRouterCore, createAegisRouterCore } from './aegis-router-core.js';
 
-// Role configuration
-export { RoleConfigManager, createRoleConfigManager } from './role-config.js';
+// Role management
+export { RoleManager, createRoleManager } from './role-manager.js';
+
+// Tool visibility management
+export { ToolVisibilityManager, createToolVisibilityManager } from './tool-visibility-manager.js';
 
 // Remote prompt fetching
 export {

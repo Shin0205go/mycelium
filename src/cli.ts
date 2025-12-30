@@ -396,7 +396,7 @@ export class AegisCLI {
               const shortName = tool.name.replace('mcp__aegis-router__', '');
               console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
               // Track role switch attempts
-              if (shortName === 'get_agent_manifest') {
+              if (shortName === 'set_role') {
                 const input = tool.input as { role_id?: string };
                 if (input.role_id && input.role_id !== 'list') {
                   pendingRoleSwitch = input.role_id;

@@ -189,7 +189,7 @@ export class MCPClient extends EventEmitter {
 
   async listRoles(): Promise<ListRolesResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'get_agent_manifest',
+      name: 'set_role',
       arguments: { role_id: 'list' }
     });
 
@@ -202,7 +202,7 @@ export class MCPClient extends EventEmitter {
 
   async switchRole(roleId: string): Promise<AgentManifest> {
     const result = await this.sendRequest('tools/call', {
-      name: 'get_agent_manifest',
+      name: 'set_role',
       arguments: { role_id: roleId }
     });
 
