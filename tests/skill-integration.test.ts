@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { RoleConfigManager } from '../src/router/role-config.js';
+import { RoleConfigManager } from '../src/router/role-manager.js';
 import { Logger } from '../src/utils/logger.js';
 import { join } from 'path';
 import type { SkillManifest, SkillDefinition } from '../src/types/router-types.js';

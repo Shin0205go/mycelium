@@ -7,7 +7,8 @@ import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
 import { StdioRouter, UpstreamServerInfo } from '../mcp/stdio-router.js';
 import type { MCPServerConfig } from '../types/mcp-types.js';
-import { RoleConfigManager, createRoleConfigManager } from './role-config.js';
+import { RoleManager, createRoleManager } from './role-manager.js';
+import { ToolVisibilityManager, createToolVisibilityManager } from './tool-visibility-manager.js';
 import type {
   Role,
   AegisRouterState,
@@ -19,9 +20,6 @@ import type {
   ToolsChangedEvent,
   SetRoleOptions,
   ListRolesResult,
-  RoleNotFoundError,
-  ToolNotAccessibleError,
-  ServerNotAccessibleError,
   SkillManifest,
   SkillDefinition
 } from '../types/router-types.js';
@@ -40,13 +38,11 @@ import { v4 as uuidv4 } from 'uuid';
 export class AegisRouterCore extends EventEmitter {
   private logger: Logger;
   private stdioRouter: StdioRouter;
-  private roleConfigManager: RoleConfigManager;
+  private roleManager: RoleManager;
+  private toolVisibility: ToolVisibilityManager;
 
   // Router state
   private state: AegisRouterState;
-
-  // Track all tools from all servers (unfiltered)
-  private allTools: Map<string, ToolInfo> = new Map();
 
   // Notification callback for tools/list_changed
   private toolsChangedCallback?: () => Promise<void>;
@@ -68,8 +64,11 @@ export class AegisRouterCore extends EventEmitter {
     // Initialize StdioRouter for managing upstream servers
     this.stdioRouter = new StdioRouter(logger);
 
-    // Initialize role configuration manager
-    this.roleConfigManager = createRoleConfigManager(logger, options);
+    // Initialize role manager
+    this.roleManager = createRoleManager(logger);
+
+    // Initialize tool visibility manager
+    this.toolVisibility = createToolVisibilityManager(logger, this.roleManager);
 
     // Initialize state
     this.state = {
@@ -112,10 +111,10 @@ export class AegisRouterCore extends EventEmitter {
 
     try {
       // Initialize role configuration
-      await this.roleConfigManager.initialize();
+      await this.roleManager.initialize();
 
       // Load roles into state
-      const allRoles = this.roleConfigManager.getAllRoles();
+      const allRoles = this.roleManager.getAllRoles();
       for (const role of allRoles) {
         this.state.availableRoles.set(role.id, role);
       }
@@ -123,7 +122,7 @@ export class AegisRouterCore extends EventEmitter {
       this.logger.info(`Loaded ${this.state.availableRoles.size} roles`);
 
       // Set default role if available
-      const defaultRole = this.roleConfigManager.getDefaultRole();
+      const defaultRole = this.roleManager.getDefaultRole();
       if (defaultRole) {
         this.state.currentRole = defaultRole;
         this.logger.info(`Default role set to: ${defaultRole.id}`);
@@ -172,11 +171,7 @@ export class AegisRouterCore extends EventEmitter {
     await this.discoverAllTools();
 
     // Apply role-based filtering
-    this.updateVisibleTools();
-
-    // Set up the prompt router for remote instruction fetching
-    // This enables roles to fetch their system instructions from MCP servers
-    this.roleConfigManager.setPromptRouter(this.createPromptRouter());
+    this.toolVisibility.setCurrentRole(this.state.currentRole);
 
     this.logger.info('All upstream servers started and tools discovered');
   }
@@ -224,17 +219,17 @@ export class AegisRouterCore extends EventEmitter {
       }
 
       // Load roles from skill manifest
-      await this.roleConfigManager.loadFromSkillManifest(skillManifest);
+      await this.roleManager.loadFromSkillManifest(skillManifest);
 
       // Update state with new roles
       this.state.availableRoles.clear();
-      const allRoles = this.roleConfigManager.getAllRoles();
+      const allRoles = this.roleManager.getAllRoles();
       for (const role of allRoles) {
         this.state.availableRoles.set(role.id, role);
       }
 
       // Set default role
-      const defaultRole = this.roleConfigManager.getDefaultRole();
+      const defaultRole = this.roleManager.getDefaultRole();
       if (defaultRole) {
         this.state.currentRole = defaultRole;
       }
@@ -308,7 +303,7 @@ export class AegisRouterCore extends EventEmitter {
    * Start servers required for a specific role (lazy loading)
    */
   async startServersForRole(roleId: string): Promise<void> {
-    const role = this.roleConfigManager.getRole(roleId);
+    const role = this.roleManager.getRole(roleId);
     if (!role) {
       this.logger.warn(`Role not found: ${roleId}`);
       return;
@@ -334,9 +329,6 @@ export class AegisRouterCore extends EventEmitter {
     // Note: Don't call updateVisibleTools() here - let setRole handle it
     // because currentRole hasn't been updated yet
 
-    // Set up the prompt router
-    this.roleConfigManager.setPromptRouter(this.createPromptRouter());
-
     this.logger.info(`Servers started for role ${roleId}`);
   }
 
@@ -349,7 +341,7 @@ export class AegisRouterCore extends EventEmitter {
 
     // Clear state
     this.state.connectedServers.clear();
-    this.allTools.clear();
+    this.toolVisibility.clearTools();
     this.state.visibleTools.clear();
 
     this.logger.info('All upstream servers stopped');
@@ -417,161 +409,23 @@ export class AegisRouterCore extends EventEmitter {
       const response = await this.stdioRouter.routeRequest(request);
 
       if (response.result?.tools) {
-        this.allTools.clear();
+        // Register tools with ToolVisibilityManager
+        this.toolVisibility.registerToolsFromList(response.result.tools as Tool[]);
 
+        // Update server's tool list in state
         for (const tool of response.result.tools as Tool[]) {
-          // Parse server name from prefixed tool name
-          const { serverName, originalName } = this.parseToolName(tool.name);
-
-          const toolInfo: ToolInfo = {
-            tool,
-            sourceServer: serverName,
-            prefixedName: tool.name,
-            visible: true, // Will be updated by role filtering
-            visibilityReason: 'discovered'
-          };
-
-          this.allTools.set(tool.name, toolInfo);
-
-          // Update server's tool list
+          const { serverName } = this.toolVisibility.parseToolName(tool.name);
           const serverInfo = this.state.connectedServers.get(serverName);
           if (serverInfo) {
             serverInfo.tools.push(tool);
           }
         }
 
-        this.logger.info(`Discovered ${this.allTools.size} tools from upstream servers`);
+        this.logger.info(`Discovered ${this.toolVisibility.getTotalCount()} tools from upstream servers`);
       }
     } catch (error) {
       this.logger.error('Failed to discover tools:', error);
     }
-  }
-
-  /**
-   * Parse a prefixed tool name into server name and original name
-   */
-  private parseToolName(prefixedName: string): { serverName: string; originalName: string } {
-    const parts = prefixedName.split('__');
-    if (parts.length >= 2) {
-      return {
-        serverName: parts[0],
-        originalName: parts.slice(1).join('__')
-      };
-    }
-    return {
-      serverName: 'unknown',
-      originalName: prefixedName
-    };
-  }
-
-  /**
-   * Update visible tools based on current role
-   */
-  private updateVisibleTools(): void {
-    const previousVisibleTools = new Set(this.state.visibleTools.keys());
-    this.state.visibleTools.clear();
-
-    const currentRoleId = this.state.currentRole?.id || 'none';
-    const allowedServers = this.state.currentRole?.allowedServers || [];
-    this.logger.info(`🔍 Filtering tools for role: ${currentRoleId}, allowedServers: ${JSON.stringify(allowedServers)}`);
-
-    let filtered = 0;
-    for (const [name, toolInfo] of this.allTools) {
-      const isVisible = this.isToolVisibleForRole(toolInfo);
-
-      if (isVisible) {
-        toolInfo.visible = true;
-        toolInfo.visibilityReason = 'role_permitted';
-        this.state.visibleTools.set(name, toolInfo);
-      } else {
-        toolInfo.visible = false;
-        toolInfo.visibilityReason = 'role_restricted';
-        filtered++;
-      }
-    }
-
-    this.logger.info(`🔍 Filtered out ${filtered} tools, ${this.state.visibleTools.size} visible`);
-
-    // Always add the set_role tool
-    this.addManifestTool();
-
-    // Check if tools changed
-    const currentVisibleTools = new Set(this.state.visibleTools.keys());
-    const toolsChanged = !this.setsEqual(previousVisibleTools, currentVisibleTools);
-
-    if (toolsChanged) {
-      this.logger.info(`Visible tools updated: ${this.state.visibleTools.size} tools available`);
-    }
-  }
-
-  /**
-   * Check if a tool is visible for the current role
-   */
-  private isToolVisibleForRole(toolInfo: ToolInfo): boolean {
-    if (!this.state.currentRole) {
-      return true; // No role = show all
-    }
-
-    const role = this.state.currentRole;
-
-    // Check server access first
-    if (!this.isServerActiveForRole(toolInfo.sourceServer)) {
-      return false;
-    }
-
-    // Check tool-level permissions
-    return this.roleConfigManager.isToolAllowedForRole(
-      role.id,
-      toolInfo.prefixedName,
-      toolInfo.sourceServer
-    );
-  }
-
-  /**
-   * Add the set_role tool to visible tools
-   */
-  private addManifestTool(): void {
-    const manifestTool: Tool = {
-      name: 'set_role',
-      description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
-        'Use this tool to change your operational context and capabilities.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role_id: {
-            type: 'string',
-            description: 'The role ID to switch to. Use "list" to see available roles.'
-          },
-          includeToolDescriptions: {
-            type: 'boolean',
-            description: 'Whether to include full tool descriptions in the response',
-            default: true
-          }
-        },
-        required: ['role_id']
-      }
-    };
-
-    const toolInfo: ToolInfo = {
-      tool: manifestTool,
-      sourceServer: 'aegis-router',
-      prefixedName: 'set_role',
-      visible: true,
-      visibilityReason: 'system_tool'
-    };
-
-    this.state.visibleTools.set('set_role', toolInfo);
-  }
-
-  /**
-   * Compare two sets for equality
-   */
-  private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-    if (a.size !== b.size) return false;
-    for (const item of a) {
-      if (!b.has(item)) return false;
-    }
-    return true;
   }
 
   // ============================================================================
@@ -608,23 +462,8 @@ export class AegisRouterCore extends EventEmitter {
       );
     }
 
-    // Track previous state for notifications
+    // Track previous role for notifications
     const previousRole = this.state.currentRole;
-    const previousTools = new Set(this.state.visibleTools.keys());
-
-    // If role has remote instruction, fetch it now
-    // This implements the "ask backend for SKILL.md" step
-    if (this.roleConfigManager.hasRemoteInstruction(roleId)) {
-      this.logger.info(`📡 Fetching remote instruction for role: ${roleId}`);
-      const updatedInstruction = await this.roleConfigManager.refreshRoleInstruction(roleId);
-
-      if (updatedInstruction) {
-        // Update the role in state with the refreshed instruction
-        role.systemInstruction = updatedInstruction;
-        this.state.availableRoles.set(roleId, role);
-        this.logger.info(`✅ Remote instruction loaded for role: ${roleId}`);
-      }
-    }
 
     // Update current role
     this.state.currentRole = role;
@@ -636,13 +475,8 @@ export class AegisRouterCore extends EventEmitter {
       serverInfo.activeForRole = this.isServerActiveForRole(serverName);
     }
 
-    // Update visible tools based on new role
-    this.updateVisibleTools();
-
-    // Calculate added/removed tools
-    const currentTools = new Set(this.state.visibleTools.keys());
-    const addedTools = [...currentTools].filter(t => !previousTools.has(t));
-    const removedTools = [...previousTools].filter(t => !currentTools.has(t));
+    // Update visible tools based on new role (via ToolVisibilityManager)
+    const { added: addedTools, removed: removedTools } = this.toolVisibility.setCurrentRole(role);
 
     // Emit role switch event
     const switchEvent: RoleSwitchEvent = {
@@ -677,7 +511,7 @@ export class AegisRouterCore extends EventEmitter {
   private buildManifest(role: Role, includeToolDescriptions: boolean): AgentManifest {
     const availableTools: ManifestTool[] = [];
 
-    for (const [_, toolInfo] of this.state.visibleTools) {
+    for (const toolInfo of this.toolVisibility.getVisibleToolsInfo()) {
       const manifestTool: ManifestTool = {
         name: toolInfo.prefixedName,
         source: toolInfo.sourceServer
@@ -729,7 +563,7 @@ export class AegisRouterCore extends EventEmitter {
       timestamp: new Date(),
       role: this.state.currentRole?.id || 'none',
       reason: 'role_switch',
-      toolCount: this.state.visibleTools.size
+      toolCount: this.toolVisibility.getVisibleCount()
     };
     this.emit('toolsChanged', event);
 
@@ -789,97 +623,16 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   /**
-   * Handle list_skills with skill filtering for current agent
+   * Handle list_skills - forward to upstream
    */
   private async handleListSkillsWithFiltering(request: any): Promise<any> {
-    // Forward to upstream first
-    const response = await this.stdioRouter.routeRequest(request);
-
-    // If no current role or not an agent, return unfiltered
-    const currentRoleId = this.state.currentRole?.id;
-    if (!currentRoleId || !this.roleConfigManager.isAgentRole(currentRoleId)) {
-      return response;
-    }
-
-    // Get allowed skills for current agent
-    const allowedSkills = this.roleConfigManager.getAllowedSkillsForAgent(currentRoleId);
-    if (!allowedSkills) {
-      // No filtering needed
-      return response;
-    }
-
-    // Filter the skills in the response
-    try {
-      const result = response?.result;
-      if (result?.content?.[0]?.text) {
-        const skills = JSON.parse(result.content[0].text);
-        if (Array.isArray(skills)) {
-          const filteredSkills = skills.filter((skill: any) =>
-            allowedSkills.includes(skill.name)
-          );
-
-          this.logger.debug(`Skill filtering applied`, {
-            agent: currentRoleId,
-            original: skills.length,
-            filtered: filteredSkills.length,
-            allowed: allowedSkills
-          });
-
-          // Return filtered response
-          return {
-            ...response,
-            result: {
-              ...result,
-              content: [{
-                type: 'text',
-                text: JSON.stringify(filteredSkills, null, 2)
-              }]
-            }
-          };
-        }
-      }
-    } catch (error) {
-      this.logger.warn('Failed to filter list_skills response:', error);
-    }
-
-    return response;
+    return await this.stdioRouter.routeRequest(request);
   }
 
   /**
-   * Handle get_skill with skill access validation for current agent
+   * Handle get_skill - forward to upstream
    */
-  private async handleGetSkillWithFiltering(request: any, args: any): Promise<any> {
-    const skillName = args?.name;
-    if (!skillName) {
-      return await this.stdioRouter.routeRequest(request);
-    }
-
-    // If no current role or not an agent, allow all
-    const currentRoleId = this.state.currentRole?.id;
-    if (!currentRoleId || !this.roleConfigManager.isAgentRole(currentRoleId)) {
-      return await this.stdioRouter.routeRequest(request);
-    }
-
-    // Check if skill is allowed
-    if (!this.roleConfigManager.isSkillAllowedForAgent(currentRoleId, skillName)) {
-      this.logger.warn(`Skill access denied`, {
-        agent: currentRoleId,
-        skill: skillName
-      });
-
-      return {
-        result: {
-          content: [{
-            type: 'text',
-            text: `Error: Skill '${skillName}' is not available for the current agent. ` +
-                  `Use list_skills to see available skills.`
-          }],
-          isError: true
-        }
-      };
-    }
-
-    // Skill is allowed, forward the request
+  private async handleGetSkillWithFiltering(request: any, _args: any): Promise<any> {
     return await this.stdioRouter.routeRequest(request);
   }
 
@@ -937,28 +690,8 @@ export class AegisRouterCore extends EventEmitter {
    * Get the filtered tools list for the current role
    */
   private getFilteredToolsList(): any {
-    const tools: Tool[] = [];
-
-    // Always include set_role (system tool)
-    tools.push({
-      name: 'set_role',
-      description: 'Switch to a specific role and get the system instruction and available tools for that role. Use "list" to see available roles.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role_id: {
-            type: 'string',
-            description: 'The role ID to switch to. Use "list" to see available roles.'
-          }
-        },
-        required: ['role_id']
-      }
-    });
-
-    // Add visible tools for current role
-    for (const [_, toolInfo] of this.state.visibleTools) {
-      tools.push(toolInfo.tool);
-    }
+    // Get visible tools from ToolVisibilityManager (includes set_role)
+    const tools = this.toolVisibility.getVisibleTools();
 
     return {
       result: {
@@ -972,20 +705,7 @@ export class AegisRouterCore extends EventEmitter {
    * Throws an error if access is denied
    */
   private checkToolAccess(toolName: string): void {
-    // set_role is always accessible
-    if (toolName === 'set_role') {
-      return;
-    }
-
-    const toolInfo = this.state.visibleTools.get(toolName);
-
-    if (!toolInfo) {
-      const currentRole = this.state.currentRole?.id || 'none';
-      throw new Error(
-        `Tool '${toolName}' is not accessible for role '${currentRole}'. ` +
-        `Use set_role to switch roles or check available tools.`
-      );
-    }
+    this.toolVisibility.checkAccess(toolName);
   }
 
   // ============================================================================
@@ -1003,7 +723,7 @@ export class AegisRouterCore extends EventEmitter {
    * List available roles
    */
   listRoles(): ListRolesResult {
-    return this.roleConfigManager.listRoles(
+    return this.roleManager.listRoles(
       { includeInactive: false },
       this.state.currentRole?.id
     );
@@ -1013,7 +733,7 @@ export class AegisRouterCore extends EventEmitter {
    * Get visible tools count
    */
   getVisibleToolsCount(): number {
-    return this.state.visibleTools.size;
+    return this.toolVisibility.getVisibleCount();
   }
 
   /**
@@ -1042,33 +762,21 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   /**
-   * Reload role configuration
+   * Reload roles from skill server
    */
   async reloadRoles(): Promise<void> {
-    this.logger.info('Reloading role configuration...');
+    this.logger.info('Reloading roles from skill server...');
 
-    await this.roleConfigManager.reload();
+    // Reload from aegis-skills server
+    await this.loadRolesFromSkillsServer();
 
-    // Update state
-    this.state.availableRoles.clear();
-    const allRoles = this.roleConfigManager.getAllRoles();
-    for (const role of allRoles) {
-      this.state.availableRoles.set(role.id, role);
-    }
-
-    // If current role no longer exists, reset to default
-    if (this.state.currentRole && !this.state.availableRoles.has(this.state.currentRole.id)) {
-      this.logger.warn(`Current role '${this.state.currentRole.id}' no longer exists, resetting to default`);
-      this.state.currentRole = this.roleConfigManager.getDefaultRole() || null;
-    }
-
-    // Update visible tools
-    this.updateVisibleTools();
+    // Update visible tools (via ToolVisibilityManager)
+    this.toolVisibility.setCurrentRole(this.state.currentRole);
 
     // Notify tools changed
     await this.notifyToolsChanged();
 
-    this.logger.info('Role configuration reloaded');
+    this.logger.info('Roles reloaded');
   }
 
   /**
@@ -1102,7 +810,7 @@ export class AegisRouterCore extends EventEmitter {
     return {
       currentRole: this.state.currentRole?.id ?? null,
       systemInstruction: this.state.currentRole?.systemInstruction ?? null,
-      visibleToolsCount: this.state.visibleTools.size,
+      visibleToolsCount: this.toolVisibility.getVisibleCount(),
       connectedServersCount: this.state.connectedServers.size
     };
   }
