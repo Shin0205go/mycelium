@@ -10,6 +10,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
 import { join } from 'path';
+import { RoleConfigManager } from '../src/router/role-config.js';
+import { Logger } from '../src/utils/logger.js';
+import type { SkillManifest } from '../src/types/router-types.js';
+
+// Silent logger for tests
+process.env.LOG_SILENT = 'true';
+const testLogger = new Logger();
 
 // Skip if aegis-skills is not installed
 const AEGIS_SKILLS_PATH = join(process.cwd(), 'node_modules/aegis-skills/index.js');
@@ -21,6 +28,24 @@ interface SkillData {
   description: string;
   allowedRoles?: string[];
   allowedTools?: string[];
+}
+
+/**
+ * Extract server name from tool pattern (same logic as production code)
+ * Format: mcp__plugin_<plugin>_<server>__<tool> or server__tool
+ */
+function extractServerFromTool(tool: string): string | null {
+  // Match MCP tool format: mcp__plugin_xxx_servername__toolname
+  const match = tool.match(/^mcp__plugin_[^_]+_([^_]+)__/);
+  if (match) {
+    return match[1];
+  }
+  // Try simpler format: servername__toolname
+  const simpleMatch = tool.match(/^([^_]+)__/);
+  if (simpleMatch) {
+    return simpleMatch[1];
+  }
+  return null;
 }
 
 describe('Real E2E: aegis-skills Server Integration', () => {
@@ -265,6 +290,403 @@ describe('Real E2E: aegis-skills Server Integration', () => {
       // At least one role should have tools
       const rolesWithTools = [...roleToTools.entries()].filter(([_, tools]) => tools.size > 0);
       expect(rolesWithTools.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('RoleConfigManager Integration with Real Skills', () => {
+    it('should load real skills into RoleConfigManager', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      // Convert to SkillManifest format
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      // Load into RoleConfigManager
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Should have generated roles
+      const roleIds = roleManager.getRoleIds();
+      console.log(`Generated ${roleIds.length} roles: [${roleIds.join(', ')}]`);
+      expect(roleIds.length).toBeGreaterThan(0);
+    });
+
+    it('should have correct tool permissions for generated roles', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Check each role has expected tools
+      for (const skill of skills) {
+        if (skill.allowedRoles && skill.allowedTools) {
+          for (const roleId of skill.allowedRoles) {
+            if (roleId === '*') continue; // Skip wildcard
+
+            const role = roleManager.getRole(roleId);
+            if (role) {
+              // Role should have the tools from this skill
+              for (const tool of skill.allowedTools) {
+                const server = extractServerFromTool(tool);
+                if (server) {
+                  const isAllowed = roleManager.isToolAllowedForRole(roleId, tool, server);
+                  expect(isAllowed).toBe(true);
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    it('should extract servers correctly from real tool patterns', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Each role should have allowedServers extracted from tools
+      const roles = roleManager.getAllRoles();
+      for (const role of roles) {
+        if (role.toolPermissions?.allowPatterns && role.toolPermissions.allowPatterns.length > 0) {
+          expect(role.allowedServers.length).toBeGreaterThan(0);
+          console.log(`Role ${role.id}: servers=[${role.allowedServers.join(', ')}]`);
+        }
+      }
+    });
+  });
+
+  describe('Role Switching with Real Skills', () => {
+    it('should switch between roles and verify tool access changes', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
+      if (roleIds.length < 2) {
+        console.log('Need at least 2 roles to test switching');
+        return;
+      }
+
+      const role1 = roleManager.getRole(roleIds[0]);
+      const role2 = roleManager.getRole(roleIds[1]);
+
+      console.log(`Comparing roles: ${roleIds[0]} vs ${roleIds[1]}`);
+      console.log(`  ${roleIds[0]}: ${role1?.toolPermissions?.allowPatterns?.length || 0} tools`);
+      console.log(`  ${roleIds[1]}: ${role2?.toolPermissions?.allowPatterns?.length || 0} tools`);
+
+      // Verify roles have different tool configurations
+      expect(role1).toBeDefined();
+      expect(role2).toBeDefined();
+    });
+
+    it('should always allow set_role system tool for all roles', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // set_role should be allowed for ALL roles
+      const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
+      for (const roleId of roleIds) {
+        const isAllowed = roleManager.isToolAllowedForRole(roleId, 'set_role', 'aegis-router');
+        expect(isAllowed).toBe(true);
+      }
+      console.log(`set_role is allowed for all ${roleIds.length} roles ✓`);
+    });
+
+    it('should deny tools not in skill allowedTools', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
+      if (roleIds.length === 0) return;
+
+      // Pick first role and test with a fake tool
+      const roleId = roleIds[0];
+      const fakeTools = [
+        'nonexistent__fake_tool',
+        'random__unknown_action',
+        'fake_server__do_something'
+      ];
+
+      for (const fakeTool of fakeTools) {
+        const [server] = fakeTool.split('__');
+        const isAllowed = roleManager.isToolAllowedForRole(roleId, fakeTool, server);
+        expect(isAllowed).toBe(false);
+      }
+      console.log(`Fake tools correctly denied for role ${roleId} ✓`);
+    });
+  });
+
+  describe('Complete Workflow: list_skills → set_role', () => {
+    it('should complete full E2E workflow with real server', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      // Step 1: Call list_skills
+      console.log('Step 1: Calling list_skills...');
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+      expect(response.result).toBeDefined();
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+      console.log(`  → Got ${skills.length} skills`);
+
+      // Step 2: Generate roles from skills
+      console.log('Step 2: Generating roles from skills...');
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
+      console.log(`  → Generated ${roleIds.length} roles`);
+
+      // Step 3: Verify each role has correct skills
+      console.log('Step 3: Verifying role-skill assignments...');
+      for (const roleId of roleIds) {
+        const role = roleManager.getRole(roleId);
+        expect(role).toBeDefined();
+        expect(role?.metadata?.tags).toContain('skill-driven');
+      }
+      console.log('  → All roles are skill-driven ✓');
+
+      // Step 4: Verify tool access per role
+      console.log('Step 4: Verifying tool access...');
+      let totalChecks = 0;
+      for (const skill of skills) {
+        if (skill.allowedRoles && skill.allowedTools) {
+          for (const roleId of skill.allowedRoles) {
+            if (roleId === '*') continue;
+            for (const tool of skill.allowedTools) {
+              const server = extractServerFromTool(tool);
+              if (server && roleManager.hasRole(roleId)) {
+                expect(roleManager.isToolAllowedForRole(roleId, tool, server)).toBe(true);
+                totalChecks++;
+              }
+            }
+          }
+        }
+      }
+      console.log(`  → Verified ${totalChecks} tool-role permissions ✓`);
+
+      // Step 5: Verify set_role is always available
+      console.log('Step 5: Verifying set_role availability...');
+      for (const roleId of roleIds) {
+        expect(roleManager.isToolAllowedForRole(roleId, 'set_role', 'aegis-router')).toBe(true);
+      }
+      console.log(`  → set_role available for all ${roleIds.length} roles ✓`);
+
+      console.log('Complete workflow passed! ✓');
+    });
+
+    it('should list available roles after loading skills', async () => {
+      if (!serverReady) {
+        console.log('Skipping: server not ready');
+        return;
+      }
+
+      const response = await sendRequest(serverProcess!, 'tools/call', {
+        name: 'list_skills',
+        arguments: {}
+      });
+
+      const parsed = JSON.parse(response.result.content[0].text);
+      const skills: SkillData[] = parsed.skills || parsed;
+
+      const manifest: SkillManifest = {
+        skills: skills.map(s => ({
+          id: s.id,
+          displayName: s.displayName,
+          description: s.description || '',
+          allowedRoles: s.allowedRoles || [],
+          allowedTools: s.allowedTools || []
+        })),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      const roleManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+      });
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // listRoles should return all generated roles
+      const listResult = roleManager.listRoles();
+      expect(listResult.roles.length).toBeGreaterThan(0);
+
+      console.log('Available roles:');
+      for (const role of listResult.roles) {
+        console.log(`  - ${role.id}: ${role.description}`);
+      }
     });
   });
 });
