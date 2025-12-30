@@ -21,7 +21,9 @@ import type {
   ListRolesResult,
   RoleNotFoundError,
   ToolNotAccessibleError,
-  ServerNotAccessibleError
+  ServerNotAccessibleError,
+  SkillManifest,
+  SkillDefinition
 } from '../types/router-types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -177,6 +179,103 @@ export class AegisRouterCore extends EventEmitter {
     this.roleConfigManager.setPromptRouter(this.createPromptRouter());
 
     this.logger.info('All upstream servers started and tools discovered');
+  }
+
+  /**
+   * Load roles dynamically from aegis-skills MCP server
+   * Calls list_skills and generates roles from skill definitions
+   */
+  async loadRolesFromSkillsServer(): Promise<boolean> {
+    this.logger.info('🔄 Loading roles from aegis-skills server...');
+
+    try {
+      // Call aegis-skills list_skills tool
+      const request = {
+        jsonrpc: '2.0' as const,
+        id: Date.now(),
+        method: 'tools/call',
+        params: {
+          name: 'aegis-skills__list_skills',
+          arguments: {}
+        }
+      };
+
+      const response = await this.stdioRouter.routeRequest(request);
+
+      // Parse the response
+      const result = response?.result;
+      if (!result?.content?.[0]?.text) {
+        this.logger.warn('No skills returned from aegis-skills server');
+        return false;
+      }
+
+      const skillsData = JSON.parse(result.content[0].text);
+
+      // Transform to SkillManifest format
+      const skillManifest: SkillManifest = {
+        skills: this.transformSkillsToDefinitions(skillsData),
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      if (skillManifest.skills.length === 0) {
+        this.logger.warn('No skills with allowedRoles found');
+        return false;
+      }
+
+      // Load roles from skill manifest
+      await this.roleConfigManager.loadFromSkillManifest(skillManifest);
+
+      // Update state with new roles
+      this.state.availableRoles.clear();
+      const allRoles = this.roleConfigManager.getAllRoles();
+      for (const role of allRoles) {
+        this.state.availableRoles.set(role.id, role);
+      }
+
+      // Set default role
+      const defaultRole = this.roleConfigManager.getDefaultRole();
+      if (defaultRole) {
+        this.state.currentRole = defaultRole;
+      }
+
+      this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`);
+      return true;
+
+    } catch (error) {
+      this.logger.error('Failed to load roles from aegis-skills server:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Transform skills data from aegis-skills to SkillDefinition format
+   */
+  private transformSkillsToDefinitions(skillsData: any[]): SkillDefinition[] {
+    const definitions: SkillDefinition[] = [];
+
+    for (const skill of skillsData) {
+      // Skip skills without allowedRoles
+      if (!skill.allowedRoles || skill.allowedRoles.length === 0) {
+        this.logger.debug(`Skipping skill ${skill.name}: no allowedRoles defined`);
+        continue;
+      }
+
+      definitions.push({
+        id: skill.name,
+        displayName: skill.name,
+        description: skill.description || '',
+        allowedRoles: skill.allowedRoles,
+        allowedTools: skill.allowedTools || [],
+        metadata: {
+          version: skill.version,
+          category: skill.category,
+          tags: skill.tags
+        }
+      });
+    }
+
+    return definitions;
   }
 
   /**
