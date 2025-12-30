@@ -166,4 +166,158 @@ describe('Skill-Driven Role Generation', () => {
       expect(role?.metadata?.tags).toContain('dynamic');
     });
   });
+
+  describe('Role Switching with Dynamic Roles', () => {
+    it('should switch between dynamically generated roles', async () => {
+      const freshManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+        configFile: join(process.cwd(), 'roles', 'aegis-roles.json'),
+      });
+
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'frontend-skill',
+            displayName: 'Frontend Skill',
+            description: 'Frontend development',
+            allowedRoles: ['frontend', 'fullstack'],
+            allowedTools: ['filesystem__read_file', 'filesystem__write_file']
+          },
+          {
+            id: 'backend-skill',
+            displayName: 'Backend Skill',
+            description: 'Backend development',
+            allowedRoles: ['backend', 'fullstack'],
+            allowedTools: ['filesystem__read_file', 'database__query']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await freshManager.loadFromSkillManifest(manifest);
+
+      // Should have 3 roles: frontend, backend, fullstack
+      expect(freshManager.hasRole('frontend')).toBe(true);
+      expect(freshManager.hasRole('backend')).toBe(true);
+      expect(freshManager.hasRole('fullstack')).toBe(true);
+
+      // Frontend role should only have frontend skill tools
+      const frontendRole = freshManager.getRole('frontend');
+      expect(frontendRole?.toolPermissions?.allowPatterns).toContain('filesystem__read_file');
+      expect(frontendRole?.toolPermissions?.allowPatterns).toContain('filesystem__write_file');
+      expect(frontendRole?.toolPermissions?.allowPatterns).not.toContain('database__query');
+
+      // Backend role should only have backend skill tools
+      const backendRole = freshManager.getRole('backend');
+      expect(backendRole?.toolPermissions?.allowPatterns).toContain('filesystem__read_file');
+      expect(backendRole?.toolPermissions?.allowPatterns).toContain('database__query');
+      expect(backendRole?.toolPermissions?.allowPatterns).not.toContain('filesystem__write_file');
+
+      // Fullstack role should have all tools
+      const fullstackRole = freshManager.getRole('fullstack');
+      expect(fullstackRole?.toolPermissions?.allowPatterns).toContain('filesystem__read_file');
+      expect(fullstackRole?.toolPermissions?.allowPatterns).toContain('filesystem__write_file');
+      expect(fullstackRole?.toolPermissions?.allowPatterns).toContain('database__query');
+    });
+
+    it('should update default role when switching from skill manifest', async () => {
+      const freshManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+        configFile: join(process.cwd(), 'roles', 'aegis-roles.json'),
+      });
+
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'admin-skill',
+            displayName: 'Admin Skill',
+            description: 'Admin operations',
+            allowedRoles: ['admin'],
+            allowedTools: ['system__execute']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await freshManager.loadFromSkillManifest(manifest);
+
+      // Default role should be set to first available
+      const defaultRole = freshManager.getDefaultRole();
+      expect(defaultRole).not.toBeNull();
+      expect(defaultRole?.id).toBe('admin');
+    });
+
+    it('should generate correct system instruction for dynamic roles', async () => {
+      const freshManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+        configFile: join(process.cwd(), 'roles', 'aegis-roles.json'),
+      });
+
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'data-analysis',
+            displayName: 'Data Analysis',
+            description: 'Analyze data',
+            allowedRoles: ['analyst'],
+            allowedTools: ['pandas__read_csv', 'numpy__calculate']
+          },
+          {
+            id: 'visualization',
+            displayName: 'Visualization',
+            description: 'Create charts',
+            allowedRoles: ['analyst'],
+            allowedTools: ['matplotlib__plot']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await freshManager.loadFromSkillManifest(manifest);
+
+      const analystRole = freshManager.getRole('analyst');
+      expect(analystRole?.systemInstruction).toContain('analyst');
+      expect(analystRole?.systemInstruction).toContain('data-analysis');
+      expect(analystRole?.systemInstruction).toContain('visualization');
+    });
+
+    it('should extract server names from tool patterns', async () => {
+      const freshManager = new RoleConfigManager(testLogger, {
+        rolesDir: join(process.cwd(), 'roles'),
+        configFile: join(process.cwd(), 'roles', 'aegis-roles.json'),
+      });
+
+      const manifest: SkillManifest = {
+        skills: [
+          {
+            id: 'multi-server-skill',
+            displayName: 'Multi Server Skill',
+            description: 'Uses multiple servers',
+            allowedRoles: ['power-user'],
+            allowedTools: [
+              'filesystem__read_file',
+              'filesystem__write_file',
+              'git__status',
+              'git__commit',
+              'playwright__navigate'
+            ]
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await freshManager.loadFromSkillManifest(manifest);
+
+      const role = freshManager.getRole('power-user');
+      // Should have extracted 3 unique servers: filesystem, git, playwright
+      expect(role?.allowedServers).toContain('filesystem');
+      expect(role?.allowedServers).toContain('git');
+      expect(role?.allowedServers).toContain('playwright');
+      expect(role?.allowedServers).toHaveLength(3);
+    });
+  });
 });
