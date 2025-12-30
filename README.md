@@ -10,7 +10,7 @@ Aegis-CLIは、Claude Agent SDKとMCP（Model Context Protocol）サーバーを
 
 - **スキル駆動RBAC**: スキルが`allowedRoles`を宣言 → ロールが動的に生成
 - **MCPプロキシ**: 複数のMCPサーバーを統合管理
-- **動的ロール切り替え**: `get_agent_manifest`でロールを変更
+- **動的ロール切り替え**: `set_role`でロールを変更
 - **設定ファイル不要**: スキル追加だけで拡張可能
 
 ## インストール
@@ -49,7 +49,11 @@ npm run start:mcp
                         │
                         ▼ list_skills
 ┌─────────────────────────────────────────────────────────────┐
-│                    Aegis Router                             │
+│                    AegisRouterCore (司令塔)                  │
+│  ├── StdioRouter (MCPサーバー接続管理)                       │
+│  ├── RoleManager (ロール定義・権限チェック)                   │
+│  └── ToolVisibilityManager (ツールフィルタリング)             │
+│                                                             │
 │  loadFromSkillManifest() → 動的ロール生成                    │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Role: formatter                                     │   │
@@ -59,7 +63,7 @@ npm run start:mcp
 │  └─────────────────────────────────────────────────────┘   │
 └───────────────────────┬─────────────────────────────────────┘
                         │
-                        ▼ get_agent_manifest
+                        ▼ set_role
 ┌─────────────────────────────────────────────────────────────┐
 │                    Agent (Claude)                           │
 │  - ロール選択 → 利用可能なツールが変わる                      │
@@ -116,14 +120,16 @@ DOCXファイルの読み取りと編集を行うスキル。
 npm test
 ```
 
-### テスト構成 (54テスト)
+### テスト構成 (79テスト)
 
 | ファイル | 内容 |
 |---------|------|
-| `role-config.test.ts` | スキルマニフェストからのロール生成 |
+| `role-manager.test.ts` | RoleManager: スキルマニフェストからのロール生成 |
 | `tool-filtering.test.ts` | ロールごとのツールフィルタリング |
+| `tool-visibility-manager.test.ts` | ToolVisibilityManager: ツール可視性管理 |
 | `skill-integration.test.ts` | スキル統合テスト |
 | `role-switching.test.ts` | ロール切り替えテスト |
+| `real-e2e.test.ts` | 実際のaegis-skillsサーバーとのE2Eテスト |
 
 ## 関連リポジトリ
 
