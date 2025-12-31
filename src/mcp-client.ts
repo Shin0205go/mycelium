@@ -31,6 +31,8 @@ export interface RoleInfo {
   name: string;
   description: string;
   serverCount: number;
+  toolCount: number;
+  skills: string[];
   isActive: boolean;
   isCurrent: boolean;
 }

@@ -82,6 +82,9 @@ export interface RoleMetadata {
 
   /** Whether this role is currently active */
   active?: boolean;
+
+  /** Skills assigned to this role */
+  skills?: string[];
 }
 
 // ============================================================================
@@ -529,6 +532,8 @@ export interface ListRolesResult {
     name: string;
     description: string;
     serverCount: number;
+    toolCount: number;
+    skills: string[];
     isActive: boolean;
     isCurrent: boolean;
   }>;

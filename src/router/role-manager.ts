@@ -180,6 +180,8 @@ export class RoleManager {
         name: role.name,
         description: role.description,
         serverCount: role.allowedServers.length,
+        toolCount: role.toolPermissions?.allowPatterns?.length || 0,
+        skills: (role.metadata?.skills as string[]) || [],
         isActive,
         isCurrent: role.id === currentRoleId
       });
@@ -280,7 +282,8 @@ export class RoleManager {
         },
         metadata: {
           active: true,
-          tags: ['dynamic', 'skill-driven']
+          tags: ['dynamic', 'skill-driven'],
+          skills: dynamicRole.skills
         }
       };
 

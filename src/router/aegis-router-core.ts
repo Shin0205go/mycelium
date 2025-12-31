@@ -207,8 +207,10 @@ export class AegisRouterCore extends EventEmitter {
       const skillsData = JSON.parse(result.content[0].text);
 
       // Transform to SkillManifest format
+      // list_skills returns { skills: [...] } format
+      const skillsArray = skillsData.skills || skillsData;
       const skillManifest: SkillManifest = {
-        skills: this.transformSkillsToDefinitions(skillsData),
+        skills: this.transformSkillsToDefinitions(skillsArray),
         version: '1.0.0',
         generatedAt: new Date()
       };
@@ -228,10 +230,13 @@ export class AegisRouterCore extends EventEmitter {
         this.state.availableRoles.set(role.id, role);
       }
 
-      // Set default role
+      // Set default role and apply tool filtering
       const defaultRole = this.roleManager.getDefaultRole();
       if (defaultRole) {
         this.state.currentRole = defaultRole;
+        // Apply tool visibility filtering based on new role
+        this.toolVisibility.setCurrentRole(defaultRole);
+        this.logger.info(`Applied tool filtering for default role: ${defaultRole.id}`);
       }
 
       this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`);
@@ -252,13 +257,13 @@ export class AegisRouterCore extends EventEmitter {
     for (const skill of skillsData) {
       // Skip skills without allowedRoles
       if (!skill.allowedRoles || skill.allowedRoles.length === 0) {
-        this.logger.debug(`Skipping skill ${skill.name}: no allowedRoles defined`);
+        this.logger.debug(`Skipping skill ${skill.id}: no allowedRoles defined`);
         continue;
       }
 
       definitions.push({
-        id: skill.name,
-        displayName: skill.name,
+        id: skill.id,
+        displayName: skill.displayName || skill.id,
         description: skill.description || '',
         allowedRoles: skill.allowedRoles,
         allowedTools: skill.allowedTools || [],
@@ -704,7 +709,7 @@ export class AegisRouterCore extends EventEmitter {
    * Check if a tool is accessible for the current role
    * Throws an error if access is denied
    */
-  private checkToolAccess(toolName: string): void {
+  checkToolAccess(toolName: string): void {
     this.toolVisibility.checkAccess(toolName);
   }
 

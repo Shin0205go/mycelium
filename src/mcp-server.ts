@@ -257,6 +257,11 @@ async function main() {
   await routerCore.startServers();
   logger.info('All backend servers started');
 
+  // Load roles from aegis-skills server
+  logger.info('Loading roles from aegis-skills...');
+  await routerCore.loadRolesFromSkillsServer();
+  logger.info('Roles loaded');
+
   // List Tools Handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.info('ListTools request received');
@@ -330,6 +335,19 @@ async function main() {
     const { name, arguments: args } = request.params;
 
     logger.info(`📥 Tool call received: "${name}"`);
+
+    // Check tool access (skip for system tools)
+    if (name !== 'set_role' && name !== 'spawn_sub_agent') {
+      try {
+        routerCore.checkToolAccess(name);
+      } catch (error: any) {
+        logger.warn(`🚫 Tool access denied: ${name}`);
+        return {
+          content: [{ type: 'text', text: `Access denied: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
 
     // Handle spawn_sub_agent
     if (name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {

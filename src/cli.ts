@@ -25,7 +25,6 @@ export class AegisCLI {
   private currentRole: string = 'orchestrator';
   private manifest: AgentManifest | null = null;
   private rl: readline.Interface | null = null;
-  private availableRoles: string[] = [];
   private isProcessing: boolean = false;
   private authSource: string = 'unknown';
   private useApiKey: boolean = false; // フォールバックでAPIキーを使うか
@@ -33,7 +32,6 @@ export class AegisCLI {
   // Commands for auto-completion
   private readonly commands = [
     '/roles',
-    '/switch',
     '/tools',
     '/status',
     '/model',
@@ -166,13 +164,6 @@ export class AegisCLI {
       process.exit(1);
     }
 
-    // Load roles for auto-completion
-    try {
-      const result = await this.mcp.listRoles();
-      this.availableRoles = result.roles.map(r => r.id);
-    } catch (e) {
-      // Ignore
-    }
 
     // Load orchestrator role
     await this.switchRole('orchestrator');
@@ -200,32 +191,114 @@ export class AegisCLI {
     try {
       const result = await this.mcp.listRoles();
 
-      // Update available roles for auto-completion
-      this.availableRoles = result.roles.map(r => r.id);
+      // Interactive role selector
+      const selectedRole = await this.interactiveRoleSelector(result.roles);
 
-      console.log(chalk.cyan('\nAvailable Roles:\n'));
-      for (const role of result.roles) {
-        const current = role.isCurrent ? chalk.green(' (current)') : '';
-        const marker = role.isCurrent ? '▶' : ' ';
-        console.log(`  ${marker} ${chalk.bold(role.id)}${current}`);
-        console.log(chalk.gray(`    ${role.description}`));
-        console.log(chalk.gray(`    Servers: ${role.serverCount}\n`));
+      if (selectedRole && selectedRole !== this.currentRole) {
+        await this.switchRole(selectedRole);
+        this.rl!.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
       }
     } catch (error: any) {
       console.error(chalk.red(`Failed to list roles: ${error.message}`));
     }
   }
 
+  private async interactiveRoleSelector(roles: Array<{
+    id: string;
+    description: string;
+    serverCount: number;
+    toolCount: number;
+    skills: string[];
+    isCurrent: boolean;
+  }>): Promise<string | null> {
+    return new Promise((resolve) => {
+      // Find current index
+      let selectedIndex = roles.findIndex(r => r.isCurrent);
+      if (selectedIndex === -1) selectedIndex = 0;
+
+      const render = () => {
+        // Clear previous output and move cursor up
+        process.stdout.write('\x1B[?25l'); // Hide cursor
+
+        console.log(chalk.cyan('\nSelect Role:') + chalk.gray(' (↑↓: move, Enter: select, q: cancel)\n'));
+
+        for (let i = 0; i < roles.length; i++) {
+          const role = roles[i];
+          const isSelected = i === selectedIndex;
+          const isCurrent = role.isCurrent;
+
+          const marker = isSelected ? chalk.cyan('▶') : ' ';
+          const name = isSelected ? chalk.cyan.bold(role.id) : (isCurrent ? chalk.green(role.id) : role.id);
+          const currentTag = isCurrent ? chalk.green(' (current)') : '';
+
+          console.log(`  ${marker} ${name}${currentTag}`);
+          console.log(chalk.gray(`    Skills: ${role.skills.join(', ') || 'none'}`));
+          console.log(chalk.gray(`    Tools: ${role.toolCount} | Servers: ${role.serverCount}\n`));
+        }
+      };
+
+      const clearScreen = () => {
+        // Move cursor up and clear lines
+        const totalLines = roles.length * 4 + 3; // 4 lines per role + header
+        process.stdout.write(`\x1B[${totalLines}A`); // Move up
+        for (let i = 0; i < totalLines; i++) {
+          process.stdout.write('\x1B[2K\n'); // Clear line
+        }
+        process.stdout.write(`\x1B[${totalLines}A`); // Move up again
+      };
+
+      render();
+
+      // Save original stdin mode
+      const wasRaw = process.stdin.isRaw;
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+
+      const cleanup = () => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(wasRaw || false);
+        }
+        process.stdin.removeListener('data', onKeyPress);
+        process.stdout.write('\x1B[?25h'); // Show cursor
+      };
+
+      const onKeyPress = (key: Buffer) => {
+        const keyStr = key.toString();
+
+        // Handle arrow keys (escape sequences)
+        if (keyStr === '\x1B[A' || keyStr === 'k') {
+          // Up arrow or k
+          clearScreen();
+          selectedIndex = (selectedIndex - 1 + roles.length) % roles.length;
+          render();
+        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
+          // Down arrow or j
+          clearScreen();
+          selectedIndex = (selectedIndex + 1) % roles.length;
+          render();
+        } else if (keyStr === '\r' || keyStr === '\n') {
+          // Enter
+          clearScreen();
+          cleanup();
+          resolve(roles[selectedIndex].id);
+        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
+          // q, Escape, or Ctrl+C
+          clearScreen();
+          cleanup();
+          console.log(chalk.gray('Cancelled'));
+          resolve(null);
+        }
+      };
+
+      process.stdin.on('data', onKeyPress);
+    });
+  }
+
   private completer(line: string): [string[], string] {
     // Command completion
     if (line.startsWith('/')) {
-      // Check if completing /switch <role>
-      if (line.startsWith('/switch ')) {
-        const partial = line.slice('/switch '.length);
-        const matches = this.availableRoles.filter(r => r.startsWith(partial));
-        return [matches.map(r => `/switch ${r}`), line];
-      }
-
       // Check if completing /model <model>
       if (line.startsWith('/model ')) {
         const partial = line.slice('/model '.length);
@@ -274,8 +347,7 @@ export class AegisCLI {
 
   private showHelp(): void {
     console.log(chalk.cyan('\nCommands:\n'));
-    console.log('  ' + chalk.bold('/roles') + '         List available roles');
-    console.log('  ' + chalk.bold('/switch <id>') + '   Switch to a role');
+    console.log('  ' + chalk.bold('/roles') + '         Select and switch roles');
     console.log('  ' + chalk.bold('/tools') + '         List available tools');
     console.log('  ' + chalk.bold('/model <name>') + '  Change model');
     console.log('  ' + chalk.bold('/status') + '        Show current status');
@@ -506,16 +578,6 @@ export class AegisCLI {
         switch (cmd.toLowerCase()) {
           case 'roles':
             await this.listRoles();
-            break;
-
-          case 'switch':
-            if (args[0]) {
-              await this.switchRole(args[0]);
-              // Update prompt
-              this.rl!.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
-            } else {
-              console.log(chalk.yellow('Usage: /switch <role_id>'));
-            }
             break;
 
           case 'tools':
