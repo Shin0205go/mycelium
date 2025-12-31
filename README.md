@@ -1,4 +1,4 @@
-# Aegis-CLI
+# AEGIS
 
 **Skill-Driven RBAC for the Agentic AI Era**
 
@@ -6,13 +6,27 @@
 >
 > *Don't define roles. Let skills declare them.*
 
+## パッケージ構成
+
+```
+aegis/
+├── packages/
+│   ├── router/     # @aegis/router - MCPプロキシルーター
+│   └── skills/     # @aegis/skills - スキルMCPサーバー
+```
+
+| パッケージ | 説明 |
+|-----------|------|
+| `@aegis/router` | スキル駆動RBACを実装したMCPプロキシ |
+| `@aegis/skills` | スキル定義を提供するMCPサーバー |
+
 ## スキル駆動RBACとは？
 
-従来のRBACは「ロールがツールを定義」する。Aegisは逆転の発想：
+従来のRBACは「ロールがツールを定義」する。AEGISは逆転の発想：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  従来のRBAC                    Aegis (スキル駆動)            │
+│  従来のRBAC                    AEGIS (スキル駆動)            │
 │                                                              │
 │  Role: admin                   Skill: docx-handler           │
 │    └── tools: [a, b, c]          └── allowedRoles: [admin]   │
@@ -33,7 +47,7 @@
 
 ```
 従来: Agent → "俺はadminだ" → Server（信じるしかない）
-Aegis: Server → "このスキルはadmin専用" → Router → Agent
+AEGIS: Server → "このスキルはadmin専用" → Router → Agent
                      ↑
                サーバーが権限を決める
 ```
@@ -62,10 +76,12 @@ Policy-in-the-loop → 事前宣言で自律実行 ✅
 ### 3. 設定ファイル不要
 
 ```yaml
-# スキルを追加するだけ
+# スキルを追加するだけ（packages/skills/skills/に配置）
+---
 id: new-skill
 allowedRoles: [developer, admin]
 allowedTools: [git__*, npm__*]
+---
 
 # → developerロールが自動生成
 # → git__*, npm__* が自動的に許可
@@ -75,7 +91,7 @@ allowedTools: [git__*, npm__*]
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Aegis-skills (MCP Server)                │
+│                 @aegis/skills (MCP Server)                  │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Skill: docx-handler                                 │   │
 │  │  - allowedRoles: [formatter, admin]  ← スキルが宣言  │   │
@@ -85,7 +101,7 @@ allowedTools: [git__*, npm__*]
                         │ list_skills
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Aegis Router (司令塔)                     │
+│                 @aegis/router (司令塔)                       │
 │                                                              │
 │  Skills → Roles 変換（Inverted RBAC）                       │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -116,20 +132,22 @@ npm run build
 
 ```bash
 npm start
+# または
+npm run dev --workspace=@aegis/router
 ```
 
 ### MCPサーバーとして起動（Claude Desktop等から利用）
 
 ```bash
-npm run start:mcp
+npm run start:mcp --workspace=@aegis/router
 ```
 
 ## スキル定義
 
-スキルは `allowedRoles` を宣言し、どのロールが使えるかを決定：
+スキルは `packages/skills/skills/` に配置し、`allowedRoles` を宣言：
 
 ```yaml
-# SKILL.md (Aegis-skills側)
+# packages/skills/skills/data-analyst/SKILL.md
 ---
 id: data-analyst
 displayName: Data Analyst
@@ -160,7 +178,7 @@ allowedTools:
     },
     "aegis-skills": {
       "command": "node",
-      "args": ["path/to/aegis-skills/index.js", "path/to/skills"]
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
     }
   }
 }
@@ -193,10 +211,6 @@ router.setRoleQuota('guest', {
 ```bash
 npm test
 ```
-
-## 関連リポジトリ
-
-- [Aegis-skills](https://github.com/Shin0205go/Aegis-skills) - Skill MCP Server
 
 ## ライセンス
 
