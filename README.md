@@ -1,17 +1,123 @@
-# Aegis-CLI
+# AEGIS
 
-スキル駆動のロールベースアクセス制御（RBAC）を備えたMCPプロキシルーター
+**Skill-Driven RBAC for the Agentic AI Era**
 
-## 概要
+> ロールを定義するな。スキルに宣言させろ。
+>
+> *Don't define roles. Let skills declare them.*
 
-Aegis-CLIは、Claude Agent SDKとMCP（Model Context Protocol）サーバーを統合し、**スキルから動的にロールを生成**するアクセス制御を提供します。
+## パッケージ構成
 
-## 特徴
+```
+aegis/
+├── packages/
+│   ├── router/     # @aegis/router - MCPプロキシルーター
+│   └── skills/     # @aegis/skills - スキルMCPサーバー
+```
 
-- **スキル駆動RBAC**: スキルが`allowedRoles`を宣言 → ロールが動的に生成
-- **MCPプロキシ**: 複数のMCPサーバーを統合管理
-- **動的ロール切り替え**: `set_role`でロールを変更
-- **設定ファイル不要**: スキル追加だけで拡張可能
+| パッケージ | 説明 |
+|-----------|------|
+| `@aegis/router` | スキル駆動RBACを実装したMCPプロキシ |
+| `@aegis/skills` | スキル定義を提供するMCPサーバー |
+
+## スキル駆動RBACとは？
+
+従来のRBACは「ロールがツールを定義」する。AEGISは逆転の発想：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  従来のRBAC                    AEGIS (スキル駆動)            │
+│                                                              │
+│  Role: admin                   Skill: docx-handler           │
+│    └── tools: [a, b, c]          └── allowedRoles: [admin]   │
+│                                                              │
+│  Role: user                    Skill: data-analysis          │
+│    └── tools: [a]                └── allowedRoles: [analyst] │
+│                                                              │
+│  中央集権                       分散宣言                      │
+│  設定ファイル変更が必要         スキル追加だけで拡張           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**スキルが「誰に使わせるか」を宣言** → ロールは自動生成
+
+## なぜスキル駆動か？
+
+### 1. サーバー側が権限を宣言（Trust Boundary）
+
+```
+従来: Agent → "俺はadminだ" → Server（信じるしかない）
+AEGIS: Server → "このスキルはadmin専用" → Router → Agent
+                     ↑
+               サーバーが権限を決める
+```
+
+クライアント（エージェント）を**信頼しなくていい設計**。
+
+### 2. マルチエージェント時代のアクセス制御
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Orchestrator Agent                        │
+│         ┌────────────────┼────────────────┐                  │
+│         ▼                ▼                ▼                  │
+│   ┌──────────┐    ┌──────────┐    ┌──────────┐              │
+│   │SubAgent A│    │SubAgent B│    │SubAgent C│  ← 100並行   │
+│   │(analyst) │    │(writer)  │    │(reviewer)│              │
+│   └────┬─────┘    └────┬─────┘    └────┬─────┘              │
+│        ▼               ▼               ▼                     │
+│   [DB読取のみ]    [ファイル書込]   [読取のみ]   ← ロールで制限│
+└─────────────────────────────────────────────────────────────┘
+
+Human-in-the-loop → 100回承認？ 非現実的
+Policy-in-the-loop → 事前宣言で自律実行 ✅
+```
+
+### 3. 設定ファイル不要
+
+```yaml
+# スキルを追加するだけ（packages/skills/skills/に配置）
+---
+id: new-skill
+allowedRoles: [developer, admin]
+allowedTools: [git__*, npm__*]
+---
+
+# → developerロールが自動生成
+# → git__*, npm__* が自動的に許可
+```
+
+## アーキテクチャ
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 @aegis/skills (MCP Server)                  │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Skill: docx-handler                                 │   │
+│  │  - allowedRoles: [formatter, admin]  ← スキルが宣言  │   │
+│  │  - allowedTools: [filesystem__read, docx__parse]     │   │
+│  └─────────────────────────────────────────────────────┘   │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ list_skills
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 @aegis/router (司令塔)                       │
+│                                                              │
+│  Skills → Roles 変換（Inverted RBAC）                       │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Role: formatter (自動生成)                          │   │
+│  │  - skills: [docx-handler]                            │   │
+│  │  - tools: [filesystem__read, docx__parse]            │   │
+│  └─────────────────────────────────────────────────────┘   │
+└───────────────────────┬─────────────────────────────────────┘
+                        │ set_role
+                        ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Agent (Claude / ChatGPT / Gemini)              │
+│  - set_role("formatter") → 許可されたツールのみ表示          │
+│  - 許可されていないツールは見えない・呼べない                 │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## インストール
 
@@ -26,49 +132,37 @@ npm run build
 
 ```bash
 npm start
+# または
+npm run dev --workspace=@aegis/router
 ```
 
-### MCPサーバーとして起動
+### MCPサーバーとして起動（Claude Desktop等から利用）
 
 ```bash
-npm run start:mcp
+npm run start:mcp --workspace=@aegis/router
 ```
 
-## アーキテクチャ (v2: スキル駆動)
+## スキル定義
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Aegis-skills (MCP Server)                │
-│  list_skills → スキル一覧を提供                              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Skill: docx-handler                                 │   │
-│  │  - allowedRoles: [formatter, admin]                  │   │
-│  │  - allowedTools: [filesystem__read, docx__parse]     │   │
-│  └─────────────────────────────────────────────────────┘   │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼ list_skills
-┌─────────────────────────────────────────────────────────────┐
-│                    AegisRouterCore (司令塔)                  │
-│  ├── StdioRouter (MCPサーバー接続管理)                       │
-│  ├── RoleManager (ロール定義・権限チェック)                   │
-│  └── ToolVisibilityManager (ツールフィルタリング)             │
-│                                                             │
-│  loadFromSkillManifest() → 動的ロール生成                    │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Role: formatter                                     │   │
-│  │  - skills: [docx-handler]                            │   │
-│  │  - tools: [filesystem__read, docx__parse]            │   │
-│  │  - servers: [filesystem, docx]                       │   │
-│  └─────────────────────────────────────────────────────┘   │
-└───────────────────────┬─────────────────────────────────────┘
-                        │
-                        ▼ set_role
-┌─────────────────────────────────────────────────────────────┐
-│                    Agent (Claude)                           │
-│  - ロール選択 → 利用可能なツールが変わる                      │
-│  - スキルに基づいた権限で動作                                 │
-└─────────────────────────────────────────────────────────────┘
+スキルは `packages/skills/skills/` に配置し、`allowedRoles` を宣言：
+
+```yaml
+# packages/skills/skills/data-analyst/SKILL.md
+---
+id: data-analyst
+displayName: Data Analyst
+allowedRoles:
+  - analyst
+  - admin
+allowedTools:
+  - postgres__select
+  - postgres__explain
+  # postgres__drop は含めない → 自動的に拒否
+---
+
+# Data Analyst Skill
+
+データ分析のためのスキル。SELECT文の実行と実行計画の確認が可能。
 ```
 
 ## 設定
@@ -84,34 +178,32 @@ npm run start:mcp
     },
     "aegis-skills": {
       "command": "node",
-      "args": ["node_modules/aegis-skills/index.js", "node_modules/aegis-skills/skills"]
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
     }
   }
 }
 ```
 
-## スキル定義（Aegis-skills側）
+## 追加機能
 
-スキルは`allowedRoles`を宣言し、どのロールがそのスキルを使えるかを決定します：
+### 監査ログ
 
-```yaml
-# SKILL.md
----
-id: docx-handler
-displayName: DOCX Handler
-allowedRoles:
-  - formatter
-  - admin
-allowedTools:
-  - filesystem__read_file
-  - filesystem__write_file
-  - docx__parse
-  - docx__export
----
+全ツール呼び出しを自動記録：
 
-# DOCX Handler Skill
+```typescript
+const stats = router.getAuditStats();
+const csv = router.exportAuditLogsCsv();  // コンプライアンス対応
+```
 
-DOCXファイルの読み取りと編集を行うスキル。
+### Rate Limiting（オプション）
+
+ロールごとのQuota設定：
+
+```typescript
+router.setRoleQuota('guest', {
+  maxCallsPerMinute: 10,
+  maxConcurrent: 3
+});
 ```
 
 ## テスト
@@ -119,21 +211,6 @@ DOCXファイルの読み取りと編集を行うスキル。
 ```bash
 npm test
 ```
-
-### テスト構成 (79テスト)
-
-| ファイル | 内容 |
-|---------|------|
-| `role-manager.test.ts` | RoleManager: スキルマニフェストからのロール生成 |
-| `tool-filtering.test.ts` | ロールごとのツールフィルタリング |
-| `tool-visibility-manager.test.ts` | ToolVisibilityManager: ツール可視性管理 |
-| `skill-integration.test.ts` | スキル統合テスト |
-| `role-switching.test.ts` | ロール切り替えテスト |
-| `real-e2e.test.ts` | 実際のaegis-skillsサーバーとのE2Eテスト |
-
-## 関連リポジトリ
-
-- [Aegis-skills](https://github.com/Shin0205go/Aegis-skills) - Skill MCP Server
 
 ## ライセンス
 

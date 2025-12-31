@@ -1,50 +1,26 @@
 {
-  "name": "aegis-cli",
+  "name": "aegis",
   "version": "1.0.0",
-  "description": "AEGIS CLI - Agent router with dynamic role switching and MCP proxy",
-  "main": "dist/index.js",
-  "bin": {
-    "aegis": "./dist/index.js",
-    "aegis-router": "./dist/mcp-server.js"
-  },
-  "type": "module",
+  "private": true,
+  "description": "AEGIS - Skill-Driven RBAC for the Agentic AI Era",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "start:mcp": "node dist/mcp-server.js",
-    "dev": "tsx src/index.ts",
-    "dev:mcp": "tsx src/mcp-server.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "dev": "npm run dev --workspace=@aegis/router",
+    "start": "npm run start --workspace=@aegis/router"
   },
   "keywords": [
     "aegis",
     "mcp",
-    "agent",
-    "cli",
-    "router",
-    "model-context-protocol"
+    "rbac",
+    "skill-driven",
+    "agentic-ai"
   ],
   "author": "",
   "license": "MIT",
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "@modelcontextprotocol/server-filesystem": "^2025.12.18",
-    "@playwright/mcp": "^0.0.54",
-    "aegis-skills": "github:Shin0205go/Aegis-skills",
-    "chalk": "^5.3.0",
-    "uuid": "^9.0.0",
-    "winston": "^3.11.0",
-    "zod": "^4.2.1"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/uuid": "^9.0.0",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.0",
-    "vitest": "^4.0.16"
-  },
   "engines": {
     "node": ">=18.0.0"
   }
