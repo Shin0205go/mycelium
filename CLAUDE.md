@@ -59,6 +59,8 @@ src/
 │   ├── aegis-router-core.ts      # Central routing system (司令塔)
 │   ├── role-manager.ts           # Role definitions and permissions
 │   ├── tool-visibility-manager.ts # Tool filtering by role
+│   ├── audit-logger.ts           # Audit logging for compliance
+│   ├── rate-limiter.ts           # Rate limiting and quotas
 │   ├── router-adapter.ts         # Bridge for MCP proxy integration
 │   └── remote-prompt-fetcher.ts  # Remote prompt fetching
 ├── mcp/
@@ -114,6 +116,20 @@ Manages stdio-based MCP server connections:
 - Routes requests to appropriate servers
 - Aggregates tool lists from multiple servers
 - Prefixes tool names with server name (e.g., `filesystem__read_file`)
+
+### 5. AuditLogger (`src/router/audit-logger.ts`)
+Records all tool access attempts for compliance:
+- Logs allowed, denied, and error events
+- Sanitizes sensitive arguments (passwords, tokens, API keys)
+- Provides query and statistics APIs
+- Exports to JSON/CSV for auditing
+
+### 6. RateLimiter (`src/router/rate-limiter.ts`)
+Enforces quotas and rate limits per role:
+- Per-minute, per-hour, per-day limits
+- Concurrent execution limits
+- Tool-specific rate limits
+- Warning events at threshold (80%)
 
 ## Development Commands
 
@@ -313,3 +329,29 @@ Roles are auto-generated from skill definitions. To add a new role:
 - Set log level in Logger constructor
 - Check `logs/` directory for output
 - Use `--json` flag for structured output in sub-agent mode
+
+### Configuring Rate Limits
+```typescript
+// Set quota for a role
+router.setRoleQuota('guest', {
+  maxCallsPerMinute: 10,
+  maxCallsPerHour: 100,
+  maxConcurrent: 3,
+  toolLimits: {
+    'expensive_tool': { maxCallsPerMinute: 2 }
+  }
+});
+```
+
+### Accessing Audit Logs
+```typescript
+// Get statistics
+const stats = router.getAuditStats();
+
+// Get recent denials
+const denials = router.getRecentDenials(10);
+
+// Export for compliance
+const csv = router.exportAuditLogsCsv();
+const json = router.exportAuditLogs();
+```

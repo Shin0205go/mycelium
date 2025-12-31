@@ -9,6 +9,8 @@ import { StdioRouter, UpstreamServerInfo } from '../mcp/stdio-router.js';
 import type { MCPServerConfig } from '../types/mcp-types.js';
 import { RoleManager, createRoleManager } from './role-manager.js';
 import { ToolVisibilityManager, createToolVisibilityManager } from './tool-visibility-manager.js';
+import { AuditLogger, createAuditLogger } from './audit-logger.js';
+import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
 import type {
   Role,
   AegisRouterState,
@@ -40,6 +42,8 @@ export class AegisRouterCore extends EventEmitter {
   private stdioRouter: StdioRouter;
   private roleManager: RoleManager;
   private toolVisibility: ToolVisibilityManager;
+  private auditLogger: AuditLogger;
+  private rateLimiter: RateLimiter;
 
   // Router state
   private state: AegisRouterState;
@@ -69,6 +73,12 @@ export class AegisRouterCore extends EventEmitter {
 
     // Initialize tool visibility manager
     this.toolVisibility = createToolVisibilityManager(logger, this.roleManager);
+
+    // Initialize audit logger
+    this.auditLogger = createAuditLogger(logger);
+
+    // Initialize rate limiter
+    this.rateLimiter = createRateLimiter(logger);
 
     // Initialize state
     this.state = {
@@ -710,7 +720,91 @@ export class AegisRouterCore extends EventEmitter {
    * Throws an error if access is denied
    */
   checkToolAccess(toolName: string): void {
-    this.toolVisibility.checkAccess(toolName);
+    const roleId = this.state.currentRole?.id || 'none';
+    const sessionId = this.state.metadata.sessionId;
+    const toolInfo = this.toolVisibility.getToolInfo(toolName);
+    const sourceServer = toolInfo?.sourceServer || 'unknown';
+
+    // Check rate limit first
+    const rateLimitResult = this.rateLimiter.check(roleId, sessionId, toolName);
+    if (!rateLimitResult.allowed) {
+      this.auditLogger.logDenied(
+        sessionId,
+        roleId,
+        toolName,
+        sourceServer,
+        {},
+        rateLimitResult.reason || 'Rate limit exceeded'
+      );
+      throw new Error(rateLimitResult.reason);
+    }
+
+    // Check role-based access
+    try {
+      this.toolVisibility.checkAccess(toolName);
+    } catch (error) {
+      this.auditLogger.logDenied(
+        sessionId,
+        roleId,
+        toolName,
+        sourceServer,
+        {},
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a tool call with audit logging and rate limiting
+   */
+  async executeToolCall(
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<any> {
+    const roleId = this.state.currentRole?.id || 'none';
+    const sessionId = this.state.metadata.sessionId;
+    const toolInfo = this.toolVisibility.getToolInfo(toolName);
+    const sourceServer = toolInfo?.sourceServer || 'unknown';
+
+    // Check access (throws if denied)
+    this.checkToolAccess(toolName);
+
+    // Start tracking
+    const startTime = Date.now();
+    this.rateLimiter.startConcurrent(sessionId);
+    this.rateLimiter.consume(roleId, sessionId, toolName);
+
+    try {
+      // Route the call
+      const result = await this.routeToolCall(toolName, args);
+
+      // Log success
+      const durationMs = Date.now() - startTime;
+      this.auditLogger.logAllowed(
+        sessionId,
+        roleId,
+        toolName,
+        sourceServer,
+        args,
+        durationMs
+      );
+
+      return result;
+    } catch (error) {
+      // Log error
+      this.auditLogger.logError(
+        sessionId,
+        roleId,
+        toolName,
+        sourceServer,
+        args,
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    } finally {
+      this.rateLimiter.endConcurrent(sessionId);
+    }
   }
 
   // ============================================================================
@@ -818,6 +912,67 @@ export class AegisRouterCore extends EventEmitter {
       visibleToolsCount: this.toolVisibility.getVisibleCount(),
       connectedServersCount: this.state.connectedServers.size
     };
+  }
+
+  // ============================================================================
+  // Audit & Rate Limiting
+  // ============================================================================
+
+  /**
+   * Get the audit logger instance
+   */
+  getAuditLogger(): AuditLogger {
+    return this.auditLogger;
+  }
+
+  /**
+   * Get the rate limiter instance
+   */
+  getRateLimiter(): RateLimiter {
+    return this.rateLimiter;
+  }
+
+  /**
+   * Set quota for a role
+   */
+  setRoleQuota(roleId: string, quota: RoleQuota): void {
+    this.rateLimiter.setQuota(roleId, quota);
+    this.logger.info(`Quota set for role: ${roleId}`, quota);
+  }
+
+  /**
+   * Set quotas for multiple roles
+   */
+  setRoleQuotas(quotas: Record<string, RoleQuota>): void {
+    this.rateLimiter.setQuotas(quotas);
+  }
+
+  /**
+   * Get audit statistics
+   */
+  getAuditStats() {
+    return this.auditLogger.getStats();
+  }
+
+  /**
+   * Get recent access denials
+   */
+  getRecentDenials(limit: number = 10) {
+    return this.auditLogger.getRecentDenials(limit);
+  }
+
+  /**
+   * Export audit logs as JSON
+   */
+  exportAuditLogs(): string {
+    return this.auditLogger.exportJson();
+  }
+
+  /**
+   * Export audit logs as CSV
+   */
+  exportAuditLogsCsv(): string {
+    return this.auditLogger.exportCsv();
   }
 }
 
