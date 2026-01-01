@@ -303,9 +303,70 @@ Tools are prefixed with their server name:
 ### Permission Checking
 1. Check if server is allowed for role
 2. Check tool-level permissions (allow/deny patterns)
-3. System tools always allowed: `set_role`, `save_memory`, `recall_memory`, `list_memories`
+3. System tools always allowed: `set_role`
+4. Memory tools require skill grant (see Role Memory section)
 
 ### Role Memory
+Memory is a **skill-granted capability** (default: OFF). Roles must be granted memory access via skill definitions.
+
+#### Memory Policies
+| Policy | Description |
+|--------|-------------|
+| `none` | No memory access (default) |
+| `isolated` | Own role's memory only |
+| `team` | Own + specified team roles' memories |
+| `all` | Access all roles' memories (admin) |
+
+#### Granting Memory via Skills
+In your skill's `SKILL.md`, add the `grants.memory` field:
+
+```yaml
+# skills/memory-basic/SKILL.md
+---
+id: memory-basic
+displayName: Basic Memory
+description: Grants isolated memory access
+allowedRoles: [developer, tester]
+allowedTools: []
+grants:
+  memory: isolated  # Can only access own memories
+---
+```
+
+```yaml
+# skills/memory-admin/SKILL.md
+---
+id: memory-admin
+displayName: Admin Memory
+description: Full memory access for admins
+allowedRoles: [admin]
+allowedTools: []
+grants:
+  memory: all  # Can access all roles' memories
+---
+```
+
+```yaml
+# skills/memory-team/SKILL.md
+---
+id: memory-team
+displayName: Team Memory
+description: Team lead can see team members' memories
+allowedRoles: [lead]
+allowedTools: []
+grants:
+  memory: team
+  memoryTeamRoles: [frontend, backend, qa]  # Can access these roles' memories
+---
+```
+
+#### Policy Priority
+When a role has multiple skills with different memory grants, the highest privilege wins:
+`all` > `team` > `isolated` > `none`
+
+For `team` policies, team roles are merged across skills.
+
+#### Memory Storage
 Memory is stored in Markdown files per role (`memory/{role_id}.memory.md`):
 ```markdown
 # Memory: frontend
@@ -326,9 +387,10 @@ API endpoint is at /api/v2/
 <!-- {"createdAt":"...", "type":"fact"} -->
 ```
 
-Available memory tools:
+#### Memory Tools
+When granted, these tools become available:
 - `save_memory` - Save content to current role's memory
-- `recall_memory` - Search and retrieve memories
+- `recall_memory` - Search and retrieve memories (with `all_roles=true` for admin)
 - `list_memories` - Get memory statistics
 
 ## Code Style and Conventions
