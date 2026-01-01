@@ -295,6 +295,67 @@ describe('RoleMemoryStore', () => {
     });
   });
 
+  describe('Admin Super Role Access', () => {
+    it('should recognize admin as super role', () => {
+      expect(memoryStore.isSuperRole('admin')).toBe(true);
+      expect(memoryStore.isSuperRole('frontend')).toBe(false);
+      expect(memoryStore.isSuperRole('guest')).toBe(false);
+    });
+
+    it('should allow admin to search across all roles with searchAll', async () => {
+      // Create memories in different roles
+      await memoryStore.addEntry('frontend', 'Frontend secret', { type: 'fact' });
+      await memoryStore.addEntry('backend', 'Backend secret', { type: 'fact' });
+      await memoryStore.addEntry('data-analyst', 'Data secret', { type: 'fact' });
+
+      // Admin can search all
+      const allResults = await memoryStore.searchAll({ query: 'secret' });
+
+      expect(allResults).toHaveLength(3);
+      expect(allResults.map(r => r.sourceRole)).toContain('frontend');
+      expect(allResults.map(r => r.sourceRole)).toContain('backend');
+      expect(allResults.map(r => r.sourceRole)).toContain('data-analyst');
+    });
+
+    it('should allow admin to get stats for all roles', async () => {
+      // Create memories in different roles
+      await memoryStore.addEntry('role-a', 'A1', { type: 'fact' });
+      await memoryStore.addEntry('role-a', 'A2', { type: 'preference' });
+      await memoryStore.addEntry('role-b', 'B1', { type: 'fact' });
+
+      // Admin can get all stats
+      const allStats = await memoryStore.getAllStats();
+
+      expect(Object.keys(allStats)).toContain('role-a');
+      expect(Object.keys(allStats)).toContain('role-b');
+      expect(allStats['role-a'].totalEntries).toBe(2);
+      expect(allStats['role-b'].totalEntries).toBe(1);
+    });
+
+    it('should include sourceRole in searchAll results', async () => {
+      await memoryStore.addEntry('dev', 'Developer note', { type: 'context' });
+      await memoryStore.addEntry('ops', 'Operations note', { type: 'context' });
+
+      const results = await memoryStore.searchAll({});
+
+      for (const result of results) {
+        expect(result.sourceRole).toBeDefined();
+        expect(['dev', 'ops']).toContain(result.sourceRole);
+      }
+    });
+
+    it('should respect limit in searchAll', async () => {
+      // Create many memories
+      for (let i = 0; i < 5; i++) {
+        await memoryStore.addEntry('role-x', `X${i}`, { type: 'fact' });
+        await memoryStore.addEntry('role-y', `Y${i}`, { type: 'fact' });
+      }
+
+      const limited = await memoryStore.searchAll({ limit: 3 });
+      expect(limited).toHaveLength(3);
+    });
+  });
+
   describe('Edge Cases', () => {
     it('should handle empty role memory gracefully', async () => {
       const stats = await memoryStore.getStats('nonexistent-role');

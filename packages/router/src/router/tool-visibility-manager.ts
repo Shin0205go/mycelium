@@ -232,7 +232,7 @@ export class ToolVisibilityManager {
     // recall_memory tool
     const recallMemoryTool: Tool = {
       name: 'recall_memory',
-      description: 'Search and retrieve memories from the current role\'s memory store.',
+      description: 'Search and retrieve memories from the current role\'s memory store. Admin role can use all_roles=true to search across all roles.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -253,6 +253,10 @@ export class ToolVisibilityManager {
           limit: {
             type: 'number',
             description: 'Maximum number of results (default: 10)'
+          },
+          all_roles: {
+            type: 'boolean',
+            description: '(Admin only) Search across all roles\' memories'
           }
         }
       }
@@ -261,13 +265,17 @@ export class ToolVisibilityManager {
     // list_memories tool
     const listMemoriesTool: Tool = {
       name: 'list_memories',
-      description: 'Get statistics about the current role\'s memory store.',
+      description: 'Get statistics about the current role\'s memory store. Admin role can use all_roles=true to see all roles.',
       inputSchema: {
         type: 'object' as const,
         properties: {
           role_id: {
             type: 'string',
             description: 'Role ID to check (defaults to current role)'
+          },
+          all_roles: {
+            type: 'boolean',
+            description: '(Admin only) Show statistics for all roles'
           }
         }
       }

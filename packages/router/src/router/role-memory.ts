@@ -116,10 +116,19 @@ export class RoleMemoryStore {
   private logger: Logger;
   // Simple per-role locks for concurrent access
   private locks: Map<string, Promise<void>> = new Map();
+  // Roles that can access all memories (e.g., admin)
+  private static readonly SUPER_ROLES = ['admin'];
 
   constructor(memoryDir: string = './memory', logger?: Logger) {
     this.memoryDir = memoryDir;
     this.logger = logger || new Logger('debug');
+  }
+
+  /**
+   * Check if a role has super access (can read all memories)
+   */
+  isSuperRole(roleId: string): boolean {
+    return RoleMemoryStore.SUPER_ROLES.includes(roleId);
   }
 
   /**
@@ -315,6 +324,62 @@ export class RoleMemoryStore {
       query: context,
       limit,
     });
+  }
+
+  /**
+   * Search across ALL roles (admin only)
+   * Returns entries with their source role
+   */
+  async searchAll(
+    options: MemorySearchOptions = {}
+  ): Promise<Array<MemoryEntry & { sourceRole: string }>> {
+    const allRoles = await this.listRolesWithMemory();
+    const allResults: Array<MemoryEntry & { sourceRole: string }> = [];
+
+    for (const roleId of allRoles) {
+      const entries = await this.search(roleId, { ...options, limit: undefined });
+      for (const entry of entries) {
+        allResults.push({ ...entry, sourceRole: roleId });
+      }
+    }
+
+    // Sort by relevance and recency
+    allResults.sort((a, b) => {
+      const relevanceA = a.relevance || 0;
+      const relevanceB = b.relevance || 0;
+      if (relevanceA !== relevanceB) {
+        return relevanceB - relevanceA;
+      }
+      return b.lastAccessedAt.getTime() - a.lastAccessedAt.getTime();
+    });
+
+    // Apply limit
+    if (options.limit) {
+      return allResults.slice(0, options.limit);
+    }
+
+    return allResults;
+  }
+
+  /**
+   * Get stats for ALL roles (admin only)
+   */
+  async getAllStats(): Promise<Record<string, {
+    totalEntries: number;
+    byType: Record<string, number>;
+  }>> {
+    const allRoles = await this.listRolesWithMemory();
+    const result: Record<string, { totalEntries: number; byType: Record<string, number> }> = {};
+
+    for (const roleId of allRoles) {
+      const stats = await this.getStats(roleId);
+      result[roleId] = {
+        totalEntries: stats.totalEntries,
+        byType: stats.byType,
+      };
+    }
+
+    return result;
   }
 
   /**

@@ -732,8 +732,50 @@ export class AegisRouterCore extends EventEmitter {
         throw new Error('No role selected. Use set_role first.');
       }
 
-      const { query, type, tags, limit } = args;
+      const { query, type, tags, limit, all_roles } = args;
+      const isAdmin = this.memoryStore.isSuperRole(roleId);
 
+      // Admin can search across all roles
+      if (isAdmin && all_roles) {
+        const entries = await this.memoryStore.searchAll({
+          query,
+          type,
+          tags: tags ? (Array.isArray(tags) ? tags : [tags]) : undefined,
+          limit: limit || 10
+        });
+
+        if (entries.length === 0) {
+          return {
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: 'No memories found across all roles.'
+                }
+              ],
+              isError: false
+            }
+          };
+        }
+
+        const formattedEntries = entries.map((e, i) =>
+          `### ${i + 1}. [${e.sourceRole}] [${e.type}] ${e.id}\n${e.content}\n${e.tags ? `Tags: ${e.tags.join(', ')}` : ''}`
+        ).join('\n\n');
+
+        return {
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: `Found ${entries.length} memories across all roles:\n\n${formattedEntries}`
+              }
+            ],
+            isError: false
+          }
+        };
+      }
+
+      // Normal search for current role
       const entries = await this.memoryStore.search(roleId, {
         query,
         type,
@@ -790,11 +832,61 @@ export class AegisRouterCore extends EventEmitter {
    */
   private async handleListMemories(args: Record<string, any>): Promise<any> {
     try {
-      const roleId = args.role_id || this.state.currentRole?.id;
-      if (!roleId) {
-        throw new Error('No role selected. Use set_role first or provide role_id.');
+      const currentRoleId = this.state.currentRole?.id;
+      if (!currentRoleId) {
+        throw new Error('No role selected. Use set_role first.');
       }
 
+      const isAdmin = this.memoryStore.isSuperRole(currentRoleId);
+      const { all_roles } = args;
+
+      // Admin can see all roles' stats
+      if (isAdmin && all_roles) {
+        const allStats = await this.memoryStore.getAllStats();
+        const rolesWithMemory = Object.keys(allStats);
+
+        if (rolesWithMemory.length === 0) {
+          return {
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: 'No memories found across any role.'
+                }
+              ],
+              isError: false
+            }
+          };
+        }
+
+        let totalEntries = 0;
+        const roleBreakdown = rolesWithMemory.map(roleId => {
+          const stats = allStats[roleId];
+          totalEntries += stats.totalEntries;
+          const types = Object.entries(stats.byType)
+            .map(([t, c]) => `${t}:${c}`)
+            .join(', ');
+          return `  - **${roleId}**: ${stats.totalEntries} entries (${types || 'empty'})`;
+        }).join('\n');
+
+        return {
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: `📊 Memory Statistics (All Roles)\n\n` +
+                  `Total entries across all roles: ${totalEntries}\n` +
+                  `Roles with memory: ${rolesWithMemory.length}\n\n` +
+                  `By role:\n${roleBreakdown}`
+              }
+            ],
+            isError: false
+          }
+        };
+      }
+
+      // Normal: show current role's stats
+      const roleId = args.role_id || currentRoleId;
       const stats = await this.memoryStore.getStats(roleId);
 
       const typeBreakdown = Object.entries(stats.byType)
