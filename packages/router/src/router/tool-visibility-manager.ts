@@ -5,7 +5,7 @@
 
 import { Logger } from '../utils/logger.js';
 import { RoleManager } from './role-manager.js';
-import type { Role, ToolInfo } from '../types/router-types.js';
+import type { Role, ToolInfo, MemoryPolicy } from '../types/router-types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 /**
@@ -173,10 +173,10 @@ export class ToolVisibilityManager {
   }
 
   /**
-   * Add system tools (always visible)
+   * Add system tools (always visible) and memory tools (permission-based)
    */
   private addSystemTool(): void {
-    // set_role tool
+    // set_role tool (always available)
     const setRoleTool: Tool = {
       name: 'set_role',
       description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
@@ -197,6 +197,29 @@ export class ToolVisibilityManager {
         required: ['role_id']
       }
     };
+
+    // Register set_role (always visible)
+    const setRoleInfo: ToolInfo = {
+      tool: setRoleTool,
+      sourceServer: 'aegis-router',
+      prefixedName: 'set_role',
+      visible: true,
+      visibilityReason: 'system_tool'
+    };
+    this.visibleTools.set('set_role', setRoleInfo);
+
+    // Check if current role has memory permission
+    const roleId = this.currentRole?.id;
+    const hasMemoryAccess = roleId ? this.roleManager.hasMemoryAccess(roleId) : false;
+
+    if (!hasMemoryAccess) {
+      this.logger.debug(`Role ${roleId || 'none'} does not have memory access, memory tools hidden`);
+      return;
+    }
+
+    // Get memory policy details for tool descriptions
+    const memoryPermission = roleId ? this.roleManager.getMemoryPermission(roleId) : { policy: 'none' as MemoryPolicy };
+    const canAccessAll = this.roleManager.canAccessAllMemories(roleId || '');
 
     // save_memory tool
     const saveMemoryTool: Tool = {
@@ -229,10 +252,16 @@ export class ToolVisibilityManager {
       }
     };
 
-    // recall_memory tool
+    // recall_memory tool - description varies by permission
+    const recallDescription = canAccessAll
+      ? 'Search and retrieve memories. You have full access to all roles\' memories. Use all_roles=true to search across all roles.'
+      : memoryPermission.policy === 'team'
+        ? `Search and retrieve memories from your role and team roles: ${memoryPermission.teamRoles?.join(', ') || 'none'}.`
+        : 'Search and retrieve memories from your role\'s memory store.';
+
     const recallMemoryTool: Tool = {
       name: 'recall_memory',
-      description: 'Search and retrieve memories from the current role\'s memory store. Admin role can use all_roles=true to search across all roles.',
+      description: recallDescription,
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -254,59 +283,71 @@ export class ToolVisibilityManager {
             type: 'number',
             description: 'Maximum number of results (default: 10)'
           },
-          all_roles: {
-            type: 'boolean',
-            description: '(Admin only) Search across all roles\' memories'
-          }
+          ...(canAccessAll ? {
+            all_roles: {
+              type: 'boolean',
+              description: 'Search across all roles\' memories'
+            }
+          } : {})
         }
       }
     };
 
-    // list_memories tool
+    // list_memories tool - description varies by permission
+    const listDescription = canAccessAll
+      ? 'Get memory statistics. You have full access. Use all_roles=true to see all roles.'
+      : 'Get statistics about your role\'s memory store.';
+
     const listMemoriesTool: Tool = {
       name: 'list_memories',
-      description: 'Get statistics about the current role\'s memory store. Admin role can use all_roles=true to see all roles.',
+      description: listDescription,
       inputSchema: {
         type: 'object' as const,
         properties: {
-          role_id: {
-            type: 'string',
-            description: 'Role ID to check (defaults to current role)'
-          },
-          all_roles: {
-            type: 'boolean',
-            description: '(Admin only) Show statistics for all roles'
-          }
+          ...(canAccessAll ? {
+            role_id: {
+              type: 'string',
+              description: 'Role ID to check (defaults to current role)'
+            },
+            all_roles: {
+              type: 'boolean',
+              description: 'Show statistics for all roles'
+            }
+          } : {})
         }
       }
     };
 
-    // Register all system tools
-    const systemTools = [
-      { tool: setRoleTool, name: 'set_role' },
+    // Register memory tools
+    const memoryTools = [
       { tool: saveMemoryTool, name: 'save_memory' },
       { tool: recallMemoryTool, name: 'recall_memory' },
       { tool: listMemoriesTool, name: 'list_memories' }
     ];
 
-    for (const { tool, name } of systemTools) {
+    for (const { tool, name } of memoryTools) {
       const toolInfo: ToolInfo = {
         tool,
         sourceServer: 'aegis-router',
         prefixedName: name,
         visible: true,
-        visibilityReason: 'system_tool'
+        visibilityReason: `memory_granted:${memoryPermission.policy}`
       };
       this.visibleTools.set(name, toolInfo);
     }
+
+    this.logger.debug(`Added memory tools for role ${roleId} with policy: ${memoryPermission.policy}`);
   }
 
   // ============================================================================
   // Access Control
   // ============================================================================
 
-  // System tools that are always accessible
-  private static readonly SYSTEM_TOOLS = ['set_role', 'save_memory', 'recall_memory', 'list_memories'];
+  // System tools that are always accessible (memory tools are now permission-based)
+  private static readonly SYSTEM_TOOLS = ['set_role'];
+
+  // Memory tools (only visible if role has memory permission)
+  private static readonly MEMORY_TOOLS = ['save_memory', 'recall_memory', 'list_memories'];
 
   /**
    * Check if a tool is accessible (throws if not)
@@ -314,6 +355,19 @@ export class ToolVisibilityManager {
   checkAccess(toolName: string): void {
     // System tools always accessible
     if (ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName)) {
+      return;
+    }
+
+    // Memory tools require memory permission
+    if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
+      const roleId = this.currentRole?.id;
+      if (!roleId || !this.roleManager.hasMemoryAccess(roleId)) {
+        throw new Error(
+          `Tool '${toolName}' requires memory access. ` +
+          `Role '${roleId || 'none'}' does not have memory permission. ` +
+          `Memory access must be granted via a skill.`
+        );
+      }
       return;
     }
 
@@ -330,7 +384,17 @@ export class ToolVisibilityManager {
    * Check if a tool is visible (returns boolean)
    */
   isVisible(toolName: string): boolean {
-    return ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName) || this.visibleTools.has(toolName);
+    if (ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName)) {
+      return true;
+    }
+
+    // Memory tools are visible only if role has memory permission
+    if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
+      const roleId = this.currentRole?.id;
+      return roleId ? this.roleManager.hasMemoryAccess(roleId) : false;
+    }
+
+    return this.visibleTools.has(toolName);
   }
 
   // ============================================================================

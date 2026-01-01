@@ -550,6 +550,27 @@ export interface ListRolesResult {
 // ============================================================================
 
 /**
+ * Memory access policy type
+ * - 'none': No memory access (default)
+ * - 'isolated': Own role's memory only
+ * - 'team': Access to specific roles' memories (requires teamRoles)
+ * - 'all': Access to all roles' memories (admin level)
+ */
+export type MemoryPolicy = 'none' | 'isolated' | 'team' | 'all';
+
+/**
+ * Capability grants from skills
+ * Skills can grant additional capabilities beyond tool access
+ */
+export interface SkillGrants {
+  /** Memory access policy for roles using this skill */
+  memory?: MemoryPolicy;
+
+  /** For 'team' policy: which roles' memories can be accessed */
+  memoryTeamRoles?: string[];
+}
+
+/**
  * Skill definition from Skill MCP Server
  * Skills define which roles can use them (inverted RBAC)
  */
@@ -568,6 +589,9 @@ export interface SkillDefinition {
 
   /** Tools this skill uses (MCP tool format) */
   allowedTools: string[];
+
+  /** Capability grants (memory, etc.) */
+  grants?: SkillGrants;
 
   /** Skill metadata */
   metadata?: SkillMetadata;

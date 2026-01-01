@@ -10,8 +10,19 @@ import type {
   ListRolesResult,
   SkillManifest,
   DynamicRole,
-  RoleManifest
+  RoleManifest,
+  MemoryPolicy
 } from '../types/router-types.js';
+
+/**
+ * Memory permission configuration for a role
+ */
+export interface RoleMemoryPermission {
+  /** Memory access policy */
+  policy: MemoryPolicy;
+  /** For 'team' policy: which roles' memories can be accessed */
+  teamRoles?: string[];
+}
 
 /**
  * Role Manager
@@ -22,6 +33,9 @@ export class RoleManager {
   private roles: Map<string, Role> = new Map();
   private defaultRole: string = 'default';
   private initialized: boolean = false;
+
+  /** Memory permissions per role (derived from skills) */
+  private memoryPermissions: Map<string, RoleMemoryPermission> = new Map();
 
   constructor(logger: Logger) {
     this.logger = logger;
@@ -160,6 +174,88 @@ export class RoleManager {
   }
 
   // ============================================================================
+  // Memory Permission Checking
+  // ============================================================================
+
+  /**
+   * Get memory permission for a role
+   * Returns 'none' if no memory skill is granted
+   */
+  getMemoryPermission(roleId: string): RoleMemoryPermission {
+    const permission = this.memoryPermissions.get(roleId);
+    if (!permission) {
+      return { policy: 'none' };
+    }
+    return permission;
+  }
+
+  /**
+   * Check if a role has memory access
+   */
+  hasMemoryAccess(roleId: string): boolean {
+    const permission = this.getMemoryPermission(roleId);
+    return permission.policy !== 'none';
+  }
+
+  /**
+   * Check if a role can access another role's memory
+   */
+  canAccessRoleMemory(accessorRoleId: string, targetRoleId: string): boolean {
+    const permission = this.getMemoryPermission(accessorRoleId);
+
+    switch (permission.policy) {
+      case 'none':
+        return false;
+      case 'isolated':
+        return accessorRoleId === targetRoleId;
+      case 'team':
+        return accessorRoleId === targetRoleId ||
+               (permission.teamRoles?.includes(targetRoleId) ?? false);
+      case 'all':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Check if a role can access all memories (admin-level access)
+   */
+  canAccessAllMemories(roleId: string): boolean {
+    const permission = this.getMemoryPermission(roleId);
+    return permission.policy === 'all';
+  }
+
+  /**
+   * Set memory permission for a role (used during skill loading)
+   */
+  setMemoryPermission(roleId: string, permission: RoleMemoryPermission): void {
+    // Higher privilege wins: all > team > isolated > none
+    const existing = this.memoryPermissions.get(roleId);
+    if (existing) {
+      const policyOrder: MemoryPolicy[] = ['none', 'isolated', 'team', 'all'];
+      const existingIndex = policyOrder.indexOf(existing.policy);
+      const newIndex = policyOrder.indexOf(permission.policy);
+
+      if (newIndex <= existingIndex) {
+        // Keep existing higher privilege
+        // But merge team roles if both are 'team'
+        if (existing.policy === 'team' && permission.policy === 'team') {
+          const mergedTeamRoles = new Set([
+            ...(existing.teamRoles || []),
+            ...(permission.teamRoles || [])
+          ]);
+          existing.teamRoles = Array.from(mergedTeamRoles);
+        }
+        return;
+      }
+    }
+
+    this.memoryPermissions.set(roleId, permission);
+    this.logger.debug(`Set memory permission for role ${roleId}: ${permission.policy}`);
+  }
+
+  // ============================================================================
   // List Roles
   // ============================================================================
 
@@ -269,6 +365,28 @@ export class RoleManager {
     const roleManifest = this.generateRoleManifest(manifest);
 
     this.roles.clear();
+    this.memoryPermissions.clear();
+
+    // First pass: Extract memory grants from skills
+    for (const skill of manifest.skills) {
+      if (skill.grants?.memory && skill.grants.memory !== 'none') {
+        for (const roleId of skill.allowedRoles) {
+          if (roleId === '*') {
+            // Wildcard grants will be applied to all roles after they're created
+            continue;
+          }
+          this.setMemoryPermission(roleId, {
+            policy: skill.grants.memory,
+            teamRoles: skill.grants.memoryTeamRoles
+          });
+        }
+      }
+    }
+
+    // Check for wildcard memory grants
+    const wildcardSkills = manifest.skills.filter(
+      s => s.allowedRoles.includes('*') && s.grants?.memory && s.grants.memory !== 'none'
+    );
 
     for (const [roleId, dynamicRole] of Object.entries(roleManifest.roles)) {
       const role: Role = {
@@ -288,9 +406,20 @@ export class RoleManager {
       };
 
       this.roles.set(roleId, role);
+
+      // Apply wildcard memory grants to this role
+      for (const wildcardSkill of wildcardSkills) {
+        this.setMemoryPermission(roleId, {
+          policy: wildcardSkill.grants!.memory!,
+          teamRoles: wildcardSkill.grants!.memoryTeamRoles
+        });
+      }
+
+      const memPerm = this.getMemoryPermission(roleId);
       this.logger.debug(`Created dynamic role: ${roleId}`, {
         skills: dynamicRole.skills.length,
-        tools: dynamicRole.tools.length
+        tools: dynamicRole.tools.length,
+        memoryPolicy: memPerm.policy
       });
     }
 

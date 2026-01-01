@@ -286,6 +286,10 @@ export class AegisRouterCore extends EventEmitter {
         description: skill.description || '',
         allowedRoles: skill.allowedRoles,
         allowedTools: skill.allowedTools || [],
+        grants: skill.grants ? {
+          memory: skill.grants.memory,
+          memoryTeamRoles: skill.grants.memoryTeamRoles
+        } : undefined,
         metadata: {
           version: skill.version,
           category: skill.category,
@@ -676,14 +680,31 @@ export class AegisRouterCore extends EventEmitter {
   // ============================================================================
 
   /**
+   * Check if the current role has memory access
+   * Throws an error if access is denied
+   */
+  private checkMemoryAccess(): string {
+    const roleId = this.state.currentRole?.id;
+    if (!roleId) {
+      throw new Error('No role selected. Use set_role first.');
+    }
+
+    if (!this.roleManager.hasMemoryAccess(roleId)) {
+      throw new Error(
+        `Role '${roleId}' does not have memory access. ` +
+        `Memory access must be granted via a skill with grants.memory defined.`
+      );
+    }
+
+    return roleId;
+  }
+
+  /**
    * Handle save_memory tool call
    */
   private async handleSaveMemory(args: Record<string, any>): Promise<any> {
     try {
-      const roleId = this.state.currentRole?.id;
-      if (!roleId) {
-        throw new Error('No role selected. Use set_role first.');
-      }
+      const roleId = this.checkMemoryAccess();
 
       const { content, type, tags, source } = args;
       if (!content) {
@@ -727,16 +748,13 @@ export class AegisRouterCore extends EventEmitter {
    */
   private async handleRecallMemory(args: Record<string, any>): Promise<any> {
     try {
-      const roleId = this.state.currentRole?.id;
-      if (!roleId) {
-        throw new Error('No role selected. Use set_role first.');
-      }
+      const roleId = this.checkMemoryAccess();
 
       const { query, type, tags, limit, all_roles } = args;
-      const isAdmin = this.memoryStore.isSuperRole(roleId);
+      const canAccessAll = this.roleManager.canAccessAllMemories(roleId);
 
-      // Admin can search across all roles
-      if (isAdmin && all_roles) {
+      // Roles with 'all' policy can search across all roles
+      if (canAccessAll && all_roles) {
         const entries = await this.memoryStore.searchAll({
           query,
           type,
@@ -832,16 +850,12 @@ export class AegisRouterCore extends EventEmitter {
    */
   private async handleListMemories(args: Record<string, any>): Promise<any> {
     try {
-      const currentRoleId = this.state.currentRole?.id;
-      if (!currentRoleId) {
-        throw new Error('No role selected. Use set_role first.');
-      }
-
-      const isAdmin = this.memoryStore.isSuperRole(currentRoleId);
+      const currentRoleId = this.checkMemoryAccess();
+      const canAccessAll = this.roleManager.canAccessAllMemories(currentRoleId);
       const { all_roles } = args;
 
-      // Admin can see all roles' stats
-      if (isAdmin && all_roles) {
+      // Roles with 'all' policy can see all roles' stats
+      if (canAccessAll && all_roles) {
         const allStats = await this.memoryStore.getAllStats();
         const rolesWithMemory = Object.keys(allStats);
 
