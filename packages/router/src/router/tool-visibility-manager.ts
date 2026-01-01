@@ -173,9 +173,10 @@ export class ToolVisibilityManager {
   }
 
   /**
-   * Add the set_role system tool (always visible)
+   * Add system tools (always visible)
    */
   private addSystemTool(): void {
+    // set_role tool
     const setRoleTool: Tool = {
       name: 'set_role',
       description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
@@ -197,27 +198,114 @@ export class ToolVisibilityManager {
       }
     };
 
-    const toolInfo: ToolInfo = {
-      tool: setRoleTool,
-      sourceServer: 'aegis-router',
-      prefixedName: 'set_role',
-      visible: true,
-      visibilityReason: 'system_tool'
+    // save_memory tool
+    const saveMemoryTool: Tool = {
+      name: 'save_memory',
+      description: 'Save information to the current role\'s memory. Memory is persistent and isolated per role.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          content: {
+            type: 'string',
+            description: 'The content to remember'
+          },
+          type: {
+            type: 'string',
+            enum: ['fact', 'preference', 'context', 'episode', 'learned'],
+            description: 'Type of memory: fact (knowledge), preference (settings), context (situation), episode (event), learned (pattern)',
+            default: 'context'
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional tags for categorization'
+          },
+          source: {
+            type: 'string',
+            description: 'Source of this memory (e.g., "user", "agent", "tool")'
+          }
+        },
+        required: ['content']
+      }
     };
 
-    this.visibleTools.set('set_role', toolInfo);
+    // recall_memory tool
+    const recallMemoryTool: Tool = {
+      name: 'recall_memory',
+      description: 'Search and retrieve memories from the current role\'s memory store.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Text to search for in memories'
+          },
+          type: {
+            type: 'string',
+            enum: ['fact', 'preference', 'context', 'episode', 'learned'],
+            description: 'Filter by memory type'
+          },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by tags (any match)'
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of results (default: 10)'
+          }
+        }
+      }
+    };
+
+    // list_memories tool
+    const listMemoriesTool: Tool = {
+      name: 'list_memories',
+      description: 'Get statistics about the current role\'s memory store.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          role_id: {
+            type: 'string',
+            description: 'Role ID to check (defaults to current role)'
+          }
+        }
+      }
+    };
+
+    // Register all system tools
+    const systemTools = [
+      { tool: setRoleTool, name: 'set_role' },
+      { tool: saveMemoryTool, name: 'save_memory' },
+      { tool: recallMemoryTool, name: 'recall_memory' },
+      { tool: listMemoriesTool, name: 'list_memories' }
+    ];
+
+    for (const { tool, name } of systemTools) {
+      const toolInfo: ToolInfo = {
+        tool,
+        sourceServer: 'aegis-router',
+        prefixedName: name,
+        visible: true,
+        visibilityReason: 'system_tool'
+      };
+      this.visibleTools.set(name, toolInfo);
+    }
   }
 
   // ============================================================================
   // Access Control
   // ============================================================================
 
+  // System tools that are always accessible
+  private static readonly SYSTEM_TOOLS = ['set_role', 'save_memory', 'recall_memory', 'list_memories'];
+
   /**
    * Check if a tool is accessible (throws if not)
    */
   checkAccess(toolName: string): void {
     // System tools always accessible
-    if (toolName === 'set_role') {
+    if (ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName)) {
       return;
     }
 
@@ -234,7 +322,7 @@ export class ToolVisibilityManager {
    * Check if a tool is visible (returns boolean)
    */
   isVisible(toolName: string): boolean {
-    return toolName === 'set_role' || this.visibleTools.has(toolName);
+    return ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName) || this.visibleTools.has(toolName);
   }
 
   // ============================================================================

@@ -41,4 +41,14 @@ export {
   type RateLimitEvent
 } from './rate-limiter.js';
 
+// Role memory
+export {
+  RoleMemoryStore,
+  createRoleMemoryStore,
+  type MemoryEntry,
+  type RoleMemory,
+  type MemorySearchOptions,
+  type SaveMemoryOptions
+} from './role-memory.js';
+
 // Types are exported from ../types/index.js to avoid duplicate exports

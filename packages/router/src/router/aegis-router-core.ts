@@ -11,6 +11,7 @@ import { RoleManager, createRoleManager } from './role-manager.js';
 import { ToolVisibilityManager, createToolVisibilityManager } from './tool-visibility-manager.js';
 import { AuditLogger, createAuditLogger } from './audit-logger.js';
 import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
+import { RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from './role-memory.js';
 import type {
   Role,
   AegisRouterState,
@@ -44,6 +45,7 @@ export class AegisRouterCore extends EventEmitter {
   private toolVisibility: ToolVisibilityManager;
   private auditLogger: AuditLogger;
   private rateLimiter: RateLimiter;
+  private memoryStore: RoleMemoryStore;
 
   // Router state
   private state: AegisRouterState;
@@ -60,6 +62,7 @@ export class AegisRouterCore extends EventEmitter {
     options?: {
       rolesDir?: string;
       configFile?: string;
+      memoryDir?: string;
     }
   ) {
     super();
@@ -79,6 +82,9 @@ export class AegisRouterCore extends EventEmitter {
 
     // Initialize rate limiter
     this.rateLimiter = createRateLimiter(logger);
+
+    // Initialize role memory store
+    this.memoryStore = createRoleMemoryStore(options?.memoryDir || './memory');
 
     // Initialize state
     this.state = {
@@ -122,6 +128,9 @@ export class AegisRouterCore extends EventEmitter {
     try {
       // Initialize role configuration
       await this.roleManager.initialize();
+
+      // Initialize memory store
+      await this.memoryStore.initialize();
 
       // Load roles into state
       const allRoles = this.roleManager.getAllRoles();
@@ -615,6 +624,17 @@ export class AegisRouterCore extends EventEmitter {
       return await this.handleSetRole(params.arguments || {});
     }
 
+    // Handle memory tools
+    if (method === 'tools/call' && params?.name === 'save_memory') {
+      return await this.handleSaveMemory(params.arguments || {});
+    }
+    if (method === 'tools/call' && params?.name === 'recall_memory') {
+      return await this.handleRecallMemory(params.arguments || {});
+    }
+    if (method === 'tools/call' && params?.name === 'list_memories') {
+      return await this.handleListMemories(params.arguments || {});
+    }
+
     // Handle tools/list - return filtered tools
     if (method === 'tools/list') {
       return this.getFilteredToolsList();
@@ -649,6 +669,166 @@ export class AegisRouterCore extends EventEmitter {
    */
   private async handleGetSkillWithFiltering(request: any, _args: any): Promise<any> {
     return await this.stdioRouter.routeRequest(request);
+  }
+
+  // ============================================================================
+  // Memory Tool Handlers
+  // ============================================================================
+
+  /**
+   * Handle save_memory tool call
+   */
+  private async handleSaveMemory(args: Record<string, any>): Promise<any> {
+    try {
+      const roleId = this.state.currentRole?.id;
+      if (!roleId) {
+        throw new Error('No role selected. Use set_role first.');
+      }
+
+      const { content, type, tags, source } = args;
+      if (!content) {
+        throw new Error('content is required');
+      }
+
+      const entry = await this.memoryStore.addEntry(roleId, content, {
+        type: type || 'context',
+        tags: tags ? (Array.isArray(tags) ? tags : [tags]) : undefined,
+        source: source || 'agent'
+      });
+
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Memory saved successfully.\n\nID: ${entry.id}\nType: ${entry.type}\nContent: ${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}`
+            }
+          ],
+          isError: false
+        }
+      };
+    } catch (error) {
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Error saving memory: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ],
+          isError: true
+        }
+      };
+    }
+  }
+
+  /**
+   * Handle recall_memory tool call
+   */
+  private async handleRecallMemory(args: Record<string, any>): Promise<any> {
+    try {
+      const roleId = this.state.currentRole?.id;
+      if (!roleId) {
+        throw new Error('No role selected. Use set_role first.');
+      }
+
+      const { query, type, tags, limit } = args;
+
+      const entries = await this.memoryStore.search(roleId, {
+        query,
+        type,
+        tags: tags ? (Array.isArray(tags) ? tags : [tags]) : undefined,
+        limit: limit || 10
+      });
+
+      if (entries.length === 0) {
+        return {
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: 'No memories found matching your criteria.'
+              }
+            ],
+            isError: false
+          }
+        };
+      }
+
+      const formattedEntries = entries.map((e, i) =>
+        `### ${i + 1}. [${e.type}] ${e.id}\n${e.content}\n${e.tags ? `Tags: ${e.tags.join(', ')}` : ''}`
+      ).join('\n\n');
+
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Found ${entries.length} memories:\n\n${formattedEntries}`
+            }
+          ],
+          isError: false
+        }
+      };
+    } catch (error) {
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Error recalling memory: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ],
+          isError: true
+        }
+      };
+    }
+  }
+
+  /**
+   * Handle list_memories tool call
+   */
+  private async handleListMemories(args: Record<string, any>): Promise<any> {
+    try {
+      const roleId = args.role_id || this.state.currentRole?.id;
+      if (!roleId) {
+        throw new Error('No role selected. Use set_role first or provide role_id.');
+      }
+
+      const stats = await this.memoryStore.getStats(roleId);
+
+      const typeBreakdown = Object.entries(stats.byType)
+        .map(([type, count]) => `  - ${type}: ${count}`)
+        .join('\n');
+
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Memory Statistics for role "${roleId}":\n\n` +
+                `Total entries: ${stats.totalEntries}\n\n` +
+                `By type:\n${typeBreakdown || '  (no entries)'}\n\n` +
+                `Oldest: ${stats.oldestEntry?.toISOString() || 'N/A'}\n` +
+                `Newest: ${stats.newestEntry?.toISOString() || 'N/A'}`
+            }
+          ],
+          isError: false
+        }
+      };
+    } catch (error) {
+      return {
+        result: {
+          content: [
+            {
+              type: 'text',
+              text: `Error listing memories: ${error instanceof Error ? error.message : String(error)}`
+            }
+          ],
+          isError: true
+        }
+      };
+    }
   }
 
   /**

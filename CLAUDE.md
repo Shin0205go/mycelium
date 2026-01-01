@@ -61,6 +61,7 @@ src/
 │   ├── tool-visibility-manager.ts # Tool filtering by role
 │   ├── audit-logger.ts           # Audit logging for compliance
 │   ├── rate-limiter.ts           # Rate limiting and quotas
+│   ├── role-memory.ts            # Role-based memory store
 │   ├── router-adapter.ts         # Bridge for MCP proxy integration
 │   └── remote-prompt-fetcher.ts  # Remote prompt fetching
 ├── mcp/
@@ -130,6 +131,14 @@ Enforces quotas and rate limits per role:
 - Concurrent execution limits
 - Tool-specific rate limits
 - Warning events at threshold (80%)
+
+### 7. RoleMemoryStore (`src/router/role-memory.ts`)
+Transparent Markdown-based memory system per role:
+- Role-isolated memory (each role has separate memory)
+- Human-readable Markdown files for transparency
+- Memory types: fact, preference, context, episode, learned
+- Search and recall functionality
+- Inspired by Claude's file-based memory approach
 
 ## Development Commands
 
@@ -294,7 +303,33 @@ Tools are prefixed with their server name:
 ### Permission Checking
 1. Check if server is allowed for role
 2. Check tool-level permissions (allow/deny patterns)
-3. System tools (`set_role`) always allowed
+3. System tools always allowed: `set_role`, `save_memory`, `recall_memory`, `list_memories`
+
+### Role Memory
+Memory is stored in Markdown files per role (`memory/{role_id}.memory.md`):
+```markdown
+# Memory: frontend
+
+> Last modified: 2025-01-01T10:00:00.000Z
+> Total entries: 3
+
+## Preferences
+
+### [mem_abc123]
+User prefers React over Vue for frontend projects.
+<!-- {"createdAt":"...", "type":"preference"} -->
+
+## Facts
+
+### [mem_def456]
+API endpoint is at /api/v2/
+<!-- {"createdAt":"...", "type":"fact"} -->
+```
+
+Available memory tools:
+- `save_memory` - Save content to current role's memory
+- `recall_memory` - Search and retrieve memories
+- `list_memories` - Get memory statistics
 
 ## Code Style and Conventions
 
@@ -355,3 +390,36 @@ const denials = router.getRecentDenials(10);
 const csv = router.exportAuditLogsCsv();
 const json = router.exportAuditLogs();
 ```
+
+### Using Role Memory
+Agents can use memory tools to persist knowledge across sessions:
+
+```typescript
+// Agent saves a memory
+await router.routeRequest({
+  method: 'tools/call',
+  params: {
+    name: 'save_memory',
+    arguments: {
+      content: 'User prefers dark mode',
+      type: 'preference',
+      tags: ['ui', 'settings']
+    }
+  }
+});
+
+// Agent recalls memories
+await router.routeRequest({
+  method: 'tools/call',
+  params: {
+    name: 'recall_memory',
+    arguments: {
+      query: 'user preference',
+      type: 'preference',
+      limit: 5
+    }
+  }
+});
+```
+
+Memory files are stored at `memory/{role_id}.memory.md` and can be directly edited.
