@@ -114,10 +114,37 @@ export class RoleMemoryStore {
   private memoryDir: string;
   private cache: Map<string, RoleMemory> = new Map();
   private logger: Logger;
+  // Simple per-role locks for concurrent access
+  private locks: Map<string, Promise<void>> = new Map();
 
   constructor(memoryDir: string = './memory', logger?: Logger) {
     this.memoryDir = memoryDir;
     this.logger = logger || new Logger('debug');
+  }
+
+  /**
+   * Acquire a lock for a role (simple mutex)
+   */
+  private async withLock<T>(roleId: string, fn: () => Promise<T>): Promise<T> {
+    // Wait for any existing lock
+    const existing = this.locks.get(roleId);
+    if (existing) {
+      await existing;
+    }
+
+    // Create new lock
+    let resolve: () => void;
+    const lock = new Promise<void>((r) => {
+      resolve = r;
+    });
+    this.locks.set(roleId, lock);
+
+    try {
+      return await fn();
+    } finally {
+      resolve!();
+      this.locks.delete(roleId);
+    }
   }
 
   /**
@@ -192,31 +219,33 @@ export class RoleMemoryStore {
     content: string,
     options: SaveMemoryOptions = {}
   ): Promise<MemoryEntry> {
-    const memory = await this.load(roleId);
+    return this.withLock(roleId, async () => {
+      const memory = await this.load(roleId);
 
-    const entry: MemoryEntry = {
-      id: this.generateId(),
-      createdAt: new Date(),
-      lastAccessedAt: new Date(),
-      type: options.type || 'context',
-      content,
-      tags: options.tags,
-      source: options.source,
-      relevance: 1.0,
-    };
+      const entry: MemoryEntry = {
+        id: this.generateId(),
+        createdAt: new Date(),
+        lastAccessedAt: new Date(),
+        type: options.type || 'context',
+        content,
+        tags: options.tags,
+        source: options.source,
+        relevance: 1.0,
+      };
 
-    memory.entries.push(entry);
-    memory.metadata.lastModifiedAt = new Date();
-    memory.metadata.totalEntriesAdded++;
+      memory.entries.push(entry);
+      memory.metadata.lastModifiedAt = new Date();
+      memory.metadata.totalEntriesAdded++;
 
-    await this.save(roleId, memory);
+      await this.save(roleId, memory);
 
-    this.logger.info(`Added memory entry for role ${roleId}`, {
-      entryId: entry.id,
-      type: entry.type,
+      this.logger.info(`Added memory entry for role ${roleId}`, {
+        entryId: entry.id,
+        type: entry.type,
+      });
+
+      return entry;
     });
-
-    return entry;
   }
 
   /**
