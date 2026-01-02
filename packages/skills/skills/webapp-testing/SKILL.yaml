@@ -1,0 +1,15 @@
+# AEGIS RBAC extensions for Anthropic skill
+allowedRoles:
+  - tester
+  - developer
+  - senior-developer
+  - admin
+allowedTools:
+  - playwright__browser_navigate
+  - playwright__browser_click
+  - playwright__browser_type
+  - playwright__browser_take_screenshot
+  - playwright__browser_snapshot
+  - playwright__browser_wait_for
+  - filesystem__read_file
+  - filesystem__write_file

@@ -4,7 +4,7 @@
  * These tests use the actual aegis-skills MCP server.
  * Run with: npm run test:e2e
  *
- * Requires: node_modules/aegis-skills to be installed
+ * Requires: @aegis/skills package to be built (packages/skills/dist)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -18,9 +18,9 @@ import type { SkillManifest } from '../src/types/router-types.js';
 process.env.LOG_SILENT = 'true';
 const testLogger = new Logger();
 
-// Skip if aegis-skills is not installed
-const AEGIS_SKILLS_PATH = join(process.cwd(), 'node_modules/aegis-skills/index.js');
-const SKILLS_DIR = join(process.cwd(), 'node_modules/aegis-skills/skills');
+// Path to @aegis/skills package in monorepo
+const AEGIS_SKILLS_PATH = join(process.cwd(), '../../packages/skills/dist/index.js');
+const SKILLS_DIR = join(process.cwd(), '../../packages/skills/skills');
 
 interface SkillData {
   id: string;

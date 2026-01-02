@@ -1,0 +1,21 @@
+# Official Claude Skills compatible format
+name: data-analyzer
+description: データ分析と可視化を行うスキル。CSV/JSONデータの読み込み、統計分析、データクレンジング、グラフ生成などを実行。
+
+# AEGIS RBAC extensions
+allowedRoles:
+  - analyst
+  - data-scientist
+  - admin
+  - "*"
+allowedTools:
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__read_multiple_files
+  - filesystem__write_file
+  - filesystem__edit_file
+  - filesystem__list_directory
+  - filesystem__directory_tree
+  - filesystem__search_files
+  - filesystem__get_file_info
+  - filesystem__create_directory

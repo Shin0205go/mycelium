@@ -1,0 +1,12 @@
+# Official Claude Skills compatible format
+name: data-analyst
+description: データ分析を行うスキル。データベースクエリとファイル読み取りによるデータ分析を実行。
+
+# AEGIS RBAC extensions
+allowedRoles:
+  - analyst
+  - admin
+allowedTools:
+  - postgres__query
+  - postgres__list_tables
+  - filesystem__read_file

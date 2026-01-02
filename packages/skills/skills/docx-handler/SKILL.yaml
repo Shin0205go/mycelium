@@ -1,0 +1,15 @@
+# Official Claude Skills compatible format
+name: docx-handler
+description: Word文書の読み取り、編集、作成を行うスキル。文書のフォーマット変換や内容抽出に対応。
+
+# AEGIS RBAC extensions
+allowedRoles:
+  - editor
+  - admin
+allowedTools:
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__write_file
+  - filesystem__edit_file
+  - filesystem__list_directory
+  - filesystem__create_directory

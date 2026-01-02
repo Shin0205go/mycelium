@@ -2,7 +2,7 @@
   "mcpServers": {
     "aegis-skills": {
       "command": "node",
-      "args": ["node_modules/aegis-skills/index.js", "node_modules/aegis-skills/skills"],
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"],
       "comment": "Skill MCP Server - provides list_skills tool"
     },
     "filesystem": {
