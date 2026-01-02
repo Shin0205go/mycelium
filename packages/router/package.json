@@ -1,7 +1,8 @@
 {
   "name": "@aegis/router",
   "version": "1.0.0",
-  "description": "AEGIS Router - Skill-Driven RBAC MCP Proxy",
+  "description": "DEPRECATED: Use @aegis/core, @aegis/rbac, @aegis/a2a instead",
+  "deprecated": "This package is deprecated. Use @aegis/core for integration, @aegis/rbac for role management, and @aegis/a2a for identity resolution.",
   "main": "dist/index.js",
   "bin": {
     "aegis": "./dist/index.js",
@@ -29,6 +30,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@aegis/a2a": "*",
+    "@aegis/rbac": "*",
+    "@aegis/shared": "*",
     "@aegis/skills": "*",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@modelcontextprotocol/sdk": "^1.0.0",
