@@ -1,0 +1,19 @@
+id: data-analyzer
+displayName: Data Analyzer
+description: データ分析と可視化を行うスキル
+allowedRoles:
+  - analyst
+  - data-scientist
+  - admin
+  - "*"
+allowedTools:
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__read_multiple_files
+  - filesystem__write_file
+  - filesystem__edit_file
+  - filesystem__list_directory
+  - filesystem__directory_tree
+  - filesystem__search_files
+  - filesystem__get_file_info
+  - filesystem__create_directory

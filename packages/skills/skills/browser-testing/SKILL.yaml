@@ -1,0 +1,31 @@
+id: browser-testing
+displayName: Browser Testing
+description: ブラウザ自動化とE2Eテストを行うスキル
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+  - tester
+allowedTools:
+  - playwright__browser_navigate
+  - playwright__browser_navigate_back
+  - playwright__browser_click
+  - playwright__browser_fill_form
+  - playwright__browser_type
+  - playwright__browser_press_key
+  - playwright__browser_select_option
+  - playwright__browser_hover
+  - playwright__browser_drag
+  - playwright__browser_take_screenshot
+  - playwright__browser_snapshot
+  - playwright__browser_evaluate
+  - playwright__browser_run_code
+  - playwright__browser_wait_for
+  - playwright__browser_tabs
+  - playwright__browser_close
+  - playwright__browser_resize
+  - playwright__browser_console_messages
+  - playwright__browser_network_requests
+  - playwright__browser_handle_dialog
+  - playwright__browser_file_upload
+  - playwright__browser_install

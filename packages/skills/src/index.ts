@@ -13,6 +13,7 @@ import {
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,58 +34,43 @@ interface SkillDefinition {
 }
 
 /**
- * Parse SKILL.md frontmatter
+ * Raw YAML structure (supports multiple key formats)
  */
-function parseSkillManifest(content: string): Partial<SkillDefinition> & { instruction?: string; name?: string } {
+interface RawSkillYaml {
+  id?: string;
+  name?: string;
+  displayName?: string;
+  description?: string;
+  allowedRoles?: string[];
+  'allowed-roles'?: string[];
+  allowedTools?: string[];
+  'allowed-tools'?: string[];
+  version?: string;
+  category?: string;
+  tags?: string[];
+}
+
+/**
+ * Parse SKILL.yaml file
+ */
+function parseSkillYaml(content: string): RawSkillYaml {
+  try {
+    return yaml.load(content) as RawSkillYaml || {};
+  } catch (err) {
+    console.error('Failed to parse YAML:', err);
+    return {};
+  }
+}
+
+/**
+ * Parse SKILL.md frontmatter (legacy support)
+ */
+function parseSkillMdFrontmatter(content: string): RawSkillYaml {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatterMatch) {
     return {};
   }
-
-  const frontmatter = frontmatterMatch[1];
-  const result: Record<string, any> = {};
-
-  // Simple YAML-like parsing
-  const lines = frontmatter.split('\n');
-  let currentKey = '';
-  let currentArray: string[] = [];
-  let inArray = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    if (trimmed.startsWith('- ') && inArray) {
-      currentArray.push(trimmed.slice(2));
-    } else if (trimmed.includes(':')) {
-      if (inArray && currentKey) {
-        result[currentKey] = currentArray;
-        currentArray = [];
-        inArray = false;
-      }
-
-      const [key, ...valueParts] = trimmed.split(':');
-      const value = valueParts.join(':').trim();
-      currentKey = key.trim();
-
-      if (value === '') {
-        inArray = true;
-      } else {
-        result[currentKey] = value;
-      }
-    }
-  }
-
-  if (inArray && currentKey) {
-    result[currentKey] = currentArray;
-  }
-
-  // Extract instruction (content after frontmatter)
-  const instructionMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-  if (instructionMatch) {
-    result.instruction = instructionMatch[1].trim();
-  }
-
-  return result as Partial<SkillDefinition> & { instruction?: string };
+  return parseSkillYaml(frontmatterMatch[1]);
 }
 
 /**
@@ -98,31 +84,60 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const skillPath = path.join(skillsDir, entry.name, 'SKILL.md');
+        const skillDir = path.join(skillsDir, entry.name);
+        let manifest: RawSkillYaml = {};
+        let instruction: string | undefined;
+
+        // Try SKILL.yaml first, then fall back to SKILL.md
+        const yamlPath = path.join(skillDir, 'SKILL.yaml');
+        const mdPath = path.join(skillDir, 'SKILL.md');
+        const readmePath = path.join(skillDir, 'README.md');
+
         try {
-          const content = await fs.readFile(skillPath, 'utf-8');
-          const manifest = parseSkillManifest(content);
-
-          const skillId = manifest.id || (manifest as any).name;
-          // Support both 'allowedRoles' and 'allowed-roles', 'allowedTools' and 'allowed-tools'
-          const allowedRoles = manifest.allowedRoles || (manifest as any)['allowedRoles'] || [];
-          const allowedTools = manifest.allowedTools || (manifest as any)['allowed-tools'] || [];
-
-          if (skillId && allowedRoles.length > 0) {
-            skills.push({
-              id: skillId,
-              displayName: manifest.displayName || skillId,
-              description: manifest.description || '',
-              allowedRoles: allowedRoles,
-              allowedTools: allowedTools,
-              version: manifest.version,
-              category: manifest.category,
-              tags: manifest.tags,
-              instruction: manifest.instruction,
-            });
+          const yamlContent = await fs.readFile(yamlPath, 'utf-8');
+          manifest = parseSkillYaml(yamlContent);
+        } catch {
+          // Fall back to SKILL.md
+          try {
+            const mdContent = await fs.readFile(mdPath, 'utf-8');
+            manifest = parseSkillMdFrontmatter(mdContent);
+            // Extract instruction from SKILL.md content after frontmatter
+            const instructionMatch = mdContent.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+            if (instructionMatch) {
+              instruction = instructionMatch[1].trim();
+            }
+          } catch {
+            // Skip if neither exists
+            continue;
           }
-        } catch (err) {
-          // Skip if SKILL.md doesn't exist
+        }
+
+        // Try to load README.md for instruction (if not already set from SKILL.md)
+        if (!instruction) {
+          try {
+            instruction = await fs.readFile(readmePath, 'utf-8');
+          } catch {
+            // No README.md, that's fine
+          }
+        }
+
+        // Normalize field names (support both formats)
+        const skillId = manifest.id || manifest.name;
+        const allowedRoles = manifest.allowedRoles || manifest['allowed-roles'] || [];
+        const allowedTools = manifest.allowedTools || manifest['allowed-tools'] || [];
+
+        if (skillId && allowedRoles.length > 0) {
+          skills.push({
+            id: skillId,
+            displayName: manifest.displayName || skillId,
+            description: manifest.description || '',
+            allowedRoles: allowedRoles,
+            allowedTools: allowedTools,
+            version: manifest.version,
+            category: manifest.category,
+            tags: manifest.tags,
+            instruction: instruction,
+          });
         }
       }
     }
@@ -189,6 +204,38 @@ async function main() {
           },
         },
         {
+          name: 'list_resources',
+          description: 'List resources available in a skill directory',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              skillId: {
+                type: 'string',
+                description: 'The skill ID to list resources for',
+              },
+            },
+            required: ['skillId'],
+          },
+        },
+        {
+          name: 'get_resource',
+          description: 'Get a resource file from a skill directory',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              skillId: {
+                type: 'string',
+                description: 'The skill ID',
+              },
+              resourcePath: {
+                type: 'string',
+                description: 'Path to the resource file within the skill directory',
+              },
+            },
+            required: ['skillId', 'resourcePath'],
+          },
+        },
+        {
           name: 'reload_skills',
           description: 'Reload skills from disk',
           inputSchema: {
@@ -244,6 +291,83 @@ async function main() {
             },
           ],
         };
+      }
+
+      case 'list_resources': {
+        const skillId = (args as any)?.skillId;
+        const skill = skills.find(s => s.id === skillId);
+
+        if (!skill) {
+          return {
+            content: [{ type: 'text', text: `Skill not found: ${skillId}` }],
+            isError: true,
+          };
+        }
+
+        try {
+          const skillDir = path.join(skillsDir, skillId);
+          const entries = await fs.readdir(skillDir, { withFileTypes: true });
+          const resources = entries
+            .filter(e => !e.name.startsWith('.') && e.name !== 'SKILL.yaml' && e.name !== 'SKILL.md')
+            .map(e => ({
+              name: e.name,
+              type: e.isDirectory() ? 'directory' : 'file',
+            }));
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({ resources }, null, 2),
+              },
+            ],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: `Failed to list resources: ${err}` }],
+            isError: true,
+          };
+        }
+      }
+
+      case 'get_resource': {
+        const skillId = (args as any)?.skillId;
+        const resourcePath = (args as any)?.resourcePath;
+
+        if (!skillId || !resourcePath) {
+          return {
+            content: [{ type: 'text', text: 'Missing skillId or resourcePath' }],
+            isError: true,
+          };
+        }
+
+        // Security: prevent path traversal
+        const normalizedPath = path.normalize(resourcePath);
+        if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
+          return {
+            content: [{ type: 'text', text: 'Invalid resource path' }],
+            isError: true,
+          };
+        }
+
+        try {
+          const fullPath = path.join(skillsDir, skillId, normalizedPath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: content,
+              },
+            ],
+          };
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: `Failed to read resource: ${err}` }],
+            isError: true,
+          };
+        }
       }
 
       case 'reload_skills': {

@@ -1,0 +1,13 @@
+id: docx-handler
+displayName: DOCX Handler
+description: Word文書の読み取り、編集、作成を行うスキル
+allowedRoles:
+  - editor
+  - admin
+allowedTools:
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__write_file
+  - filesystem__edit_file
+  - filesystem__list_directory
+  - filesystem__create_directory

@@ -1,0 +1,15 @@
+id: code-reviewer
+displayName: Code Reviewer
+description: コードレビューとベストプラクティスの提案を行うスキル
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+allowedTools:
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__read_multiple_files
+  - filesystem__list_directory
+  - filesystem__directory_tree
+  - filesystem__search_files
+  - filesystem__get_file_info

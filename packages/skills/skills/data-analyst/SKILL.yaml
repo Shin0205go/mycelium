@@ -1,0 +1,10 @@
+id: data-analyst
+displayName: Data Analyst
+description: データ分析を行うスキル
+allowedRoles:
+  - analyst
+  - admin
+allowedTools:
+  - postgres__query
+  - postgres__list_tables
+  - filesystem__read_file

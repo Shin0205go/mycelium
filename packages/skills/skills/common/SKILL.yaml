@@ -1,0 +1,9 @@
+id: common
+displayName: Common Tools
+description: 全ロール共通で使用できる基本ツール
+allowedRoles:
+  - "*"
+allowedTools:
+  - aegis-skills__get_skill
+  - aegis-skills__get_resource
+  - aegis-skills__run_script

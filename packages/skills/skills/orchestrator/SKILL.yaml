@@ -1,0 +1,8 @@
+id: orchestrator
+displayName: Orchestrator
+description: タスクの調整と他のロールへの委譲を行うコーディネーターロール
+allowedRoles:
+  - orchestrator
+allowedTools:
+  - aegis-skills__list_skills
+  - aegis-skills__list_resources
