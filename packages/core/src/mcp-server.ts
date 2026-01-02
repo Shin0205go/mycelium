@@ -19,15 +19,15 @@ import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
 import { AegisRouterCore, createAegisRouterCore } from './router/aegis-router-core.js';
 
-// Path to aegis-cli for sub-agent spawning
-const AEGIS_CLI_PATH = process.env.AEGIS_CLI_PATH ||
-  '/Users/shingo/Develop/aegis-cli/dist/index.js';
-
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 // Go up from dist/ -> packages/core/ -> packages/ -> project root
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
+
+// Path to aegis-cli for sub-agent spawning
+const AEGIS_CLI_PATH = process.env.AEGIS_CLI_PATH ||
+  join(PROJECT_ROOT, 'packages', 'core', 'dist', 'cli-entry.js');
 
 const logger = new Logger('info');
 

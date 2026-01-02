@@ -7,7 +7,8 @@
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/shingo/Develop"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "comment": "Filesystem server - defaults to project root"
     },
     "playwright": {
       "command": "npx",
