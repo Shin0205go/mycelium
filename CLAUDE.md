@@ -46,90 +46,105 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 
 ## Directory Structure
 
-```
-src/
-├── index.ts              # CLI entry point (interactive/sub-agent modes)
-├── mcp-server.ts         # MCP server entry point (stdio-based)
-├── cli.ts                # Interactive REPL CLI implementation
-├── sub-agent.ts          # Non-interactive sub-agent mode
-├── agent.ts              # Claude Agent SDK integration
-├── mcp-client.ts         # MCP client for connecting to router
-├── args.ts               # CLI argument parsing
-├── router/
-│   ├── aegis-router-core.ts      # Central routing system (司令塔)
-│   ├── role-manager.ts           # Role definitions and permissions
-│   ├── tool-visibility-manager.ts # Tool filtering by role
-│   ├── audit-logger.ts           # Audit logging for compliance
-│   ├── rate-limiter.ts           # Rate limiting and quotas
-│   ├── router-adapter.ts         # Bridge for MCP proxy integration
-│   └── remote-prompt-fetcher.ts  # Remote prompt fetching
-├── mcp/
-│   ├── stdio-router.ts           # Manages upstream MCP server connections
-│   ├── tool-discovery.ts         # Tool discovery from servers
-│   └── dynamic-tool-discovery.ts # Dynamic tool loading
-├── types/
-│   ├── index.ts          # Type exports
-│   ├── router-types.ts   # Router-related types (Role, Skill, etc.)
-│   └── mcp-types.ts      # MCP-related types
-├── utils/
-│   └── logger.ts         # Winston-based logger
-└── constants/
-    └── index.ts          # Timeout and server constants
+Aegis is organized as a monorepo with modular packages:
 
-tests/
-├── role-manager.test.ts          # RoleManager unit tests
-├── tool-visibility-manager.test.ts # ToolVisibilityManager tests
-├── tool-filtering.test.ts        # Role-based tool filtering tests
-├── skill-integration.test.ts     # Skill integration tests
-├── role-switching.test.ts        # Role switching tests
-├── aegis-skills-access.test.ts   # Skills access tests
-└── real-e2e.test.ts              # E2E tests with aegis-skills server
 ```
+packages/
+├── shared/               # @aegis/shared - Common types and interfaces
+│   └── src/
+│       └── index.ts      # Role, ToolPermissions, SkillManifest types
+│
+├── rbac/                 # @aegis/rbac - Role-Based Access Control
+│   ├── src/
+│   │   ├── role-manager.ts           # Role definitions and permissions
+│   │   ├── tool-visibility-manager.ts # Tool filtering by role
+│   │   └── role-memory.ts            # Role-based memory store
+│   └── tests/
+│       ├── role-manager.test.ts
+│       ├── tool-visibility-manager.test.ts
+│       ├── tool-filtering.test.ts
+│       ├── role-memory.test.ts
+│       ├── memory-permission.test.ts
+│       ├── role-switching.test.ts
+│       ├── skill-integration.test.ts
+│       └── aegis-skills-access.test.ts
+│
+├── a2a/                  # @aegis/a2a - Agent-to-Agent Identity
+│   ├── src/
+│   │   ├── identity-resolver.ts  # A2A capability-based identity resolution
+│   │   └── types.ts              # A2A-specific types
+│   └── tests/
+│       └── identity-resolver.test.ts
+│
+├── audit/                # @aegis/audit - Audit and Rate Limiting
+│   └── src/
+│       └── index.ts      # AuditLogger, RateLimiter (placeholder)
+│
+├── gateway/              # @aegis/gateway - MCP Gateway/Proxy
+│   └── src/
+│       └── index.ts      # StdioRouter, MCP connection management
+│
+├── core/                 # @aegis/core - Integration Layer
+│   ├── src/
+│   │   └── index.ts      # Re-exports all packages, AegisCore
+│   └── tests/
+│       └── real-e2e.test.ts  # E2E tests with aegis-skills server
+│
+└── skills/               # @aegis/skills - Skill MCP Server
+    └── src/
+        └── index.ts      # Skill definition loading and serving
+```
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@aegis/shared` | Common types and interfaces used across all packages |
+| `@aegis/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
+| `@aegis/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
+| `@aegis/audit` | Audit logging and rate limiting (placeholder) |
+| `@aegis/gateway` | MCP gateway/proxy for server connections (placeholder) |
+| `@aegis/core` | Integration layer that re-exports all packages |
+| `@aegis/skills` | Skill MCP Server for loading and serving skill definitions |
 
 ## Key Components
 
-### 1. AegisRouterCore (`src/router/aegis-router-core.ts`)
-The central "司令塔" (command center) that:
-- Manages connections to multiple MCP backend servers
-- Maintains a virtual tool table filtered by current role
-- Handles role switching via `set_role`
-- Emits `tools/list_changed` notifications when tools change
-
-### 2. RoleManager (`src/router/role-manager.ts`)
+### 1. RoleManager (`packages/rbac/src/role-manager.ts`)
 Handles role definitions and permission checking:
 - Loads roles dynamically from skill manifests
 - Generates roles from skill definitions (inverted RBAC)
 - Checks server/tool permissions for roles
 - Supports wildcard (`*`) and pattern matching
 
-### 3. ToolVisibilityManager (`src/router/tool-visibility-manager.ts`)
+### 2. ToolVisibilityManager (`packages/rbac/src/tool-visibility-manager.ts`)
 Manages tool discovery and role-based visibility:
 - Registers tools from backend servers
 - Filters visible tools based on current role
 - Always includes `set_role` system tool
 - Checks tool access before allowing calls
 
-### 4. StdioRouter (`src/mcp/stdio-router.ts`)
-Manages stdio-based MCP server connections:
-- Spawns and manages child processes
-- Handles MCP initialization handshake
-- Routes requests to appropriate servers
-- Aggregates tool lists from multiple servers
-- Prefixes tool names with server name (e.g., `filesystem__read_file`)
+### 3. RoleMemoryStore (`packages/rbac/src/role-memory.ts`)
+Transparent Markdown-based memory system per role:
+- Role-isolated memory (each role has separate memory)
+- Human-readable Markdown files for transparency
+- Memory types: fact, preference, context, episode, learned
+- Search and recall functionality
+- Inspired by Claude's file-based memory approach
 
-### 5. AuditLogger (`src/router/audit-logger.ts`)
-Records all tool access attempts for compliance:
-- Logs allowed, denied, and error events
-- Sanitizes sensitive arguments (passwords, tokens, API keys)
-- Provides query and statistics APIs
-- Exports to JSON/CSV for auditing
+### 4. IdentityResolver (`packages/a2a/src/identity-resolver.ts`)
+A2A Zero-Trust identity resolution for agent-to-agent communication:
+- Capability-based role matching (A2A Agent Card skills)
+- `requiredSkills` (AND logic) and `anySkills` (OR logic) matching
+- Priority-based rule ordering
+- Loads patterns from skills (skill-driven identity)
+- Trusted prefix detection for agent trust levels
 
-### 6. RateLimiter (`src/router/rate-limiter.ts`)
-Enforces quotas and rate limits per role:
-- Per-minute, per-hour, per-day limits
-- Concurrent execution limits
-- Tool-specific rate limits
-- Warning events at threshold (80%)
+### 5. Shared Types (`packages/shared/src/index.ts`)
+Common types used across all packages:
+- `Role`, `ToolPermissions`, `RoleMetadata`
+- `BaseSkillDefinition`, `SkillManifest`, `SkillGrants`
+- `Logger` interface for dependency injection
+- Error classes: `RoleNotFoundError`, `ToolNotAccessibleError`
 
 ## Development Commands
 
@@ -191,7 +206,7 @@ echo "Explain this" | aegis-cli --role mentor
 
 ## Key Type Definitions
 
-### Role (`src/types/router-types.ts`)
+### Role (`packages/shared/src/index.ts`)
 ```typescript
 interface Role {
   id: string;                    // Unique identifier
@@ -204,7 +219,7 @@ interface Role {
 }
 ```
 
-### SkillDefinition (`src/types/router-types.ts`)
+### SkillDefinition (`packages/a2a/src/types.ts`)
 ```typescript
 interface SkillDefinition {
   id: string;                   // Skill identifier
@@ -212,7 +227,30 @@ interface SkillDefinition {
   description: string;          // Skill description
   allowedRoles: string[];       // Roles that can use this skill
   allowedTools: string[];       // Tools this skill requires
+  grants?: SkillGrants;         // Capability grants (memory, etc.)
+  identity?: SkillIdentityConfig; // A2A skill-based identity
   metadata?: SkillMetadata;
+}
+
+interface SkillIdentityConfig {
+  skillMatching?: SkillMatchRule[];  // Capability-based role matching
+  trustedPrefixes?: string[];        // Trusted agent prefixes
+}
+
+interface SkillMatchRule {
+  role: string;                 // Role to assign when matched
+  requiredSkills?: string[];    // ALL must be present (AND logic)
+  anySkills?: string[];         // At least minSkillMatch present (OR logic)
+  minSkillMatch?: number;       // Min anySkills matches (default: 1)
+  description?: string;         // Optional description
+  priority?: number;            // Priority (higher = checked first)
+}
+
+// Agent Card skills from A2A protocol
+interface A2AAgentSkill {
+  id: string;                   // Skill identifier (e.g., "react", "coding")
+  name?: string;                // Human-readable name
+  description?: string;         // Skill description
 }
 ```
 
@@ -258,23 +296,34 @@ interface SkillDefinition {
 
 ## Testing
 
-Tests use Vitest and are located in `tests/`:
+Tests use Vitest and are distributed across packages (172 tests total):
+
+| Package | Tests | Description |
+|---------|-------|-------------|
+| `@aegis/rbac` | 126 | RoleManager, ToolVisibility, Memory, Skill integration |
+| `@aegis/a2a` | 33 | IdentityResolver capability-based matching |
+| `@aegis/core` | 13 | E2E tests with aegis-skills server |
 
 ```bash
-# Run all tests
+# Run all tests (from root)
 npm test
 
+# Run tests for specific package
+npm test --workspace=@aegis/rbac
+npm test --workspace=@aegis/a2a
+npm test --workspace=@aegis/core
+
 # Run specific test file
-npx vitest run tests/role-manager.test.ts
+npx vitest run packages/rbac/tests/role-manager.test.ts
 
 # Watch mode
-npm run test:watch
+npm run test:watch --workspace=@aegis/rbac
 ```
 
 ### Test Categories
-- **Unit tests**: RoleManager, ToolVisibilityManager
-- **Integration tests**: Skill integration, role switching
-- **E2E tests**: Full flow with aegis-skills server
+- **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver
+- **Integration tests**: Skill integration, role switching, memory permissions
+- **E2E tests**: Full flow with aegis-skills server (`packages/core/tests/real-e2e.test.ts`)
 
 ## Important Patterns
 
@@ -294,7 +343,251 @@ Tools are prefixed with their server name:
 ### Permission Checking
 1. Check if server is allowed for role
 2. Check tool-level permissions (allow/deny patterns)
-3. System tools (`set_role`) always allowed
+3. System tools always allowed: `set_role`
+4. Memory tools require skill grant (see Role Memory section)
+
+### Role Memory
+Memory is a **skill-granted capability** (default: OFF). Roles must be granted memory access via skill definitions.
+
+#### Memory Policies
+| Policy | Description |
+|--------|-------------|
+| `none` | No memory access (default) |
+| `isolated` | Own role's memory only |
+| `team` | Own + specified team roles' memories |
+| `all` | Access all roles' memories (admin) |
+
+#### Granting Memory via Skills
+In your skill's `SKILL.md`, add the `grants.memory` field:
+
+```yaml
+# skills/memory-basic/SKILL.md
+---
+id: memory-basic
+displayName: Basic Memory
+description: Grants isolated memory access
+allowedRoles: [developer, tester]
+allowedTools: []
+grants:
+  memory: isolated  # Can only access own memories
+---
+```
+
+```yaml
+# skills/memory-admin/SKILL.md
+---
+id: memory-admin
+displayName: Admin Memory
+description: Full memory access for admins
+allowedRoles: [admin]
+allowedTools: []
+grants:
+  memory: all  # Can access all roles' memories
+---
+```
+
+```yaml
+# skills/memory-team/SKILL.md
+---
+id: memory-team
+displayName: Team Memory
+description: Team lead can see team members' memories
+allowedRoles: [lead]
+allowedTools: []
+grants:
+  memory: team
+  memoryTeamRoles: [frontend, backend, qa]  # Can access these roles' memories
+---
+```
+
+#### Policy Priority
+When a role has multiple skills with different memory grants, the highest privilege wins:
+`all` > `team` > `isolated` > `none`
+
+For `team` policies, team roles are merged across skills.
+
+#### Memory Storage
+Memory is stored in Markdown files per role (`memory/{role_id}.memory.md`):
+```markdown
+# Memory: frontend
+
+> Last modified: 2025-01-01T10:00:00.000Z
+> Total entries: 3
+
+## Preferences
+
+### [mem_abc123]
+User prefers React over Vue for frontend projects.
+<!-- {"createdAt":"...", "type":"preference"} -->
+
+## Facts
+
+### [mem_def456]
+API endpoint is at /api/v2/
+<!-- {"createdAt":"...", "type":"fact"} -->
+```
+
+#### Memory Tools
+When granted, these tools become available:
+- `save_memory` - Save content to current role's memory
+- `recall_memory` - Search and retrieve memories (with `all_roles=true` for admin)
+- `list_memories` - Get memory statistics
+
+### A2A Identity Resolution (Agent-to-Agent Zero-Trust)
+
+The A2A Identity Resolution feature enables automatic role assignment based on agent capabilities (A2A Agent Card skills), eliminating the need for the `set_role` tool in agent-to-agent communication.
+
+#### How It Works
+
+When A2A mode is enabled:
+1. Agents connect and declare their capabilities via A2A Agent Card `skills`
+2. The router matches agent skills against configured rules
+3. A role is automatically assigned based on capability matching
+4. The `set_role` tool is hidden from the tools list
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Agent Card (A2A Protocol)          Aegis Skill Definition      │
+│  ┌─────────────────────────┐        ┌─────────────────────────┐ │
+│  │ name: "react-builder"   │        │ identity:               │ │
+│  │ skills:                 │   →    │   skillMatching:        │ │
+│  │   - id: "react"         │   →    │     - role: frontend    │ │
+│  │   - id: "typescript"    │        │       anySkills:        │ │
+│  └─────────────────────────┘        │         - react         │ │
+│                                     │         - vue           │ │
+│  Capability-based matching          └─────────────────────────┘ │
+│  (not name pattern matching)                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Skill-Based Identity Configuration
+
+Skills define capability-based role matching rules:
+
+```yaml
+# skills/admin-access/SKILL.yaml
+id: admin-access
+displayName: Admin Access
+description: Full administrative access
+
+allowedRoles:
+  - admin
+
+allowedTools:
+  - "*"
+
+grants:
+  memory: all
+
+# A2A Capability-based Identity
+identity:
+  skillMatching:
+    - role: admin
+      requiredSkills:           # ALL must be present (AND logic)
+        - admin_access
+        - system_management
+      priority: 100
+      description: "Full admin requires both skills"
+
+  trustedPrefixes:
+    - "claude-"
+    - "aegis-"
+```
+
+```yaml
+# skills/frontend-dev/SKILL.yaml
+id: frontend-dev
+displayName: Frontend Development
+description: Frontend component development tools
+
+allowedRoles:
+  - frontend
+
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+
+grants:
+  memory: isolated
+
+identity:
+  skillMatching:
+    - role: frontend
+      anySkills:                # At least 1 must be present (OR logic)
+        - react
+        - vue
+        - angular
+        - svelte
+      minSkillMatch: 1          # Minimum matches required
+      priority: 50
+```
+
+#### Matching Logic
+
+| Field | Logic | Description |
+|-------|-------|-------------|
+| `requiredSkills` | AND | ALL listed skills must be in Agent Card |
+| `anySkills` | OR | At least `minSkillMatch` skills must match |
+| `minSkillMatch` | threshold | Minimum anySkills matches (default: 1) |
+
+When both `requiredSkills` and `anySkills` are specified, **both conditions** must be satisfied.
+
+#### Benefits of Capability-Based Identity
+
+| Aspect | Benefit |
+|--------|---------|
+| Self-describing | Agents declare what they CAN DO, not who they ARE |
+| No prior knowledge | Agents don't need to know naming conventions |
+| A2A Compatible | Follows Google's A2A Agent Card standard |
+| Flexible matching | Combine AND/OR logic for complex rules |
+
+#### Rule Aggregation
+
+When multiple skills define matching rules:
+1. All rules are aggregated from all skills
+2. Rules are sorted by priority (higher first)
+3. First matching rule determines the role
+4. Trusted prefixes are merged from all skills
+
+#### Enabling A2A Mode
+
+```typescript
+// In AegisRouterCore constructor
+const router = new AegisRouterCore(logger, {
+  a2aMode: true
+});
+
+// Or enable dynamically
+router.enableA2AMode();
+
+// Set role from agent identity (with A2A Agent Card skills)
+const manifest = await router.setRoleFromIdentity({
+  name: 'react-builder',
+  version: '1.0.0',
+  skills: [
+    { id: 'react' },
+    { id: 'typescript' },
+    { id: 'testing' }
+  ]
+});
+
+// Get identity statistics
+const stats = router.getIdentityStats();
+// { totalRules: 3, rulesByRole: { admin: 1, frontend: 1, backend: 1 }, ... }
+```
+
+#### Resolution Result
+
+```typescript
+interface IdentityResolution {
+  roleId: string;              // Resolved role
+  agentName: string;           // Original agent name
+  matchedRule: SkillMatchRule | null;  // Rule that matched
+  matchedSkills: string[];     // Skills that contributed to match
+  isTrusted: boolean;          // Based on trustedPrefixes
+  resolvedAt: Date;            // Resolution timestamp
+}
+```
 
 ## Code Style and Conventions
 
@@ -355,3 +648,36 @@ const denials = router.getRecentDenials(10);
 const csv = router.exportAuditLogsCsv();
 const json = router.exportAuditLogs();
 ```
+
+### Using Role Memory
+Agents can use memory tools to persist knowledge across sessions:
+
+```typescript
+// Agent saves a memory
+await router.routeRequest({
+  method: 'tools/call',
+  params: {
+    name: 'save_memory',
+    arguments: {
+      content: 'User prefers dark mode',
+      type: 'preference',
+      tags: ['ui', 'settings']
+    }
+  }
+});
+
+// Agent recalls memories
+await router.routeRequest({
+  method: 'tools/call',
+  params: {
+    name: 'recall_memory',
+    arguments: {
+      query: 'user preference',
+      type: 'preference',
+      limit: 5
+    }
+  }
+});
+```
+
+Memory files are stored at `memory/{role_id}.memory.md` and can be directly edited.

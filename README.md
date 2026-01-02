@@ -11,13 +11,23 @@
 ```
 aegis/
 ├── packages/
-│   ├── router/     # @aegis/router - MCPプロキシルーター
+│   ├── shared/     # @aegis/shared - 共通型定義
+│   ├── rbac/       # @aegis/rbac - ロール管理・ツール可視性
+│   ├── a2a/        # @aegis/a2a - A2Aエージェント間認証
+│   ├── audit/      # @aegis/audit - 監査ログ・レート制限
+│   ├── gateway/    # @aegis/gateway - MCPゲートウェイ
+│   ├── core/       # @aegis/core - 統合レイヤー
 │   └── skills/     # @aegis/skills - スキルMCPサーバー
 ```
 
 | パッケージ | 説明 |
 |-----------|------|
-| `@aegis/router` | スキル駆動RBACを実装したMCPプロキシ |
+| `@aegis/shared` | 共通型定義（Role, Skill, ToolPermissions等） |
+| `@aegis/rbac` | RoleManager, ToolVisibilityManager, RoleMemoryStore |
+| `@aegis/a2a` | A2A Agent Card スキルベースのアイデンティティ解決 |
+| `@aegis/audit` | 監査ログとレート制限（プレースホルダー） |
+| `@aegis/gateway` | MCPサーバー接続管理（プレースホルダー） |
+| `@aegis/core` | 全パッケージの統合・再エクスポート |
 | `@aegis/skills` | スキル定義を提供するMCPサーバー |
 
 ## スキル駆動RBACとは？
@@ -101,7 +111,10 @@ allowedTools: [git__*, npm__*]
                         │ list_skills
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 @aegis/router (司令塔)                       │
+│                 @aegis/core (司令塔)                         │
+│  ├── @aegis/rbac   (RoleManager, ToolVisibilityManager)    │
+│  ├── @aegis/a2a    (IdentityResolver)                      │
+│  └── @aegis/shared (共通型定義)                             │
 │                                                              │
 │  Skills → Roles 変換（Inverted RBAC）                       │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -133,13 +146,13 @@ npm run build
 ```bash
 npm start
 # または
-npm run dev --workspace=@aegis/router
+npm run dev
 ```
 
 ### MCPサーバーとして起動（Claude Desktop等から利用）
 
 ```bash
-npm run start:mcp --workspace=@aegis/router
+npm run start:mcp
 ```
 
 ## スキル定義
