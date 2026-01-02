@@ -46,95 +46,84 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 
 ## Directory Structure
 
-```
-src/
-├── index.ts              # CLI entry point (interactive/sub-agent modes)
-├── mcp-server.ts         # MCP server entry point (stdio-based)
-├── cli.ts                # Interactive REPL CLI implementation
-├── sub-agent.ts          # Non-interactive sub-agent mode
-├── agent.ts              # Claude Agent SDK integration
-├── mcp-client.ts         # MCP client for connecting to router
-├── args.ts               # CLI argument parsing
-├── router/
-│   ├── aegis-router-core.ts      # Central routing system (司令塔)
-│   ├── role-manager.ts           # Role definitions and permissions
-│   ├── tool-visibility-manager.ts # Tool filtering by role
-│   ├── identity-resolver.ts      # A2A identity resolution
-│   ├── audit-logger.ts           # Audit logging for compliance
-│   ├── rate-limiter.ts           # Rate limiting and quotas
-│   ├── role-memory.ts            # Role-based memory store
-│   ├── router-adapter.ts         # Bridge for MCP proxy integration
-│   └── remote-prompt-fetcher.ts  # Remote prompt fetching
-├── mcp/
-│   ├── stdio-router.ts           # Manages upstream MCP server connections
-│   ├── tool-discovery.ts         # Tool discovery from servers
-│   └── dynamic-tool-discovery.ts # Dynamic tool loading
-├── types/
-│   ├── index.ts          # Type exports
-│   ├── router-types.ts   # Router-related types (Role, Skill, etc.)
-│   └── mcp-types.ts      # MCP-related types
-├── utils/
-│   └── logger.ts         # Winston-based logger
-└── constants/
-    └── index.ts          # Timeout and server constants
+Aegis is organized as a monorepo with modular packages:
 
-tests/
-├── role-manager.test.ts          # RoleManager unit tests
-├── tool-visibility-manager.test.ts # ToolVisibilityManager tests
-├── tool-filtering.test.ts        # Role-based tool filtering tests
-├── identity-resolver.test.ts     # A2A identity resolution tests
-├── skill-integration.test.ts     # Skill integration tests
-├── role-switching.test.ts        # Role switching tests
-├── aegis-skills-access.test.ts   # Skills access tests
-└── real-e2e.test.ts              # E2E tests with aegis-skills server
 ```
+packages/
+├── shared/               # @aegis/shared - Common types and interfaces
+│   └── src/
+│       └── index.ts      # Role, ToolPermissions, SkillManifest types
+│
+├── rbac/                 # @aegis/rbac - Role-Based Access Control
+│   ├── src/
+│   │   ├── role-manager.ts           # Role definitions and permissions
+│   │   ├── tool-visibility-manager.ts # Tool filtering by role
+│   │   └── role-memory.ts            # Role-based memory store
+│   └── tests/
+│       ├── role-manager.test.ts
+│       ├── tool-visibility-manager.test.ts
+│       ├── tool-filtering.test.ts
+│       ├── role-memory.test.ts
+│       ├── memory-permission.test.ts
+│       ├── role-switching.test.ts
+│       ├── skill-integration.test.ts
+│       └── aegis-skills-access.test.ts
+│
+├── a2a/                  # @aegis/a2a - Agent-to-Agent Identity
+│   ├── src/
+│   │   ├── identity-resolver.ts  # A2A capability-based identity resolution
+│   │   └── types.ts              # A2A-specific types
+│   └── tests/
+│       └── identity-resolver.test.ts
+│
+├── audit/                # @aegis/audit - Audit and Rate Limiting
+│   └── src/
+│       └── index.ts      # AuditLogger, RateLimiter (placeholder)
+│
+├── gateway/              # @aegis/gateway - MCP Gateway/Proxy
+│   └── src/
+│       └── index.ts      # StdioRouter, MCP connection management
+│
+├── core/                 # @aegis/core - Integration Layer
+│   ├── src/
+│   │   └── index.ts      # Re-exports all packages, AegisCore
+│   └── tests/
+│       └── real-e2e.test.ts  # E2E tests with aegis-skills server
+│
+└── skills/               # @aegis/skills - Skill MCP Server
+    └── src/
+        └── index.ts      # Skill definition loading and serving
+```
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| `@aegis/shared` | Common types and interfaces used across all packages |
+| `@aegis/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
+| `@aegis/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
+| `@aegis/audit` | Audit logging and rate limiting (placeholder) |
+| `@aegis/gateway` | MCP gateway/proxy for server connections (placeholder) |
+| `@aegis/core` | Integration layer that re-exports all packages |
+| `@aegis/skills` | Skill MCP Server for loading and serving skill definitions |
 
 ## Key Components
 
-### 1. AegisRouterCore (`src/router/aegis-router-core.ts`)
-The central "司令塔" (command center) that:
-- Manages connections to multiple MCP backend servers
-- Maintains a virtual tool table filtered by current role
-- Handles role switching via `set_role`
-- Emits `tools/list_changed` notifications when tools change
-
-### 2. RoleManager (`src/router/role-manager.ts`)
+### 1. RoleManager (`packages/rbac/src/role-manager.ts`)
 Handles role definitions and permission checking:
 - Loads roles dynamically from skill manifests
 - Generates roles from skill definitions (inverted RBAC)
 - Checks server/tool permissions for roles
 - Supports wildcard (`*`) and pattern matching
 
-### 3. ToolVisibilityManager (`src/router/tool-visibility-manager.ts`)
+### 2. ToolVisibilityManager (`packages/rbac/src/tool-visibility-manager.ts`)
 Manages tool discovery and role-based visibility:
 - Registers tools from backend servers
 - Filters visible tools based on current role
 - Always includes `set_role` system tool
 - Checks tool access before allowing calls
 
-### 4. StdioRouter (`src/mcp/stdio-router.ts`)
-Manages stdio-based MCP server connections:
-- Spawns and manages child processes
-- Handles MCP initialization handshake
-- Routes requests to appropriate servers
-- Aggregates tool lists from multiple servers
-- Prefixes tool names with server name (e.g., `filesystem__read_file`)
-
-### 5. AuditLogger (`src/router/audit-logger.ts`)
-Records all tool access attempts for compliance:
-- Logs allowed, denied, and error events
-- Sanitizes sensitive arguments (passwords, tokens, API keys)
-- Provides query and statistics APIs
-- Exports to JSON/CSV for auditing
-
-### 6. RateLimiter (`src/router/rate-limiter.ts`)
-Enforces quotas and rate limits per role:
-- Per-minute, per-hour, per-day limits
-- Concurrent execution limits
-- Tool-specific rate limits
-- Warning events at threshold (80%)
-
-### 7. RoleMemoryStore (`src/router/role-memory.ts`)
+### 3. RoleMemoryStore (`packages/rbac/src/role-memory.ts`)
 Transparent Markdown-based memory system per role:
 - Role-isolated memory (each role has separate memory)
 - Human-readable Markdown files for transparency
@@ -142,14 +131,20 @@ Transparent Markdown-based memory system per role:
 - Search and recall functionality
 - Inspired by Claude's file-based memory approach
 
-### 8. IdentityResolver (`src/router/identity-resolver.ts`)
+### 4. IdentityResolver (`packages/a2a/src/identity-resolver.ts`)
 A2A Zero-Trust identity resolution for agent-to-agent communication:
-- Resolves agent identity (clientInfo.name) to role
-- Glob-style pattern matching (*, ?)
-- Priority-based pattern ordering
+- Capability-based role matching (A2A Agent Card skills)
+- `requiredSkills` (AND logic) and `anySkills` (OR logic) matching
+- Priority-based rule ordering
 - Loads patterns from skills (skill-driven identity)
 - Trusted prefix detection for agent trust levels
-- Supports strict mode (reject unknown agents)
+
+### 5. Shared Types (`packages/shared/src/index.ts`)
+Common types used across all packages:
+- `Role`, `ToolPermissions`, `RoleMetadata`
+- `BaseSkillDefinition`, `SkillManifest`, `SkillGrants`
+- `Logger` interface for dependency injection
+- Error classes: `RoleNotFoundError`, `ToolNotAccessibleError`
 
 ## Development Commands
 
@@ -211,7 +206,7 @@ echo "Explain this" | aegis-cli --role mentor
 
 ## Key Type Definitions
 
-### Role (`src/types/router-types.ts`)
+### Role (`packages/shared/src/index.ts`)
 ```typescript
 interface Role {
   id: string;                    // Unique identifier
@@ -224,7 +219,7 @@ interface Role {
 }
 ```
 
-### SkillDefinition (`src/types/router-types.ts`)
+### SkillDefinition (`packages/a2a/src/types.ts`)
 ```typescript
 interface SkillDefinition {
   id: string;                   // Skill identifier
@@ -301,23 +296,34 @@ interface A2AAgentSkill {
 
 ## Testing
 
-Tests use Vitest and are located in `tests/`:
+Tests use Vitest and are distributed across packages (172 tests total):
+
+| Package | Tests | Description |
+|---------|-------|-------------|
+| `@aegis/rbac` | 126 | RoleManager, ToolVisibility, Memory, Skill integration |
+| `@aegis/a2a` | 33 | IdentityResolver capability-based matching |
+| `@aegis/core` | 13 | E2E tests with aegis-skills server |
 
 ```bash
-# Run all tests
+# Run all tests (from root)
 npm test
 
+# Run tests for specific package
+npm test --workspace=@aegis/rbac
+npm test --workspace=@aegis/a2a
+npm test --workspace=@aegis/core
+
 # Run specific test file
-npx vitest run tests/role-manager.test.ts
+npx vitest run packages/rbac/tests/role-manager.test.ts
 
 # Watch mode
-npm run test:watch
+npm run test:watch --workspace=@aegis/rbac
 ```
 
 ### Test Categories
-- **Unit tests**: RoleManager, ToolVisibilityManager
-- **Integration tests**: Skill integration, role switching
-- **E2E tests**: Full flow with aegis-skills server
+- **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver
+- **Integration tests**: Skill integration, role switching, memory permissions
+- **E2E tests**: Full flow with aegis-skills server (`packages/core/tests/real-e2e.test.ts`)
 
 ## Important Patterns
 
