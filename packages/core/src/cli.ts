@@ -13,10 +13,13 @@ import type { SDKMessage, ApiKeySource } from '@anthropic-ai/claude-agent-sdk';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Resolve paths relative to project root (one level up from src/)
-const projectRoot = join(__dirname, '..');
+// Resolve paths relative to monorepo root
+// When running from dist/, __dirname is packages/core/dist
+// When running from src/ (tsx), __dirname is packages/core/src
+// Either way, go up to packages/core, then to packages/, then to monorepo root
+const projectRoot = join(__dirname, '..', '..', '..');
 const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-  join(projectRoot, 'dist', 'mcp-server.js');
+  join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
 const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
   join(projectRoot, 'config.json');
 

@@ -9,9 +9,14 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { RoleManager } from '@aegis/rbac';
 import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+
+// Get __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Mock logger for tests
 const testLogger: Logger = {
@@ -21,9 +26,10 @@ const testLogger: Logger = {
   error: () => {}
 };
 
-// Path to @aegis/skills package in monorepo
-const AEGIS_SKILLS_PATH = join(process.cwd(), '../skills/dist/index.js');
-const SKILLS_DIR = join(process.cwd(), '../skills/skills');
+// Path to @aegis/skills package in monorepo (relative to this test file)
+// __dirname is packages/core/tests, so ../.. goes to packages/
+const AEGIS_SKILLS_PATH = join(__dirname, '..', '..', 'skills', 'dist', 'index.js');
+const SKILLS_DIR = join(__dirname, '..', '..', 'skills', 'skills');
 
 interface SkillData {
   id: string;
