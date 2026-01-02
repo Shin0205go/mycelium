@@ -559,17 +559,50 @@ export interface ListRolesResult {
 export type MemoryPolicy = 'none' | 'isolated' | 'team' | 'all';
 
 /**
- * Identity mapping for A2A Zero-Trust
- * Skills can define which agent patterns are assigned to which roles
+ * A2A Agent Skill (from Agent Card)
+ * Represents a capability that an agent declares it can perform
  */
-export interface SkillIdentityMapping {
-  /** Glob pattern to match against clientInfo.name */
-  pattern: string;
+export interface A2AAgentSkill {
+  /** Unique skill identifier */
+  id: string;
 
-  /** Role to assign when pattern matches */
+  /** Human-readable skill name */
+  name?: string;
+
+  /** Skill description */
+  description?: string;
+
+  /** Input modes supported (e.g., "text", "file") */
+  inputModes?: string[];
+
+  /** Output modes supported */
+  outputModes?: string[];
+
+  /** Example prompts for this skill */
+  examples?: string[];
+
+  /** Tags for categorization */
+  tags?: string[];
+}
+
+/**
+ * A2A Skill-based role matching rule
+ * Matches agents based on their declared skills in Agent Card
+ */
+export interface SkillMatchRule {
+  /** Role to assign when skills match */
   role: string;
 
-  /** Optional description for this mapping */
+  /** ALL of these skills must be present (AND logic) */
+  requiredSkills?: string[];
+
+  /** ANY of these skills is sufficient (OR logic) */
+  anySkills?: string[];
+
+  /** Minimum number of anySkills that must match (default: 1) */
+  minSkillMatch?: number;
+
+  /** Optional description for this rule */
   description?: string;
 
   /** Priority (higher = checked first, default: 0) */
@@ -590,13 +623,13 @@ export interface SkillGrants {
 
 /**
  * A2A identity configuration within skills
- * Skills can define identity-to-role mappings
+ * Skills define capability-based role matching rules
  */
 export interface SkillIdentityConfig {
-  /** Identity patterns defined by this skill */
-  mappings: SkillIdentityMapping[];
+  /** Skill-based matching rules (replaces pattern matching) */
+  skillMatching?: SkillMatchRule[];
 
-  /** Trusted agent prefixes defined by this skill */
+  /** Trusted agent name prefixes (for trust level, not role assignment) */
   trustedPrefixes?: string[];
 }
 
@@ -715,41 +748,23 @@ export interface SkillMcpClient {
 // ============================================================================
 
 /**
- * Identity pattern for matching agent names
- * Supports glob-style patterns: *, ?, [abc]
- */
-export interface IdentityPattern {
-  /** Glob pattern to match against clientInfo.name */
-  pattern: string;
-
-  /** Role to assign when pattern matches */
-  role: string;
-
-  /** Optional description for this mapping */
-  description?: string;
-
-  /** Priority (higher = checked first, default: 0) */
-  priority?: number;
-}
-
-/**
  * A2A Identity Configuration
- * Loaded from aegis-identity.yaml
+ * Skill-based role matching for Zero-Trust agent communication
  */
 export interface IdentityConfig {
   /** Configuration version */
   version: string;
 
-  /** Default role when no pattern matches */
+  /** Default role when no skills match */
   defaultRole: string;
 
-  /** Identity patterns (checked in priority order) */
-  patterns: IdentityPattern[];
+  /** Skill-based matching rules */
+  skillRules: SkillMatchRule[];
 
-  /** Whether to reject connections that don't match any pattern */
+  /** Whether to reject connections that don't match any rule */
   rejectUnknown?: boolean;
 
-  /** Trusted agent prefixes (e.g., "claude-", "aegis-") */
+  /** Trusted agent prefixes (for trust level, not role assignment) */
   trustedPrefixes?: string[];
 }
 
@@ -763,8 +778,11 @@ export interface IdentityResolution {
   /** Original agent name from clientInfo */
   agentName: string;
 
-  /** Which pattern matched (null if default) */
-  matchedPattern: string | null;
+  /** Which matching rule was used (null if default) */
+  matchedRule: SkillMatchRule | null;
+
+  /** Skills that matched from the agent */
+  matchedSkills: string[];
 
   /** Whether this is a trusted agent */
   isTrusted: boolean;
@@ -775,6 +793,7 @@ export interface IdentityResolution {
 
 /**
  * Agent identity information from MCP connection
+ * Extended with A2A Agent Card skills
  */
 export interface AgentIdentity {
   /** Agent name from clientInfo.name */
@@ -782,6 +801,9 @@ export interface AgentIdentity {
 
   /** Agent version from clientInfo.version */
   version?: string;
+
+  /** A2A Agent Card skills - capabilities the agent declares */
+  skills?: A2AAgentSkill[];
 
   /** Additional metadata */
   metadata?: Record<string, unknown>;

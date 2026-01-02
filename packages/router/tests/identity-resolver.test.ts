@@ -1,18 +1,20 @@
 /**
  * Identity Resolver Tests
  *
- * Tests covering A2A identity resolution:
- * 1. Pattern matching (glob-style)
- * 2. Priority ordering
- * 3. Default role fallback
- * 4. Reject unknown mode
- * 5. Trusted prefix detection
+ * Tests covering A2A skill-based identity resolution:
+ * 1. Required skills matching (AND logic)
+ * 2. Any skills matching (OR logic)
+ * 3. Priority ordering
+ * 4. Default role fallback
+ * 5. Reject unknown mode
+ * 6. Trusted prefix detection
+ * 7. Loading from Aegis skills
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { IdentityResolver, createIdentityResolver } from '../src/router/identity-resolver.js';
 import { Logger } from '../src/utils/logger.js';
-import type { IdentityConfig, AgentIdentity, SkillDefinition } from '../src/types/router-types.js';
+import type { IdentityConfig, AgentIdentity, SkillDefinition, SkillMatchRule } from '../src/types/router-types.js';
 
 // Set LOG_SILENT for tests
 process.env.LOG_SILENT = 'true';
@@ -20,297 +22,380 @@ const testLogger = new Logger();
 
 describe('IdentityResolver', () => {
   describe('Basic Resolution', () => {
-    it('should resolve to default role when no patterns match', () => {
+    it('should resolve to default role when no rules match', () => {
       const resolver = createIdentityResolver(testLogger);
       resolver.setDefaultRole('guest');
 
-      const identity: AgentIdentity = { name: 'unknown-agent' };
+      const identity: AgentIdentity = {
+        name: 'unknown-agent',
+        skills: [{ id: 'some_skill' }]
+      };
       const result = resolver.resolve(identity);
 
       expect(result.roleId).toBe('guest');
       expect(result.agentName).toBe('unknown-agent');
-      expect(result.matchedPattern).toBeNull();
+      expect(result.matchedRule).toBeNull();
+      expect(result.matchedSkills).toEqual([]);
     });
 
-    it('should resolve exact pattern match', () => {
+    it('should resolve to default role when agent has no skills', () => {
       const resolver = createIdentityResolver(testLogger);
-      resolver.addPattern({ pattern: 'claude-code', role: 'admin' });
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'developer',
+        requiredSkills: ['coding']
+      });
 
-      const identity: AgentIdentity = { name: 'claude-code' };
+      const identity: AgentIdentity = {
+        name: 'empty-agent',
+        skills: []
+      };
       const result = resolver.resolve(identity);
 
-      expect(result.roleId).toBe('admin');
-      expect(result.matchedPattern).toBe('claude-code');
+      expect(result.roleId).toBe('guest');
     });
+  });
 
-    it('should resolve wildcard pattern', () => {
+  describe('Required Skills Matching (AND logic)', () => {
+    it('should match when agent has all required skills', () => {
       const resolver = createIdentityResolver(testLogger);
-      resolver.addPattern({ pattern: 'aegis-frontend-*', role: 'frontend' });
+      resolver.addRule({
+        role: 'frontend',
+        requiredSkills: ['create_component', 'style_design']
+      });
 
-      const identity: AgentIdentity = { name: 'aegis-frontend-12345' };
+      const identity: AgentIdentity = {
+        name: 'frontend-agent',
+        skills: [
+          { id: 'create_component' },
+          { id: 'style_design' },
+          { id: 'extra_skill' }
+        ]
+      };
       const result = resolver.resolve(identity);
 
       expect(result.roleId).toBe('frontend');
-      expect(result.matchedPattern).toBe('aegis-frontend-*');
+      expect(result.matchedSkills).toContain('create_component');
+      expect(result.matchedSkills).toContain('style_design');
     });
 
-    it('should resolve suffix wildcard pattern', () => {
+    it('should not match when missing one required skill', () => {
       const resolver = createIdentityResolver(testLogger);
-      resolver.addPattern({ pattern: '*-agent', role: 'developer' });
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'frontend',
+        requiredSkills: ['create_component', 'style_design']
+      });
 
-      const identity: AgentIdentity = { name: 'test-agent' };
+      const identity: AgentIdentity = {
+        name: 'partial-agent',
+        skills: [
+          { id: 'create_component' }
+          // missing style_design
+        ]
+      };
       const result = resolver.resolve(identity);
 
-      expect(result.roleId).toBe('developer');
+      expect(result.roleId).toBe('guest');
+    });
+  });
+
+  describe('Any Skills Matching (OR logic)', () => {
+    it('should match when agent has at least one of anySkills', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({
+        role: 'frontend',
+        anySkills: ['react_development', 'vue_development', 'angular_development']
+      });
+
+      const identity: AgentIdentity = {
+        name: 'react-agent',
+        skills: [{ id: 'react_development' }]
+      };
+      const result = resolver.resolve(identity);
+
+      expect(result.roleId).toBe('frontend');
+      expect(result.matchedSkills).toContain('react_development');
     });
 
-    it('should resolve middle wildcard pattern', () => {
+    it('should not match when agent has none of anySkills', () => {
       const resolver = createIdentityResolver(testLogger);
-      resolver.addPattern({ pattern: 'agent-*-dev', role: 'developer' });
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'frontend',
+        anySkills: ['react_development', 'vue_development']
+      });
 
-      const identity: AgentIdentity = { name: 'agent-frontend-dev' };
+      const identity: AgentIdentity = {
+        name: 'backend-agent',
+        skills: [{ id: 'database_query' }]
+      };
       const result = resolver.resolve(identity);
 
-      expect(result.roleId).toBe('developer');
+      expect(result.roleId).toBe('guest');
+    });
+
+    it('should respect minSkillMatch for anySkills', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'senior',
+        anySkills: ['react', 'vue', 'angular', 'svelte'],
+        minSkillMatch: 2
+      });
+
+      // Agent with only 1 skill - should not match
+      const identity1: AgentIdentity = {
+        name: 'junior-agent',
+        skills: [{ id: 'react' }]
+      };
+      expect(resolver.resolve(identity1).roleId).toBe('guest');
+
+      // Agent with 2 skills - should match
+      const identity2: AgentIdentity = {
+        name: 'senior-agent',
+        skills: [{ id: 'react' }, { id: 'vue' }]
+      };
+      expect(resolver.resolve(identity2).roleId).toBe('senior');
+    });
+  });
+
+  describe('Combined Required + Any Skills', () => {
+    it('should match when both required and any skills are satisfied', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({
+        role: 'fullstack',
+        requiredSkills: ['coding', 'testing'],
+        anySkills: ['frontend_framework', 'backend_framework']
+      });
+
+      const identity: AgentIdentity = {
+        name: 'fullstack-agent',
+        skills: [
+          { id: 'coding' },
+          { id: 'testing' },
+          { id: 'frontend_framework' }
+        ]
+      };
+      const result = resolver.resolve(identity);
+
+      expect(result.roleId).toBe('fullstack');
+    });
+
+    it('should not match if required skills are missing even if any skills match', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'fullstack',
+        requiredSkills: ['coding', 'testing'],
+        anySkills: ['frontend_framework', 'backend_framework']
+      });
+
+      const identity: AgentIdentity = {
+        name: 'partial-agent',
+        skills: [
+          { id: 'coding' },
+          // missing testing
+          { id: 'frontend_framework' }
+        ]
+      };
+      const result = resolver.resolve(identity);
+
+      expect(result.roleId).toBe('guest');
     });
   });
 
   describe('Priority Ordering', () => {
-    it('should use higher priority patterns first', () => {
-      // Use fresh resolver for this test
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: '*', role: 'guest', priority: 0 });
-      freshResolver.addPattern({ pattern: 'aegis-*', role: 'developer', priority: 10 });
-      freshResolver.addPattern({ pattern: 'aegis-admin-*', role: 'admin', priority: 100 });
+    it('should use higher priority rules first', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({
+        role: 'developer',
+        anySkills: ['coding'],
+        priority: 10
+      });
+      resolver.addRule({
+        role: 'admin',
+        anySkills: ['coding', 'admin_access'],
+        priority: 100
+      });
 
-      // Should match highest priority first
-      const adminResult = freshResolver.resolve({ name: 'aegis-admin-main' });
-      expect(adminResult.roleId).toBe('admin');
+      // Agent has both skills - higher priority rule wins
+      const identity: AgentIdentity = {
+        name: 'admin-agent',
+        skills: [{ id: 'coding' }, { id: 'admin_access' }]
+      };
+      const result = resolver.resolve(identity);
 
-      // Should fall through to next match
-      const devResult = freshResolver.resolve({ name: 'aegis-frontend-1' });
-      expect(devResult.roleId).toBe('developer');
-
-      // Should use lowest priority
-      const guestResult = freshResolver.resolve({ name: 'random-agent' });
-      expect(guestResult.roleId).toBe('guest');
+      expect(result.roleId).toBe('admin');
     });
 
     it('should use default priority of 0', () => {
-      // Use fresh resolver for this test
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: 'a-*', role: 'role-a' });
-      freshResolver.addPattern({ pattern: 'a-*', role: 'role-b', priority: 10 });
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({
+        role: 'role-a',
+        anySkills: ['skill-x']
+        // no priority = 0
+      });
+      resolver.addRule({
+        role: 'role-b',
+        anySkills: ['skill-x'],
+        priority: 10
+      });
 
-      const result = freshResolver.resolve({ name: 'a-test' });
+      const identity: AgentIdentity = {
+        name: 'agent',
+        skills: [{ id: 'skill-x' }]
+      };
+      const result = resolver.resolve(identity);
+
       expect(result.roleId).toBe('role-b');
     });
   });
 
   describe('Reject Unknown Mode', () => {
     it('should reject unknown agents when configured', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.setRejectUnknown(true);
-      freshResolver.addPattern({ pattern: 'allowed-*', role: 'developer' });
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setRejectUnknown(true);
+      resolver.addRule({
+        role: 'developer',
+        requiredSkills: ['coding']
+      });
 
-      expect(() => {
-        freshResolver.resolve({ name: 'not-allowed-agent' });
-      }).toThrow(/Unknown agent/);
+      const identity: AgentIdentity = {
+        name: 'unknown-agent',
+        skills: [{ id: 'unrelated_skill' }]
+      };
+
+      expect(() => resolver.resolve(identity)).toThrow(/Unknown agent/);
     });
 
-    it('should not reject when pattern matches', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.setRejectUnknown(true);
-      freshResolver.addPattern({ pattern: 'allowed-*', role: 'developer' });
+    it('should not reject when rule matches', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setRejectUnknown(true);
+      resolver.addRule({
+        role: 'developer',
+        requiredSkills: ['coding']
+      });
 
-      const result = freshResolver.resolve({ name: 'allowed-agent' });
-      expect(result.roleId).toBe('developer');
-    });
+      const identity: AgentIdentity = {
+        name: 'dev-agent',
+        skills: [{ id: 'coding' }]
+      };
 
-    it('should use default role when rejectUnknown is false', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.setRejectUnknown(false);
-      freshResolver.setDefaultRole('fallback');
-      freshResolver.addPattern({ pattern: 'specific-*', role: 'specific' });
-
-      const result = freshResolver.resolve({ name: 'other-agent' });
-      expect(result.roleId).toBe('fallback');
+      expect(() => resolver.resolve(identity)).not.toThrow();
+      expect(resolver.resolve(identity).roleId).toBe('developer');
     });
   });
 
   describe('Trusted Prefix Detection', () => {
-    it('should detect trusted agents by prefix', () => {
-      const freshResolver = createIdentityResolver(testLogger);
+    it('should detect trusted agents by name prefix', () => {
+      const resolver = createIdentityResolver(testLogger);
       // Default trusted prefixes include 'claude-' and 'aegis-'
-      const claudeResult = freshResolver.resolve({ name: 'claude-code' });
+
+      const claudeResult = resolver.resolve({ name: 'claude-code', skills: [] });
       expect(claudeResult.isTrusted).toBe(true);
 
-      const aegisResult = freshResolver.resolve({ name: 'aegis-frontend-1' });
+      const aegisResult = resolver.resolve({ name: 'aegis-frontend-1', skills: [] });
       expect(aegisResult.isTrusted).toBe(true);
     });
 
     it('should mark untrusted agents', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      const result = freshResolver.resolve({ name: 'random-agent' });
+      const resolver = createIdentityResolver(testLogger);
+      const result = resolver.resolve({ name: 'random-agent', skills: [] });
       expect(result.isTrusted).toBe(false);
     });
 
     it('should be case-insensitive for trust detection', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      const result = freshResolver.resolve({ name: 'CLAUDE-CODE' });
+      const resolver = createIdentityResolver(testLogger);
+      const result = resolver.resolve({ name: 'CLAUDE-CODE', skills: [] });
       expect(result.isTrusted).toBe(true);
-    });
-  });
-
-  describe('Configuration Management', () => {
-    it('should allow adding patterns dynamically', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: 'new-*', role: 'new-role' });
-
-      const patterns = freshResolver.getPatterns();
-      expect(patterns.some(p => p.pattern === 'new-*')).toBe(true);
-    });
-
-    it('should return config copy', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      const config = freshResolver.getConfig();
-      expect(config.version).toBe('1.0.0');
-      expect(config.defaultRole).toBe('default');
-    });
-
-    it('should check if role pattern exists', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: 'test-*', role: 'tester' });
-
-      expect(freshResolver.hasRolePattern('tester')).toBe(true);
-      expect(freshResolver.hasRolePattern('nonexistent')).toBe(false);
-    });
-
-    it('should include default role in hasRolePattern check', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.setDefaultRole('fallback');
-      expect(freshResolver.hasRolePattern('fallback')).toBe(true);
-    });
-  });
-
-  describe('Full Configuration', () => {
-    it('should work with complete config', () => {
-      const config: IdentityConfig = {
-        version: '2.0.0',
-        defaultRole: 'guest',
-        rejectUnknown: false,
-        trustedPrefixes: ['internal-', 'trusted-'],
-        patterns: [
-          { pattern: 'admin-*', role: 'admin', priority: 100 },
-          { pattern: 'dev-*', role: 'developer', priority: 50 },
-          { pattern: '*', role: 'viewer', priority: 0 }
-        ]
-      };
-
-      const resolver = createIdentityResolver(testLogger, config);
-
-      // Test admin
-      const adminResult = resolver.resolve({ name: 'admin-main' });
-      expect(adminResult.roleId).toBe('admin');
-
-      // Test developer
-      const devResult = resolver.resolve({ name: 'dev-frontend' });
-      expect(devResult.roleId).toBe('developer');
-
-      // Test trusted detection
-      const trustedResult = resolver.resolve({ name: 'internal-service' });
-      expect(trustedResult.isTrusted).toBe(true);
-
-      const untrustedResult = resolver.resolve({ name: 'external-service' });
-      expect(untrustedResult.isTrusted).toBe(false);
     });
   });
 
   describe('Edge Cases', () => {
     it('should handle empty agent name by using fallback', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      const result = freshResolver.resolve({ name: '' });
-      // Empty string is treated as 'unknown' for safety
+      const resolver = createIdentityResolver(testLogger);
+      const result = resolver.resolve({ name: '', skills: [] });
       expect(result.agentName).toBe('unknown');
     });
 
     it('should handle undefined agent name', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      const result = freshResolver.resolve({ name: undefined as any });
+      const resolver = createIdentityResolver(testLogger);
+      const result = resolver.resolve({ name: undefined as any, skills: [] });
       expect(result.agentName).toBe('unknown');
     });
 
-    it('should handle special characters in pattern', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: 'agent.v1.*', role: 'versioned' });
-
-      const result = freshResolver.resolve({ name: 'agent.v1.beta' });
-      expect(result.roleId).toBe('versioned');
-    });
-
-    it('should handle multiple wildcards', () => {
-      const freshResolver = createIdentityResolver(testLogger);
-      freshResolver.addPattern({ pattern: '*-*-*', role: 'triple' });
-
-      const result = freshResolver.resolve({ name: 'a-b-c' });
-      expect(result.roleId).toBe('triple');
+    it('should handle undefined skills array', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+      const result = resolver.resolve({ name: 'agent' });
+      expect(result.roleId).toBe('guest');
     });
 
     it('should include resolution timestamp', () => {
-      const freshResolver = createIdentityResolver(testLogger);
+      const resolver = createIdentityResolver(testLogger);
       const beforeTime = new Date();
-      const result = freshResolver.resolve({ name: 'test' });
+      const result = resolver.resolve({ name: 'test', skills: [] });
       const afterTime = new Date();
 
       expect(result.resolvedAt.getTime()).toBeGreaterThanOrEqual(beforeTime.getTime());
       expect(result.resolvedAt.getTime()).toBeLessThanOrEqual(afterTime.getTime());
     });
+
+    it('should not match rules with empty skill arrays', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+      resolver.addRule({
+        role: 'empty-rule',
+        requiredSkills: [],
+        anySkills: []
+      });
+
+      const identity: AgentIdentity = {
+        name: 'agent',
+        skills: [{ id: 'some_skill' }]
+      };
+      const result = resolver.resolve(identity);
+
+      expect(result.roleId).toBe('guest');
+    });
+  });
+
+  describe('Configuration Management', () => {
+    it('should allow adding rules dynamically', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({ role: 'new-role', requiredSkills: ['new_skill'] });
+
+      const rules = resolver.getRules();
+      expect(rules.some(r => r.role === 'new-role')).toBe(true);
+    });
+
+    it('should return config copy', () => {
+      const resolver = createIdentityResolver(testLogger);
+      const config = resolver.getConfig();
+      expect(config.version).toBe('1.0.0');
+      expect(config.defaultRole).toBe('guest');
+    });
+
+    it('should check if role rule exists', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addRule({ role: 'tester', anySkills: ['testing'] });
+
+      expect(resolver.hasRoleRule('tester')).toBe(true);
+      expect(resolver.hasRoleRule('nonexistent')).toBe(false);
+    });
+
+    it('should include default role in hasRoleRule check', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('fallback');
+      expect(resolver.hasRoleRule('fallback')).toBe(true);
+    });
   });
 });
 
-describe('A2A Mode Integration', () => {
-  it('should resolve identity for A2A connection', () => {
-    const config: IdentityConfig = {
-      version: '1.0.0',
-      defaultRole: 'guest',
-      trustedPrefixes: ['claude-', 'aegis-'],
-      patterns: [
-        { pattern: 'claude-*', role: 'admin', priority: 100 },
-        { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 },
-        { pattern: 'aegis-backend-*', role: 'backend', priority: 50 }
-      ]
-    };
-
-    const resolver = createIdentityResolver(testLogger, config);
-
-    // Simulate Claude Code connection
-    const claudeResult = resolver.resolve({
-      name: 'claude-code',
-      version: '1.0.0'
-    });
-    expect(claudeResult.roleId).toBe('admin');
-    expect(claudeResult.isTrusted).toBe(true);
-
-    // Simulate frontend sub-agent
-    const frontendResult = resolver.resolve({
-      name: 'aegis-frontend-component-builder'
-    });
-    expect(frontendResult.roleId).toBe('frontend');
-    expect(frontendResult.isTrusted).toBe(true);
-
-    // Simulate unknown agent
-    const unknownResult = resolver.resolve({
-      name: 'external-tool'
-    });
-    expect(unknownResult.roleId).toBe('guest');
-    expect(unknownResult.matchedPattern).toBeNull();
-    expect(unknownResult.isTrusted).toBe(false);
-  });
-});
-
-describe('Skill-Based Identity Loading', () => {
+describe('Skill-Based Identity Loading from Aegis Skills', () => {
   describe('loadFromSkills', () => {
-    it('should load identity patterns from skills', () => {
+    it('should load skill matching rules from skills', () => {
       const resolver = createIdentityResolver(testLogger);
 
       const skills: SkillDefinition[] = [
@@ -321,27 +406,33 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['admin'],
           allowedTools: ['*'],
           identity: {
-            mappings: [
-              { pattern: 'claude-code', role: 'admin', priority: 100 },
-              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            skillMatching: [
+              {
+                role: 'admin',
+                requiredSkills: ['admin_access', 'system_management'],
+                priority: 100
+              }
             ],
-            trustedPrefixes: ['claude-', 'aegis-']
+            trustedPrefixes: ['admin-']
           }
         }
       ];
 
       resolver.loadFromSkills(skills);
 
-      // Test pattern matching
-      const claudeResult = resolver.resolve({ name: 'claude-code' });
-      expect(claudeResult.roleId).toBe('admin');
-      expect(claudeResult.matchedPattern).toBe('claude-code');
+      // Test matching
+      const adminAgent: AgentIdentity = {
+        name: 'admin-agent',
+        skills: [{ id: 'admin_access' }, { id: 'system_management' }]
+      };
+      const result = resolver.resolve(adminAgent);
 
-      const adminAgentResult = resolver.resolve({ name: 'aegis-admin-main' });
-      expect(adminAgentResult.roleId).toBe('admin');
+      expect(result.roleId).toBe('admin');
+      expect(result.matchedSkills).toContain('admin_access');
+      expect(result.matchedSkills).toContain('system_management');
     });
 
-    it('should load patterns from multiple skills', () => {
+    it('should load rules from multiple skills', () => {
       const resolver = createIdentityResolver(testLogger);
 
       const skills: SkillDefinition[] = [
@@ -352,8 +443,12 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['frontend'],
           allowedTools: ['filesystem__*'],
           identity: {
-            mappings: [
-              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 }
+            skillMatching: [
+              {
+                role: 'frontend',
+                anySkills: ['react', 'vue', 'angular'],
+                priority: 50
+              }
             ]
           }
         },
@@ -364,8 +459,12 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['backend'],
           allowedTools: ['database__*'],
           identity: {
-            mappings: [
-              { pattern: 'aegis-backend-*', role: 'backend', priority: 50 }
+            skillMatching: [
+              {
+                role: 'backend',
+                anySkills: ['nodejs', 'python', 'java'],
+                priority: 50
+              }
             ]
           }
         }
@@ -373,11 +472,17 @@ describe('Skill-Based Identity Loading', () => {
 
       resolver.loadFromSkills(skills);
 
-      const frontendResult = resolver.resolve({ name: 'aegis-frontend-ui-builder' });
-      expect(frontendResult.roleId).toBe('frontend');
+      const frontendAgent: AgentIdentity = {
+        name: 'react-agent',
+        skills: [{ id: 'react' }]
+      };
+      expect(resolver.resolve(frontendAgent).roleId).toBe('frontend');
 
-      const backendResult = resolver.resolve({ name: 'aegis-backend-api-service' });
-      expect(backendResult.roleId).toBe('backend');
+      const backendAgent: AgentIdentity = {
+        name: 'node-agent',
+        skills: [{ id: 'nodejs' }]
+      };
+      expect(resolver.resolve(backendAgent).roleId).toBe('backend');
     });
 
     it('should respect priority ordering across skills', () => {
@@ -388,11 +493,11 @@ describe('Skill-Based Identity Loading', () => {
           id: 'low-priority-skill',
           displayName: 'Low Priority',
           description: 'Low priority skill',
-          allowedRoles: ['guest'],
+          allowedRoles: ['developer'],
           allowedTools: [],
           identity: {
-            mappings: [
-              { pattern: 'aegis-*', role: 'guest', priority: 10 }
+            skillMatching: [
+              { role: 'developer', anySkills: ['coding'], priority: 10 }
             ]
           }
         },
@@ -403,8 +508,8 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['admin'],
           allowedTools: ['*'],
           identity: {
-            mappings: [
-              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            skillMatching: [
+              { role: 'admin', requiredSkills: ['coding', 'admin_access'], priority: 100 }
             ]
           }
         }
@@ -412,13 +517,19 @@ describe('Skill-Based Identity Loading', () => {
 
       resolver.loadFromSkills(skills);
 
-      // Higher priority should win
-      const adminResult = resolver.resolve({ name: 'aegis-admin-main' });
-      expect(adminResult.roleId).toBe('admin');
+      // Agent with both skills - admin rule wins due to higher priority
+      const adminAgent: AgentIdentity = {
+        name: 'admin',
+        skills: [{ id: 'coding' }, { id: 'admin_access' }]
+      };
+      expect(resolver.resolve(adminAgent).roleId).toBe('admin');
 
-      // Lower priority pattern should match other aegis agents
-      const guestResult = resolver.resolve({ name: 'aegis-guest-viewer' });
-      expect(guestResult.roleId).toBe('guest');
+      // Agent with only coding - developer rule applies
+      const devAgent: AgentIdentity = {
+        name: 'dev',
+        skills: [{ id: 'coding' }]
+      };
+      expect(resolver.resolve(devAgent).roleId).toBe('developer');
     });
 
     it('should aggregate trusted prefixes from all skills', () => {
@@ -432,7 +543,7 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['a'],
           allowedTools: [],
           identity: {
-            mappings: [],
+            skillMatching: [],
             trustedPrefixes: ['trusted-a-']
           }
         },
@@ -443,7 +554,7 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['b'],
           allowedTools: [],
           identity: {
-            mappings: [],
+            skillMatching: [],
             trustedPrefixes: ['trusted-b-']
           }
         }
@@ -456,10 +567,10 @@ describe('Skill-Based Identity Loading', () => {
       expect(stats.trustedPrefixes).toContain('trusted-b-');
 
       // Check trust detection
-      const trustedA = resolver.resolve({ name: 'trusted-a-agent' });
+      const trustedA = resolver.resolve({ name: 'trusted-a-agent', skills: [] });
       expect(trustedA.isTrusted).toBe(true);
 
-      const trustedB = resolver.resolve({ name: 'trusted-b-agent' });
+      const trustedB = resolver.resolve({ name: 'trusted-b-agent', skills: [] });
       expect(trustedB.isTrusted).toBe(true);
     });
 
@@ -474,8 +585,8 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['developer'],
           allowedTools: [],
           identity: {
-            mappings: [
-              { pattern: 'dev-*', role: 'developer' }
+            skillMatching: [
+              { role: 'developer', anySkills: ['coding'] }
             ]
           }
         },
@@ -492,98 +603,22 @@ describe('Skill-Based Identity Loading', () => {
       resolver.loadFromSkills(skills);
 
       const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(1);
-      expect(stats.patternsByRole).toEqual({ developer: 1 });
-    });
-
-    it('should avoid duplicate patterns', () => {
-      const resolver = createIdentityResolver(testLogger);
-
-      const skills: SkillDefinition[] = [
-        {
-          id: 'skill-1',
-          displayName: 'Skill 1',
-          description: 'First skill',
-          allowedRoles: ['admin'],
-          allowedTools: [],
-          identity: {
-            mappings: [
-              { pattern: 'claude-code', role: 'admin', priority: 100 }
-            ]
-          }
-        },
-        {
-          id: 'skill-2',
-          displayName: 'Skill 2',
-          description: 'Second skill with same pattern',
-          allowedRoles: ['admin'],
-          allowedTools: [],
-          identity: {
-            mappings: [
-              { pattern: 'claude-code', role: 'admin', priority: 100 }
-            ]
-          }
-        }
-      ];
-
-      resolver.loadFromSkills(skills);
-
-      const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(1); // Should only have one pattern
-    });
-
-    it('should allow same pattern with different roles', () => {
-      const resolver = createIdentityResolver(testLogger);
-
-      const skills: SkillDefinition[] = [
-        {
-          id: 'skill-1',
-          displayName: 'Skill 1',
-          description: 'First skill',
-          allowedRoles: ['admin'],
-          allowedTools: [],
-          identity: {
-            mappings: [
-              { pattern: 'multi-role-agent', role: 'admin', priority: 100 }
-            ]
-          }
-        },
-        {
-          id: 'skill-2',
-          displayName: 'Skill 2',
-          description: 'Second skill with same pattern but different role',
-          allowedRoles: ['developer'],
-          allowedTools: [],
-          identity: {
-            mappings: [
-              { pattern: 'multi-role-agent', role: 'developer', priority: 50 }
-            ]
-          }
-        }
-      ];
-
-      resolver.loadFromSkills(skills);
-
-      const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(2); // Should have both patterns
-
-      // Higher priority wins
-      const result = resolver.resolve({ name: 'multi-role-agent' });
-      expect(result.roleId).toBe('admin');
+      expect(stats.totalRules).toBe(1);
+      expect(stats.rulesByRole).toEqual({ developer: 1 });
     });
   });
 
-  describe('clearPatterns', () => {
-    it('should clear all patterns', () => {
+  describe('clearRules', () => {
+    it('should clear all rules', () => {
       const resolver = createIdentityResolver(testLogger);
-      resolver.addPattern({ pattern: 'test-*', role: 'test' });
+      resolver.addRule({ role: 'test', anySkills: ['test_skill'] });
 
-      expect(resolver.getStats().totalPatterns).toBe(1);
+      expect(resolver.getStats().totalRules).toBe(1);
 
-      resolver.clearPatterns();
+      resolver.clearRules();
 
-      expect(resolver.getStats().totalPatterns).toBe(0);
-      expect(resolver.getPatterns()).toHaveLength(0);
+      expect(resolver.getStats().totalRules).toBe(0);
+      expect(resolver.getRules()).toHaveLength(0);
     });
   });
 
@@ -600,9 +635,9 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['admin'],
           allowedTools: ['*'],
           identity: {
-            mappings: [
-              { pattern: 'claude-*', role: 'admin', priority: 100 },
-              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            skillMatching: [
+              { role: 'admin', requiredSkills: ['admin_access'], priority: 100 },
+              { role: 'admin', anySkills: ['system_management'], priority: 50 }
             ],
             trustedPrefixes: ['claude-', 'aegis-']
           }
@@ -614,8 +649,8 @@ describe('Skill-Based Identity Loading', () => {
           allowedRoles: ['frontend'],
           allowedTools: [],
           identity: {
-            mappings: [
-              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 }
+            skillMatching: [
+              { role: 'frontend', anySkills: ['react', 'vue'], priority: 50 }
             ]
           }
         }
@@ -624,61 +659,14 @@ describe('Skill-Based Identity Loading', () => {
       resolver.loadFromSkills(skills);
 
       const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(3);
-      expect(stats.patternsByRole).toEqual({
+      expect(stats.totalRules).toBe(3);
+      expect(stats.rulesByRole).toEqual({
         admin: 2,
         frontend: 1
       });
       expect(stats.trustedPrefixes).toContain('claude-');
       expect(stats.trustedPrefixes).toContain('aegis-');
       expect(stats.defaultRole).toBe('guest');
-    });
-  });
-
-  describe('Integration with Default Config', () => {
-    it('should merge skill patterns with existing config', () => {
-      const config: IdentityConfig = {
-        version: '1.0.0',
-        defaultRole: 'guest',
-        trustedPrefixes: ['internal-'],
-        patterns: [
-          { pattern: 'internal-*', role: 'internal', priority: 50 }
-        ]
-      };
-
-      const resolver = createIdentityResolver(testLogger, config);
-
-      const skills: SkillDefinition[] = [
-        {
-          id: 'external-skill',
-          displayName: 'External',
-          description: 'External skill',
-          allowedRoles: ['external'],
-          allowedTools: [],
-          identity: {
-            mappings: [
-              { pattern: 'external-*', role: 'external', priority: 50 }
-            ],
-            trustedPrefixes: ['external-']
-          }
-        }
-      ];
-
-      resolver.loadFromSkills(skills);
-
-      const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(2);
-      expect(stats.trustedPrefixes).toContain('internal-');
-      expect(stats.trustedPrefixes).toContain('external-');
-
-      // Both patterns should work
-      const internalResult = resolver.resolve({ name: 'internal-service' });
-      expect(internalResult.roleId).toBe('internal');
-      expect(internalResult.isTrusted).toBe(true);
-
-      const externalResult = resolver.resolve({ name: 'external-api' });
-      expect(externalResult.roleId).toBe('external');
-      expect(externalResult.isTrusted).toBe(true);
     });
   });
 
@@ -697,9 +685,13 @@ describe('Skill-Based Identity Loading', () => {
           allowedTools: ['*'],
           grants: { memory: 'all' },
           identity: {
-            mappings: [
-              { pattern: 'claude-code', role: 'admin', priority: 100, description: 'Claude Code gets admin' },
-              { pattern: 'aegis-admin-*', role: 'admin', priority: 100, description: 'Admin agents' }
+            skillMatching: [
+              {
+                role: 'admin',
+                requiredSkills: ['admin_access', 'system_management'],
+                priority: 100,
+                description: 'Full admin access requires both skills'
+              }
             ],
             trustedPrefixes: ['claude-', 'aegis-']
           }
@@ -712,9 +704,13 @@ describe('Skill-Based Identity Loading', () => {
           allowedTools: ['filesystem__read_file', 'filesystem__write_file'],
           grants: { memory: 'isolated' },
           identity: {
-            mappings: [
-              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 },
-              { pattern: '*-ui-agent', role: 'frontend', priority: 10 }
+            skillMatching: [
+              {
+                role: 'frontend',
+                anySkills: ['react', 'vue', 'angular', 'svelte'],
+                minSkillMatch: 1,
+                priority: 50
+              }
             ]
           }
         },
@@ -726,9 +722,13 @@ describe('Skill-Based Identity Loading', () => {
           allowedTools: ['database__*', 'api__*'],
           grants: { memory: 'isolated' },
           identity: {
-            mappings: [
-              { pattern: 'aegis-backend-*', role: 'backend', priority: 50 },
-              { pattern: '*-api-agent', role: 'backend', priority: 10 }
+            skillMatching: [
+              {
+                role: 'backend',
+                anySkills: ['nodejs', 'python', 'java', 'go'],
+                minSkillMatch: 1,
+                priority: 50
+              }
             ]
           }
         }
@@ -736,39 +736,54 @@ describe('Skill-Based Identity Loading', () => {
 
       resolver.loadFromSkills(skills);
 
-      // Test Claude Code → admin
-      const claudeResult = resolver.resolve({ name: 'claude-code', version: '1.0.0' });
-      expect(claudeResult.roleId).toBe('admin');
-      expect(claudeResult.isTrusted).toBe(true);
-      expect(claudeResult.matchedPattern).toBe('claude-code');
+      // Test admin agent (needs both skills)
+      const adminAgent: AgentIdentity = {
+        name: 'claude-admin',
+        skills: [{ id: 'admin_access' }, { id: 'system_management' }]
+      };
+      const adminResult = resolver.resolve(adminAgent);
+      expect(adminResult.roleId).toBe('admin');
+      expect(adminResult.isTrusted).toBe(true);
+
+      // Test partial admin (missing one skill) → falls to guest
+      const partialAdmin: AgentIdentity = {
+        name: 'partial-admin',
+        skills: [{ id: 'admin_access' }]
+      };
+      expect(resolver.resolve(partialAdmin).roleId).toBe('guest');
 
       // Test frontend agent
-      const frontendResult = resolver.resolve({ name: 'aegis-frontend-component-builder' });
+      const frontendAgent: AgentIdentity = {
+        name: 'react-builder',
+        skills: [{ id: 'react' }, { id: 'typescript' }]
+      };
+      const frontendResult = resolver.resolve(frontendAgent);
       expect(frontendResult.roleId).toBe('frontend');
-      expect(frontendResult.isTrusted).toBe(true);
+      expect(frontendResult.matchedSkills).toContain('react');
 
       // Test backend agent
-      const backendResult = resolver.resolve({ name: 'aegis-backend-api-gateway' });
-      expect(backendResult.roleId).toBe('backend');
-      expect(backendResult.isTrusted).toBe(true);
-
-      // Test suffix pattern matching
-      const uiAgentResult = resolver.resolve({ name: 'custom-ui-agent' });
-      expect(uiAgentResult.roleId).toBe('frontend');
-      expect(uiAgentResult.isTrusted).toBe(false); // not in trusted prefixes
+      const backendAgent: AgentIdentity = {
+        name: 'api-service',
+        skills: [{ id: 'nodejs' }, { id: 'database_query' }]
+      };
+      expect(resolver.resolve(backendAgent).roleId).toBe('backend');
 
       // Test unknown agent → guest
-      const unknownResult = resolver.resolve({ name: 'unknown-service' });
+      const unknownAgent: AgentIdentity = {
+        name: 'unknown-service',
+        skills: [{ id: 'unrelated_skill' }]
+      };
+      const unknownResult = resolver.resolve(unknownAgent);
       expect(unknownResult.roleId).toBe('guest');
-      expect(unknownResult.matchedPattern).toBeNull();
+      expect(unknownResult.matchedRule).toBeNull();
       expect(unknownResult.isTrusted).toBe(false);
 
       // Verify stats
       const stats = resolver.getStats();
-      expect(stats.totalPatterns).toBe(6);
-      expect(stats.patternsByRole.admin).toBe(2);
-      expect(stats.patternsByRole.frontend).toBe(2);
-      expect(stats.patternsByRole.backend).toBe(2);
+      expect(stats.totalRules).toBe(3);
+      expect(stats.rulesByRole.admin).toBe(1);
+      expect(stats.rulesByRole.frontend).toBe(1);
+      expect(stats.rulesByRole.backend).toBe(1);
     });
   });
 });

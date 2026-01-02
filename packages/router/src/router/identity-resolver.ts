@@ -1,6 +1,6 @@
 // ============================================================================
 // AEGIS Router - Identity Resolver
-// A2A Zero-Trust identity resolution for agent-to-agent communication
+// A2A Zero-Trust identity resolution based on Agent Card skills
 // ============================================================================
 
 import { readFile } from 'fs/promises';
@@ -9,39 +9,38 @@ import { parse as parseYaml } from 'yaml';
 import { Logger } from '../utils/logger.js';
 import type {
   IdentityConfig,
-  IdentityPattern,
   IdentityResolution,
   AgentIdentity,
   SkillDefinition,
-  SkillIdentityMapping
+  SkillMatchRule,
+  A2AAgentSkill
 } from '../types/router-types.js';
 
 /**
- * Default identity configuration when no config file is found
+ * Default identity configuration when no config is provided
  */
 const DEFAULT_IDENTITY_CONFIG: IdentityConfig = {
   version: '1.0.0',
-  defaultRole: 'default',
-  patterns: [],
+  defaultRole: 'guest',
+  skillRules: [],
   rejectUnknown: false,
   trustedPrefixes: ['claude-', 'aegis-']
 };
 
 /**
  * Identity Resolver
- * Resolves agent identity to role based on pattern matching (A2A Zero-Trust)
+ * Resolves agent identity to role based on A2A Agent Card skills (Zero-Trust)
  *
  * Design:
- * - All clients are treated as agents
- * - Agent identity (clientInfo.name) determines role at connection time
- * - No runtime role switching (set_role removed)
- * - Patterns checked in priority order, first match wins
+ * - Agents declare their capabilities via A2A Agent Card skills
+ * - Router matches skills against rules to determine role
+ * - No name pattern matching - purely capability-based
+ * - Rules checked in priority order, first match wins
  */
 export class IdentityResolver {
   private logger: Logger;
   private config: IdentityConfig;
-  private sortedPatterns: IdentityPattern[];
-  private configPath: string | null = null;
+  private sortedRules: SkillMatchRule[];
 
   constructor(logger: Logger, config?: IdentityConfig) {
     this.logger = logger;
@@ -49,12 +48,12 @@ export class IdentityResolver {
     const baseConfig = config || DEFAULT_IDENTITY_CONFIG;
     this.config = {
       ...baseConfig,
-      patterns: [...(baseConfig.patterns || [])],
+      skillRules: [...(baseConfig.skillRules || [])],
       trustedPrefixes: [...(baseConfig.trustedPrefixes || [])]
     };
-    this.sortedPatterns = this.sortPatternsByPriority(this.config.patterns);
-    this.logger.debug('IdentityResolver initialized', {
-      patternCount: this.sortedPatterns.length,
+    this.sortedRules = this.sortRulesByPriority(this.config.skillRules);
+    this.logger.debug('IdentityResolver initialized (A2A skill-based)', {
+      ruleCount: this.sortedRules.length,
       defaultRole: this.config.defaultRole
     });
   }
@@ -79,14 +78,14 @@ export class IdentityResolver {
 
       this.config = {
         ...DEFAULT_IDENTITY_CONFIG,
-        ...parsed
+        ...parsed,
+        skillRules: parsed.skillRules || []
       };
-      this.sortedPatterns = this.sortPatternsByPriority(this.config.patterns || []);
-      this.configPath = configPath;
+      this.sortedRules = this.sortRulesByPriority(this.config.skillRules);
 
       this.logger.info(`Loaded identity config from ${configPath}`, {
         version: this.config.version,
-        patternCount: this.sortedPatterns.length,
+        ruleCount: this.sortedRules.length,
         defaultRole: this.config.defaultRole,
         rejectUnknown: this.config.rejectUnknown
       });
@@ -97,37 +96,39 @@ export class IdentityResolver {
   }
 
   /**
-   * Sort patterns by priority (higher first)
+   * Sort rules by priority (higher first)
    */
-  private sortPatternsByPriority(patterns: IdentityPattern[]): IdentityPattern[] {
-    return [...patterns].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  private sortRulesByPriority(rules: SkillMatchRule[]): SkillMatchRule[] {
+    return [...rules].sort((a, b) => (b.priority || 0) - (a.priority || 0));
   }
 
   /**
-   * Resolve agent identity to role
+   * Resolve agent identity to role based on Agent Card skills
    *
-   * @param identity Agent identity from MCP connection
-   * @returns Resolution result with role and metadata
-   * @throws Error if rejectUnknown is true and no pattern matches
+   * @param identity Agent identity from MCP connection (includes skills)
+   * @returns Resolution result with role and matched skills
+   * @throws Error if rejectUnknown is true and no rule matches
    */
   resolve(identity: AgentIdentity): IdentityResolution {
-    // Treat empty string as 'unknown' for safety
     const agentName = identity.name && identity.name.trim() ? identity.name : 'unknown';
+    const agentSkills = this.extractSkillIds(identity.skills || []);
 
-    // Check each pattern in priority order
-    for (const pattern of this.sortedPatterns) {
-      if (this.matchPattern(agentName, pattern.pattern)) {
+    // Check each rule in priority order
+    for (const rule of this.sortedRules) {
+      const matchResult = this.matchRule(agentSkills, rule);
+      if (matchResult.matched) {
         const resolution: IdentityResolution = {
-          roleId: pattern.role,
+          roleId: rule.role,
           agentName,
-          matchedPattern: pattern.pattern,
+          matchedRule: rule,
+          matchedSkills: matchResult.matchedSkills,
           isTrusted: this.isTrustedAgent(agentName),
           resolvedAt: new Date()
         };
 
-        this.logger.info(`Identity resolved: ${agentName} → ${pattern.role}`, {
-          pattern: pattern.pattern,
-          description: pattern.description,
+        this.logger.info(`Identity resolved: ${agentName} → ${rule.role}`, {
+          matchedSkills: matchResult.matchedSkills,
+          description: rule.description,
           isTrusted: resolution.isTrusted
         });
 
@@ -135,22 +136,26 @@ export class IdentityResolver {
       }
     }
 
-    // No pattern matched
+    // No rule matched
     if (this.config.rejectUnknown) {
-      this.logger.warn(`Unknown agent rejected: ${agentName}`);
-      throw new Error(`Unknown agent: ${agentName}. No identity pattern matched.`);
+      this.logger.warn(`Unknown agent rejected: ${agentName}`, {
+        declaredSkills: agentSkills
+      });
+      throw new Error(`Unknown agent: ${agentName}. No skill matching rule matched.`);
     }
 
     // Use default role
     const resolution: IdentityResolution = {
       roleId: this.config.defaultRole,
       agentName,
-      matchedPattern: null,
+      matchedRule: null,
+      matchedSkills: [],
       isTrusted: this.isTrustedAgent(agentName),
       resolvedAt: new Date()
     };
 
     this.logger.info(`Identity resolved to default: ${agentName} → ${this.config.defaultRole}`, {
+      declaredSkills: agentSkills,
       isTrusted: resolution.isTrusted
     });
 
@@ -158,30 +163,60 @@ export class IdentityResolver {
   }
 
   /**
-   * Match agent name against glob-style pattern
-   * Supports: * (any), ? (single char), [abc] (char class)
+   * Extract skill IDs from A2A Agent Card skills
    */
-  private matchPattern(name: string, pattern: string): boolean {
-    // Exact match
-    if (name === pattern) return true;
-
-    // Convert glob to regex
-    const regexPattern = pattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape regex special chars (except * and ?)
-      .replace(/\*/g, '.*')                   // * → .*
-      .replace(/\?/g, '.');                   // ? → .
-
-    try {
-      const regex = new RegExp(`^${regexPattern}$`, 'i');
-      return regex.test(name);
-    } catch {
-      this.logger.warn(`Invalid pattern: ${pattern}`);
-      return false;
-    }
+  private extractSkillIds(skills: A2AAgentSkill[]): string[] {
+    return skills.map(s => s.id);
   }
 
   /**
-   * Check if agent is trusted based on prefix
+   * Match agent skills against a rule
+   */
+  private matchRule(
+    agentSkills: string[],
+    rule: SkillMatchRule
+  ): { matched: boolean; matchedSkills: string[] } {
+    const matchedSkills: string[] = [];
+
+    // Check requiredSkills (ALL must be present)
+    if (rule.requiredSkills && rule.requiredSkills.length > 0) {
+      for (const required of rule.requiredSkills) {
+        if (!agentSkills.includes(required)) {
+          return { matched: false, matchedSkills: [] };
+        }
+        matchedSkills.push(required);
+      }
+    }
+
+    // Check anySkills (at least minSkillMatch must be present)
+    if (rule.anySkills && rule.anySkills.length > 0) {
+      const minMatch = rule.minSkillMatch ?? 1;
+      let anyMatched = 0;
+
+      for (const any of rule.anySkills) {
+        if (agentSkills.includes(any)) {
+          anyMatched++;
+          matchedSkills.push(any);
+        }
+      }
+
+      if (anyMatched < minMatch) {
+        return { matched: false, matchedSkills: [] };
+      }
+    }
+
+    // If no requiredSkills and no anySkills, rule never matches
+    if ((!rule.requiredSkills || rule.requiredSkills.length === 0) &&
+        (!rule.anySkills || rule.anySkills.length === 0)) {
+      return { matched: false, matchedSkills: [] };
+    }
+
+    return { matched: true, matchedSkills };
+  }
+
+  /**
+   * Check if agent is trusted based on name prefix
+   * (Trust level is separate from role assignment)
    */
   private isTrustedAgent(agentName: string): boolean {
     const prefixes = this.config.trustedPrefixes || [];
@@ -197,27 +232,30 @@ export class IdentityResolver {
   }
 
   /**
-   * Get all configured patterns
+   * Get all configured rules
    */
-  getPatterns(): IdentityPattern[] {
-    return [...this.sortedPatterns];
+  getRules(): SkillMatchRule[] {
+    return [...this.sortedRules];
   }
 
   /**
-   * Check if a role exists in any pattern
+   * Check if a role exists in any rule
    */
-  hasRolePattern(roleId: string): boolean {
-    return this.sortedPatterns.some(p => p.role === roleId) ||
+  hasRoleRule(roleId: string): boolean {
+    return this.sortedRules.some(r => r.role === roleId) ||
            this.config.defaultRole === roleId;
   }
 
   /**
-   * Add a pattern dynamically (for testing or runtime configuration)
+   * Add a rule dynamically
    */
-  addPattern(pattern: IdentityPattern): void {
-    this.config.patterns.push(pattern);
-    this.sortedPatterns = this.sortPatternsByPriority(this.config.patterns);
-    this.logger.debug(`Added identity pattern: ${pattern.pattern} → ${pattern.role}`);
+  addRule(rule: SkillMatchRule): void {
+    this.config.skillRules.push(rule);
+    this.sortedRules = this.sortRulesByPriority(this.config.skillRules);
+    this.logger.debug(`Added skill match rule for role: ${rule.role}`, {
+      requiredSkills: rule.requiredSkills,
+      anySkills: rule.anySkills
+    });
   }
 
   /**
@@ -237,44 +275,42 @@ export class IdentityResolver {
   }
 
   // ============================================================================
-  // Skill-Based Identity Loading
+  // Skill-Based Identity Loading from Aegis Skills
   // ============================================================================
 
   /**
-   * Load identity patterns from skill definitions
-   * Aggregates patterns from all skills that define identity mappings
+   * Load skill matching rules from skill definitions
+   * Aggregates rules from all skills that define A2A identity config
    *
    * @param skills Array of skill definitions
    */
   loadFromSkills(skills: SkillDefinition[]): void {
-    const addedPatterns: IdentityPattern[] = [];
+    const addedRules: SkillMatchRule[] = [];
     const addedPrefixes: Set<string> = new Set(this.config.trustedPrefixes || []);
 
     for (const skill of skills) {
       // Skip skills without identity config
-      if (!skill.identity) {
+      if (!skill.identity?.skillMatching) {
         continue;
       }
 
-      // Add patterns from this skill (if any)
-      if (skill.identity.mappings && skill.identity.mappings.length > 0) {
-        for (const mapping of skill.identity.mappings) {
-          const pattern: IdentityPattern = {
-            pattern: mapping.pattern,
-            role: mapping.role,
-            description: mapping.description || `From skill: ${skill.id}`,
-            priority: mapping.priority ?? 0
-          };
+      // Add rules from this skill
+      for (const rule of skill.identity.skillMatching) {
+        const enrichedRule: SkillMatchRule = {
+          ...rule,
+          description: rule.description || `From skill: ${skill.id}`
+        };
 
-          // Check for duplicate patterns
-          const isDuplicate = this.config.patterns.some(
-            p => p.pattern === pattern.pattern && p.role === pattern.role
-          );
+        // Check for duplicate rules (same role and same skills)
+        const isDuplicate = this.config.skillRules.some(
+          r => r.role === enrichedRule.role &&
+               JSON.stringify(r.requiredSkills) === JSON.stringify(enrichedRule.requiredSkills) &&
+               JSON.stringify(r.anySkills) === JSON.stringify(enrichedRule.anySkills)
+        );
 
-          if (!isDuplicate) {
-            this.config.patterns.push(pattern);
-            addedPatterns.push(pattern);
-          }
+        if (!isDuplicate) {
+          this.config.skillRules.push(enrichedRule);
+          addedRules.push(enrichedRule);
         }
       }
 
@@ -289,44 +325,48 @@ export class IdentityResolver {
     // Update trusted prefixes
     this.config.trustedPrefixes = Array.from(addedPrefixes);
 
-    // Re-sort patterns by priority
-    this.sortedPatterns = this.sortPatternsByPriority(this.config.patterns);
+    // Re-sort rules by priority
+    this.sortedRules = this.sortRulesByPriority(this.config.skillRules);
 
-    if (addedPatterns.length > 0) {
-      this.logger.info(`Loaded ${addedPatterns.length} identity patterns from skills`, {
-        patterns: addedPatterns.map(p => `${p.pattern} → ${p.role}`),
-        totalPatterns: this.sortedPatterns.length,
+    if (addedRules.length > 0) {
+      this.logger.info(`Loaded ${addedRules.length} skill matching rules from skills`, {
+        rules: addedRules.map(r => ({
+          role: r.role,
+          requiredSkills: r.requiredSkills,
+          anySkills: r.anySkills
+        })),
+        totalRules: this.sortedRules.length,
         trustedPrefixes: this.config.trustedPrefixes
       });
     }
   }
 
   /**
-   * Clear all patterns (useful for reloading)
+   * Clear all rules (useful for reloading)
    */
-  clearPatterns(): void {
-    this.config.patterns = [];
-    this.sortedPatterns = [];
-    this.logger.debug('Cleared all identity patterns');
+  clearRules(): void {
+    this.config.skillRules = [];
+    this.sortedRules = [];
+    this.logger.debug('Cleared all skill matching rules');
   }
 
   /**
-   * Get statistics about loaded patterns
+   * Get statistics about loaded rules
    */
   getStats(): {
-    totalPatterns: number;
-    patternsByRole: Record<string, number>;
+    totalRules: number;
+    rulesByRole: Record<string, number>;
     trustedPrefixes: string[];
     defaultRole: string;
   } {
-    const patternsByRole: Record<string, number> = {};
-    for (const pattern of this.sortedPatterns) {
-      patternsByRole[pattern.role] = (patternsByRole[pattern.role] || 0) + 1;
+    const rulesByRole: Record<string, number> = {};
+    for (const rule of this.sortedRules) {
+      rulesByRole[rule.role] = (rulesByRole[rule.role] || 0) + 1;
     }
 
     return {
-      totalPatterns: this.sortedPatterns.length,
-      patternsByRole,
+      totalRules: this.sortedRules.length,
+      rulesByRole,
       trustedPrefixes: this.config.trustedPrefixes || [],
       defaultRole: this.config.defaultRole
     };

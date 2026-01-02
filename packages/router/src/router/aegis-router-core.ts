@@ -227,7 +227,8 @@ export class AegisRouterCore extends EventEmitter {
     });
 
     this.logger.info(`✅ A2A Identity resolved: ${identity.name} → ${resolution.roleId}`, {
-      matchedPattern: resolution.matchedPattern,
+      matchedSkills: resolution.matchedSkills,
+      matchedRule: resolution.matchedRule?.description,
       isTrusted: resolution.isTrusted
     });
 
@@ -352,8 +353,8 @@ export class AegisRouterCore extends EventEmitter {
       // Load roles from skill manifest
       await this.roleManager.loadFromSkillManifest(skillManifest);
 
-      // Load identity patterns from skills (A2A)
-      this.identityResolver.clearPatterns();
+      // Load identity rules from skills (A2A skill-based matching)
+      this.identityResolver.clearRules();
       this.identityResolver.loadFromSkills(skillManifest.skills);
 
       // Update state with new roles
@@ -375,8 +376,8 @@ export class AegisRouterCore extends EventEmitter {
       // Log identity statistics
       const identityStats = this.identityResolver.getStats();
       this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`, {
-        identityPatterns: identityStats.totalPatterns,
-        patternsByRole: identityStats.patternsByRole
+        identityRules: identityStats.totalRules,
+        rulesByRole: identityStats.rulesByRole
       });
       return true;
 
@@ -409,9 +410,9 @@ export class AegisRouterCore extends EventEmitter {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
         } : undefined,
-        // A2A Identity configuration from skill
+        // A2A Identity configuration from skill (skill-based matching)
         identity: skill.identity ? {
-          mappings: skill.identity.mappings || [],
+          skillMatching: skill.identity.skillMatching || [],
           trustedPrefixes: skill.identity.trustedPrefixes
         } : undefined,
         metadata: {

@@ -233,20 +233,29 @@ interface SkillDefinition {
   allowedRoles: string[];       // Roles that can use this skill
   allowedTools: string[];       // Tools this skill requires
   grants?: SkillGrants;         // Capability grants (memory, etc.)
-  identity?: SkillIdentityConfig; // A2A identity mappings
+  identity?: SkillIdentityConfig; // A2A skill-based identity
   metadata?: SkillMetadata;
 }
 
 interface SkillIdentityConfig {
-  mappings: SkillIdentityMapping[];  // Identity-to-role patterns
+  skillMatching?: SkillMatchRule[];  // Capability-based role matching
   trustedPrefixes?: string[];        // Trusted agent prefixes
 }
 
-interface SkillIdentityMapping {
-  pattern: string;              // Glob pattern (*, ?)
-  role: string;                 // Role to assign
+interface SkillMatchRule {
+  role: string;                 // Role to assign when matched
+  requiredSkills?: string[];    // ALL must be present (AND logic)
+  anySkills?: string[];         // At least minSkillMatch present (OR logic)
+  minSkillMatch?: number;       // Min anySkills matches (default: 1)
   description?: string;         // Optional description
   priority?: number;            // Priority (higher = checked first)
+}
+
+// Agent Card skills from A2A protocol
+interface A2AAgentSkill {
+  id: string;                   // Skill identifier (e.g., "react", "coding")
+  name?: string;                // Human-readable name
+  description?: string;         // Skill description
 }
 ```
 
@@ -420,25 +429,40 @@ When granted, these tools become available:
 
 ### A2A Identity Resolution (Agent-to-Agent Zero-Trust)
 
-The A2A Identity Resolution feature enables automatic role assignment based on agent identity, eliminating the need for the `set_role` tool in agent-to-agent communication.
+The A2A Identity Resolution feature enables automatic role assignment based on agent capabilities (A2A Agent Card skills), eliminating the need for the `set_role` tool in agent-to-agent communication.
 
 #### How It Works
 
 When A2A mode is enabled:
-1. Agents connect and provide their identity via MCP `clientInfo.name`
-2. The router matches the agent name against configured patterns
-3. A role is automatically assigned based on the first matching pattern
+1. Agents connect and declare their capabilities via A2A Agent Card `skills`
+2. The router matches agent skills against configured rules
+3. A role is automatically assigned based on capability matching
 4. The `set_role` tool is hidden from the tools list
 
-#### Skill-Based Identity Configuration (Recommended)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Agent Card (A2A Protocol)          Aegis Skill Definition      │
+│  ┌─────────────────────────┐        ┌─────────────────────────┐ │
+│  │ name: "react-builder"   │        │ identity:               │ │
+│  │ skills:                 │   →    │   skillMatching:        │ │
+│  │   - id: "react"         │   →    │     - role: frontend    │ │
+│  │   - id: "typescript"    │        │       anySkills:        │ │
+│  └─────────────────────────┘        │         - react         │ │
+│                                     │         - vue           │ │
+│  Capability-based matching          └─────────────────────────┘ │
+│  (not name pattern matching)                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-Identity patterns can be defined directly in skill files, keeping all configuration in one place:
+#### Skill-Based Identity Configuration
+
+Skills define capability-based role matching rules:
 
 ```yaml
 # skills/admin-access/SKILL.yaml
 id: admin-access
 displayName: Admin Access
-description: Full administrative access for trusted agents
+description: Full administrative access
 
 allowedRoles:
   - admin
@@ -449,18 +473,15 @@ allowedTools:
 grants:
   memory: all
 
-# A2A Identity mappings
+# A2A Capability-based Identity
 identity:
-  mappings:
-    - pattern: "claude-code"
-      role: admin
+  skillMatching:
+    - role: admin
+      requiredSkills:           # ALL must be present (AND logic)
+        - admin_access
+        - system_management
       priority: 100
-      description: "Claude Code gets admin access"
-
-    - pattern: "aegis-admin-*"
-      role: admin
-      priority: 100
-      description: "Admin agents"
+      description: "Full admin requires both skills"
 
   trustedPrefixes:
     - "claude-"
@@ -484,109 +505,81 @@ grants:
   memory: isolated
 
 identity:
-  mappings:
-    - pattern: "aegis-frontend-*"
-      role: frontend
+  skillMatching:
+    - role: frontend
+      anySkills:                # At least 1 must be present (OR logic)
+        - react
+        - vue
+        - angular
+        - svelte
+      minSkillMatch: 1          # Minimum matches required
       priority: 50
-
-    - pattern: "*-ui-agent"
-      role: frontend
-      priority: 10
 ```
 
-#### Benefits of Skill-Based Identity
+#### Matching Logic
+
+| Field | Logic | Description |
+|-------|-------|-------------|
+| `requiredSkills` | AND | ALL listed skills must be in Agent Card |
+| `anySkills` | OR | At least `minSkillMatch` skills must match |
+| `minSkillMatch` | threshold | Minimum anySkills matches (default: 1) |
+
+When both `requiredSkills` and `anySkills` are specified, **both conditions** must be satisfied.
+
+#### Benefits of Capability-Based Identity
 
 | Aspect | Benefit |
 |--------|---------|
-| Single Source of Truth | Skills define roles, tools, memory, AND identity |
-| Distributed Config | Each skill manages its own identity patterns |
-| Dynamic Updates | Reload skills to update identity patterns |
-| Audit Trail | Track which skill granted which identity pattern |
+| Self-describing | Agents declare what they CAN DO, not who they ARE |
+| No prior knowledge | Agents don't need to know naming conventions |
+| A2A Compatible | Follows Google's A2A Agent Card standard |
+| Flexible matching | Combine AND/OR logic for complex rules |
 
-#### Pattern Aggregation
+#### Rule Aggregation
 
-When multiple skills define identity patterns:
-1. All patterns are aggregated from all skills
-2. Patterns are sorted by priority (higher first)
-3. First matching pattern determines the role
+When multiple skills define matching rules:
+1. All rules are aggregated from all skills
+2. Rules are sorted by priority (higher first)
+3. First matching rule determines the role
 4. Trusted prefixes are merged from all skills
-
-#### Legacy Configuration (`aegis-identity.yaml`)
-
-For backwards compatibility, patterns can also be defined in a separate file:
-
-```yaml
-version: "1.0.0"
-
-# Default role when no pattern matches
-defaultRole: guest
-
-# Reject unknown agents (for strict Zero-Trust)
-rejectUnknown: false
-
-# Trusted agent prefixes
-trustedPrefixes:
-  - "claude-"
-  - "aegis-"
-
-# Identity patterns (higher priority checked first)
-patterns:
-  - pattern: "aegis-admin-*"
-    role: admin
-    description: "Admin agents"
-    priority: 100
-
-  - pattern: "claude-code"
-    role: admin
-    description: "Claude Code"
-    priority: 100
-
-  - pattern: "aegis-frontend-*"
-    role: frontend
-    priority: 50
-
-  - pattern: "aegis-backend-*"
-    role: backend
-    priority: 50
-```
-
-#### Pattern Syntax
-- `*` - Matches any characters
-- `?` - Matches single character
-- Patterns are case-insensitive
 
 #### Enabling A2A Mode
 
 ```typescript
 // In AegisRouterCore constructor
 const router = new AegisRouterCore(logger, {
-  a2aMode: true,
-  identityConfigPath: './aegis-identity.yaml'
+  a2aMode: true
 });
 
 // Or enable dynamically
 router.enableA2AMode();
 
-// Set role from agent identity
+// Set role from agent identity (with A2A Agent Card skills)
 const manifest = await router.setRoleFromIdentity({
-  name: 'aegis-frontend-component-builder',
-  version: '1.0.0'
+  name: 'react-builder',
+  version: '1.0.0',
+  skills: [
+    { id: 'react' },
+    { id: 'typescript' },
+    { id: 'testing' }
+  ]
 });
 
 // Get identity statistics
 const stats = router.getIdentityStats();
-// { totalPatterns: 6, patternsByRole: { admin: 2, frontend: 2, backend: 2 }, ... }
+// { totalRules: 3, rulesByRole: { admin: 1, frontend: 1, backend: 1 }, ... }
 ```
 
 #### Resolution Result
 
 ```typescript
 interface IdentityResolution {
-  roleId: string;        // Resolved role
-  agentName: string;     // Original agent name
-  matchedPattern: string | null;  // Pattern that matched
-  isTrusted: boolean;    // Based on trustedPrefixes
-  resolvedAt: Date;      // Resolution timestamp
+  roleId: string;              // Resolved role
+  agentName: string;           // Original agent name
+  matchedRule: SkillMatchRule | null;  // Rule that matched
+  matchedSkills: string[];     // Skills that contributed to match
+  isTrusted: boolean;          // Based on trustedPrefixes
+  resolvedAt: Date;            // Resolution timestamp
 }
 ```
 
