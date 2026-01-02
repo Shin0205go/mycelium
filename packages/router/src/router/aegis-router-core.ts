@@ -352,6 +352,10 @@ export class AegisRouterCore extends EventEmitter {
       // Load roles from skill manifest
       await this.roleManager.loadFromSkillManifest(skillManifest);
 
+      // Load identity patterns from skills (A2A)
+      this.identityResolver.clearPatterns();
+      this.identityResolver.loadFromSkills(skillManifest.skills);
+
       // Update state with new roles
       this.state.availableRoles.clear();
       const allRoles = this.roleManager.getAllRoles();
@@ -368,7 +372,12 @@ export class AegisRouterCore extends EventEmitter {
         this.logger.info(`Applied tool filtering for default role: ${defaultRole.id}`);
       }
 
-      this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`);
+      // Log identity statistics
+      const identityStats = this.identityResolver.getStats();
+      this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`, {
+        identityPatterns: identityStats.totalPatterns,
+        patternsByRole: identityStats.patternsByRole
+      });
       return true;
 
     } catch (error) {
@@ -399,6 +408,11 @@ export class AegisRouterCore extends EventEmitter {
         grants: skill.grants ? {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
+        } : undefined,
+        // A2A Identity configuration from skill
+        identity: skill.identity ? {
+          mappings: skill.identity.mappings || [],
+          trustedPrefixes: skill.identity.trustedPrefixes
         } : undefined,
         metadata: {
           version: skill.version,
@@ -1340,6 +1354,20 @@ export class AegisRouterCore extends EventEmitter {
    */
   getRateLimiter(): RateLimiter {
     return this.rateLimiter;
+  }
+
+  /**
+   * Get the identity resolver instance
+   */
+  getIdentityResolver(): IdentityResolver {
+    return this.identityResolver;
+  }
+
+  /**
+   * Get identity resolution statistics
+   */
+  getIdentityStats() {
+    return this.identityResolver.getStats();
   }
 
   /**

@@ -559,6 +559,24 @@ export interface ListRolesResult {
 export type MemoryPolicy = 'none' | 'isolated' | 'team' | 'all';
 
 /**
+ * Identity mapping for A2A Zero-Trust
+ * Skills can define which agent patterns are assigned to which roles
+ */
+export interface SkillIdentityMapping {
+  /** Glob pattern to match against clientInfo.name */
+  pattern: string;
+
+  /** Role to assign when pattern matches */
+  role: string;
+
+  /** Optional description for this mapping */
+  description?: string;
+
+  /** Priority (higher = checked first, default: 0) */
+  priority?: number;
+}
+
+/**
  * Capability grants from skills
  * Skills can grant additional capabilities beyond tool access
  */
@@ -568,6 +586,18 @@ export interface SkillGrants {
 
   /** For 'team' policy: which roles' memories can be accessed */
   memoryTeamRoles?: string[];
+}
+
+/**
+ * A2A identity configuration within skills
+ * Skills can define identity-to-role mappings
+ */
+export interface SkillIdentityConfig {
+  /** Identity patterns defined by this skill */
+  mappings: SkillIdentityMapping[];
+
+  /** Trusted agent prefixes defined by this skill */
+  trustedPrefixes?: string[];
 }
 
 /**
@@ -592,6 +622,12 @@ export interface SkillDefinition {
 
   /** Capability grants (memory, etc.) */
   grants?: SkillGrants;
+
+  /**
+   * A2A Identity configuration
+   * Skills can define identity-to-role mappings for Zero-Trust agent communication
+   */
+  identity?: SkillIdentityConfig;
 
   /** Skill metadata */
   metadata?: SkillMetadata;

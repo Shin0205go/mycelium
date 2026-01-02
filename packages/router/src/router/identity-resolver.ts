@@ -11,7 +11,9 @@ import type {
   IdentityConfig,
   IdentityPattern,
   IdentityResolution,
-  AgentIdentity
+  AgentIdentity,
+  SkillDefinition,
+  SkillIdentityMapping
 } from '../types/router-types.js';
 
 /**
@@ -232,6 +234,102 @@ export class IdentityResolver {
   setRejectUnknown(reject: boolean): void {
     this.config.rejectUnknown = reject;
     this.logger.debug(`Reject unknown agents: ${reject}`);
+  }
+
+  // ============================================================================
+  // Skill-Based Identity Loading
+  // ============================================================================
+
+  /**
+   * Load identity patterns from skill definitions
+   * Aggregates patterns from all skills that define identity mappings
+   *
+   * @param skills Array of skill definitions
+   */
+  loadFromSkills(skills: SkillDefinition[]): void {
+    const addedPatterns: IdentityPattern[] = [];
+    const addedPrefixes: Set<string> = new Set(this.config.trustedPrefixes || []);
+
+    for (const skill of skills) {
+      // Skip skills without identity config
+      if (!skill.identity) {
+        continue;
+      }
+
+      // Add patterns from this skill (if any)
+      if (skill.identity.mappings && skill.identity.mappings.length > 0) {
+        for (const mapping of skill.identity.mappings) {
+          const pattern: IdentityPattern = {
+            pattern: mapping.pattern,
+            role: mapping.role,
+            description: mapping.description || `From skill: ${skill.id}`,
+            priority: mapping.priority ?? 0
+          };
+
+          // Check for duplicate patterns
+          const isDuplicate = this.config.patterns.some(
+            p => p.pattern === pattern.pattern && p.role === pattern.role
+          );
+
+          if (!isDuplicate) {
+            this.config.patterns.push(pattern);
+            addedPatterns.push(pattern);
+          }
+        }
+      }
+
+      // Add trusted prefixes from this skill
+      if (skill.identity.trustedPrefixes) {
+        for (const prefix of skill.identity.trustedPrefixes) {
+          addedPrefixes.add(prefix);
+        }
+      }
+    }
+
+    // Update trusted prefixes
+    this.config.trustedPrefixes = Array.from(addedPrefixes);
+
+    // Re-sort patterns by priority
+    this.sortedPatterns = this.sortPatternsByPriority(this.config.patterns);
+
+    if (addedPatterns.length > 0) {
+      this.logger.info(`Loaded ${addedPatterns.length} identity patterns from skills`, {
+        patterns: addedPatterns.map(p => `${p.pattern} → ${p.role}`),
+        totalPatterns: this.sortedPatterns.length,
+        trustedPrefixes: this.config.trustedPrefixes
+      });
+    }
+  }
+
+  /**
+   * Clear all patterns (useful for reloading)
+   */
+  clearPatterns(): void {
+    this.config.patterns = [];
+    this.sortedPatterns = [];
+    this.logger.debug('Cleared all identity patterns');
+  }
+
+  /**
+   * Get statistics about loaded patterns
+   */
+  getStats(): {
+    totalPatterns: number;
+    patternsByRole: Record<string, number>;
+    trustedPrefixes: string[];
+    defaultRole: string;
+  } {
+    const patternsByRole: Record<string, number> = {};
+    for (const pattern of this.sortedPatterns) {
+      patternsByRole[pattern.role] = (patternsByRole[pattern.role] || 0) + 1;
+    }
+
+    return {
+      totalPatterns: this.sortedPatterns.length,
+      patternsByRole,
+      trustedPrefixes: this.config.trustedPrefixes || [],
+      defaultRole: this.config.defaultRole
+    };
   }
 }
 

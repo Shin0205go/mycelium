@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { IdentityResolver, createIdentityResolver } from '../src/router/identity-resolver.js';
 import { Logger } from '../src/utils/logger.js';
-import type { IdentityConfig, AgentIdentity } from '../src/types/router-types.js';
+import type { IdentityConfig, AgentIdentity, SkillDefinition } from '../src/types/router-types.js';
 
 // Set LOG_SILENT for tests
 process.env.LOG_SILENT = 'true';
@@ -305,5 +305,470 @@ describe('A2A Mode Integration', () => {
     expect(unknownResult.roleId).toBe('guest');
     expect(unknownResult.matchedPattern).toBeNull();
     expect(unknownResult.isTrusted).toBe(false);
+  });
+});
+
+describe('Skill-Based Identity Loading', () => {
+  describe('loadFromSkills', () => {
+    it('should load identity patterns from skills', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'admin-skill',
+          displayName: 'Admin Skill',
+          description: 'Admin tools',
+          allowedRoles: ['admin'],
+          allowedTools: ['*'],
+          identity: {
+            mappings: [
+              { pattern: 'claude-code', role: 'admin', priority: 100 },
+              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            ],
+            trustedPrefixes: ['claude-', 'aegis-']
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      // Test pattern matching
+      const claudeResult = resolver.resolve({ name: 'claude-code' });
+      expect(claudeResult.roleId).toBe('admin');
+      expect(claudeResult.matchedPattern).toBe('claude-code');
+
+      const adminAgentResult = resolver.resolve({ name: 'aegis-admin-main' });
+      expect(adminAgentResult.roleId).toBe('admin');
+    });
+
+    it('should load patterns from multiple skills', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'frontend-skill',
+          displayName: 'Frontend Development',
+          description: 'Frontend tools',
+          allowedRoles: ['frontend'],
+          allowedTools: ['filesystem__*'],
+          identity: {
+            mappings: [
+              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 }
+            ]
+          }
+        },
+        {
+          id: 'backend-skill',
+          displayName: 'Backend Development',
+          description: 'Backend tools',
+          allowedRoles: ['backend'],
+          allowedTools: ['database__*'],
+          identity: {
+            mappings: [
+              { pattern: 'aegis-backend-*', role: 'backend', priority: 50 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const frontendResult = resolver.resolve({ name: 'aegis-frontend-ui-builder' });
+      expect(frontendResult.roleId).toBe('frontend');
+
+      const backendResult = resolver.resolve({ name: 'aegis-backend-api-service' });
+      expect(backendResult.roleId).toBe('backend');
+    });
+
+    it('should respect priority ordering across skills', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'low-priority-skill',
+          displayName: 'Low Priority',
+          description: 'Low priority skill',
+          allowedRoles: ['guest'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'aegis-*', role: 'guest', priority: 10 }
+            ]
+          }
+        },
+        {
+          id: 'high-priority-skill',
+          displayName: 'High Priority',
+          description: 'High priority skill',
+          allowedRoles: ['admin'],
+          allowedTools: ['*'],
+          identity: {
+            mappings: [
+              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      // Higher priority should win
+      const adminResult = resolver.resolve({ name: 'aegis-admin-main' });
+      expect(adminResult.roleId).toBe('admin');
+
+      // Lower priority pattern should match other aegis agents
+      const guestResult = resolver.resolve({ name: 'aegis-guest-viewer' });
+      expect(guestResult.roleId).toBe('guest');
+    });
+
+    it('should aggregate trusted prefixes from all skills', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'skill-a',
+          displayName: 'Skill A',
+          description: 'Skill A',
+          allowedRoles: ['a'],
+          allowedTools: [],
+          identity: {
+            mappings: [],
+            trustedPrefixes: ['trusted-a-']
+          }
+        },
+        {
+          id: 'skill-b',
+          displayName: 'Skill B',
+          description: 'Skill B',
+          allowedRoles: ['b'],
+          allowedTools: [],
+          identity: {
+            mappings: [],
+            trustedPrefixes: ['trusted-b-']
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.trustedPrefixes).toContain('trusted-a-');
+      expect(stats.trustedPrefixes).toContain('trusted-b-');
+
+      // Check trust detection
+      const trustedA = resolver.resolve({ name: 'trusted-a-agent' });
+      expect(trustedA.isTrusted).toBe(true);
+
+      const trustedB = resolver.resolve({ name: 'trusted-b-agent' });
+      expect(trustedB.isTrusted).toBe(true);
+    });
+
+    it('should skip skills without identity config', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'skill-with-identity',
+          displayName: 'With Identity',
+          description: 'Has identity config',
+          allowedRoles: ['developer'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'dev-*', role: 'developer' }
+            ]
+          }
+        },
+        {
+          id: 'skill-without-identity',
+          displayName: 'Without Identity',
+          description: 'No identity config',
+          allowedRoles: ['tester'],
+          allowedTools: []
+          // No identity field
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(1);
+      expect(stats.patternsByRole).toEqual({ developer: 1 });
+    });
+
+    it('should avoid duplicate patterns', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'skill-1',
+          displayName: 'Skill 1',
+          description: 'First skill',
+          allowedRoles: ['admin'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'claude-code', role: 'admin', priority: 100 }
+            ]
+          }
+        },
+        {
+          id: 'skill-2',
+          displayName: 'Skill 2',
+          description: 'Second skill with same pattern',
+          allowedRoles: ['admin'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'claude-code', role: 'admin', priority: 100 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(1); // Should only have one pattern
+    });
+
+    it('should allow same pattern with different roles', () => {
+      const resolver = createIdentityResolver(testLogger);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'skill-1',
+          displayName: 'Skill 1',
+          description: 'First skill',
+          allowedRoles: ['admin'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'multi-role-agent', role: 'admin', priority: 100 }
+            ]
+          }
+        },
+        {
+          id: 'skill-2',
+          displayName: 'Skill 2',
+          description: 'Second skill with same pattern but different role',
+          allowedRoles: ['developer'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'multi-role-agent', role: 'developer', priority: 50 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(2); // Should have both patterns
+
+      // Higher priority wins
+      const result = resolver.resolve({ name: 'multi-role-agent' });
+      expect(result.roleId).toBe('admin');
+    });
+  });
+
+  describe('clearPatterns', () => {
+    it('should clear all patterns', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.addPattern({ pattern: 'test-*', role: 'test' });
+
+      expect(resolver.getStats().totalPatterns).toBe(1);
+
+      resolver.clearPatterns();
+
+      expect(resolver.getStats().totalPatterns).toBe(0);
+      expect(resolver.getPatterns()).toHaveLength(0);
+    });
+  });
+
+  describe('getStats', () => {
+    it('should return accurate statistics', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'admin-skill',
+          displayName: 'Admin',
+          description: 'Admin skill',
+          allowedRoles: ['admin'],
+          allowedTools: ['*'],
+          identity: {
+            mappings: [
+              { pattern: 'claude-*', role: 'admin', priority: 100 },
+              { pattern: 'aegis-admin-*', role: 'admin', priority: 100 }
+            ],
+            trustedPrefixes: ['claude-', 'aegis-']
+          }
+        },
+        {
+          id: 'frontend-skill',
+          displayName: 'Frontend',
+          description: 'Frontend skill',
+          allowedRoles: ['frontend'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(3);
+      expect(stats.patternsByRole).toEqual({
+        admin: 2,
+        frontend: 1
+      });
+      expect(stats.trustedPrefixes).toContain('claude-');
+      expect(stats.trustedPrefixes).toContain('aegis-');
+      expect(stats.defaultRole).toBe('guest');
+    });
+  });
+
+  describe('Integration with Default Config', () => {
+    it('should merge skill patterns with existing config', () => {
+      const config: IdentityConfig = {
+        version: '1.0.0',
+        defaultRole: 'guest',
+        trustedPrefixes: ['internal-'],
+        patterns: [
+          { pattern: 'internal-*', role: 'internal', priority: 50 }
+        ]
+      };
+
+      const resolver = createIdentityResolver(testLogger, config);
+
+      const skills: SkillDefinition[] = [
+        {
+          id: 'external-skill',
+          displayName: 'External',
+          description: 'External skill',
+          allowedRoles: ['external'],
+          allowedTools: [],
+          identity: {
+            mappings: [
+              { pattern: 'external-*', role: 'external', priority: 50 }
+            ],
+            trustedPrefixes: ['external-']
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(2);
+      expect(stats.trustedPrefixes).toContain('internal-');
+      expect(stats.trustedPrefixes).toContain('external-');
+
+      // Both patterns should work
+      const internalResult = resolver.resolve({ name: 'internal-service' });
+      expect(internalResult.roleId).toBe('internal');
+      expect(internalResult.isTrusted).toBe(true);
+
+      const externalResult = resolver.resolve({ name: 'external-api' });
+      expect(externalResult.roleId).toBe('external');
+      expect(externalResult.isTrusted).toBe(true);
+    });
+  });
+
+  describe('Real-world Skill Example', () => {
+    it('should handle a complete skill-based A2A configuration', () => {
+      const resolver = createIdentityResolver(testLogger);
+      resolver.setDefaultRole('guest');
+
+      // Simulating skills as they would be defined in SKILL.yaml files
+      const skills: SkillDefinition[] = [
+        {
+          id: 'admin-access',
+          displayName: 'Admin Access',
+          description: 'Full administrative access for trusted agents',
+          allowedRoles: ['admin'],
+          allowedTools: ['*'],
+          grants: { memory: 'all' },
+          identity: {
+            mappings: [
+              { pattern: 'claude-code', role: 'admin', priority: 100, description: 'Claude Code gets admin' },
+              { pattern: 'aegis-admin-*', role: 'admin', priority: 100, description: 'Admin agents' }
+            ],
+            trustedPrefixes: ['claude-', 'aegis-']
+          }
+        },
+        {
+          id: 'frontend-dev',
+          displayName: 'Frontend Development',
+          description: 'Frontend component development tools',
+          allowedRoles: ['frontend'],
+          allowedTools: ['filesystem__read_file', 'filesystem__write_file'],
+          grants: { memory: 'isolated' },
+          identity: {
+            mappings: [
+              { pattern: 'aegis-frontend-*', role: 'frontend', priority: 50 },
+              { pattern: '*-ui-agent', role: 'frontend', priority: 10 }
+            ]
+          }
+        },
+        {
+          id: 'backend-dev',
+          displayName: 'Backend Development',
+          description: 'Backend API development tools',
+          allowedRoles: ['backend'],
+          allowedTools: ['database__*', 'api__*'],
+          grants: { memory: 'isolated' },
+          identity: {
+            mappings: [
+              { pattern: 'aegis-backend-*', role: 'backend', priority: 50 },
+              { pattern: '*-api-agent', role: 'backend', priority: 10 }
+            ]
+          }
+        }
+      ];
+
+      resolver.loadFromSkills(skills);
+
+      // Test Claude Code → admin
+      const claudeResult = resolver.resolve({ name: 'claude-code', version: '1.0.0' });
+      expect(claudeResult.roleId).toBe('admin');
+      expect(claudeResult.isTrusted).toBe(true);
+      expect(claudeResult.matchedPattern).toBe('claude-code');
+
+      // Test frontend agent
+      const frontendResult = resolver.resolve({ name: 'aegis-frontend-component-builder' });
+      expect(frontendResult.roleId).toBe('frontend');
+      expect(frontendResult.isTrusted).toBe(true);
+
+      // Test backend agent
+      const backendResult = resolver.resolve({ name: 'aegis-backend-api-gateway' });
+      expect(backendResult.roleId).toBe('backend');
+      expect(backendResult.isTrusted).toBe(true);
+
+      // Test suffix pattern matching
+      const uiAgentResult = resolver.resolve({ name: 'custom-ui-agent' });
+      expect(uiAgentResult.roleId).toBe('frontend');
+      expect(uiAgentResult.isTrusted).toBe(false); // not in trusted prefixes
+
+      // Test unknown agent → guest
+      const unknownResult = resolver.resolve({ name: 'unknown-service' });
+      expect(unknownResult.roleId).toBe('guest');
+      expect(unknownResult.matchedPattern).toBeNull();
+      expect(unknownResult.isTrusted).toBe(false);
+
+      // Verify stats
+      const stats = resolver.getStats();
+      expect(stats.totalPatterns).toBe(6);
+      expect(stats.patternsByRole.admin).toBe(2);
+      expect(stats.patternsByRole.frontend).toBe(2);
+      expect(stats.patternsByRole.backend).toBe(2);
+    });
   });
 });

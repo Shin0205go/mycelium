@@ -59,6 +59,7 @@ src/
 │   ├── aegis-router-core.ts      # Central routing system (司令塔)
 │   ├── role-manager.ts           # Role definitions and permissions
 │   ├── tool-visibility-manager.ts # Tool filtering by role
+│   ├── identity-resolver.ts      # A2A identity resolution
 │   ├── audit-logger.ts           # Audit logging for compliance
 │   ├── rate-limiter.ts           # Rate limiting and quotas
 │   ├── role-memory.ts            # Role-based memory store
@@ -81,6 +82,7 @@ tests/
 ├── role-manager.test.ts          # RoleManager unit tests
 ├── tool-visibility-manager.test.ts # ToolVisibilityManager tests
 ├── tool-filtering.test.ts        # Role-based tool filtering tests
+├── identity-resolver.test.ts     # A2A identity resolution tests
 ├── skill-integration.test.ts     # Skill integration tests
 ├── role-switching.test.ts        # Role switching tests
 ├── aegis-skills-access.test.ts   # Skills access tests
@@ -139,6 +141,15 @@ Transparent Markdown-based memory system per role:
 - Memory types: fact, preference, context, episode, learned
 - Search and recall functionality
 - Inspired by Claude's file-based memory approach
+
+### 8. IdentityResolver (`src/router/identity-resolver.ts`)
+A2A Zero-Trust identity resolution for agent-to-agent communication:
+- Resolves agent identity (clientInfo.name) to role
+- Glob-style pattern matching (*, ?)
+- Priority-based pattern ordering
+- Loads patterns from skills (skill-driven identity)
+- Trusted prefix detection for agent trust levels
+- Supports strict mode (reject unknown agents)
 
 ## Development Commands
 
@@ -221,7 +232,21 @@ interface SkillDefinition {
   description: string;          // Skill description
   allowedRoles: string[];       // Roles that can use this skill
   allowedTools: string[];       // Tools this skill requires
+  grants?: SkillGrants;         // Capability grants (memory, etc.)
+  identity?: SkillIdentityConfig; // A2A identity mappings
   metadata?: SkillMetadata;
+}
+
+interface SkillIdentityConfig {
+  mappings: SkillIdentityMapping[];  // Identity-to-role patterns
+  trustedPrefixes?: string[];        // Trusted agent prefixes
+}
+
+interface SkillIdentityMapping {
+  pattern: string;              // Glob pattern (*, ?)
+  role: string;                 // Role to assign
+  description?: string;         // Optional description
+  priority?: number;            // Priority (higher = checked first)
 }
 ```
 
@@ -405,7 +430,90 @@ When A2A mode is enabled:
 3. A role is automatically assigned based on the first matching pattern
 4. The `set_role` tool is hidden from the tools list
 
-#### Configuration (`aegis-identity.yaml`)
+#### Skill-Based Identity Configuration (Recommended)
+
+Identity patterns can be defined directly in skill files, keeping all configuration in one place:
+
+```yaml
+# skills/admin-access/SKILL.yaml
+id: admin-access
+displayName: Admin Access
+description: Full administrative access for trusted agents
+
+allowedRoles:
+  - admin
+
+allowedTools:
+  - "*"
+
+grants:
+  memory: all
+
+# A2A Identity mappings
+identity:
+  mappings:
+    - pattern: "claude-code"
+      role: admin
+      priority: 100
+      description: "Claude Code gets admin access"
+
+    - pattern: "aegis-admin-*"
+      role: admin
+      priority: 100
+      description: "Admin agents"
+
+  trustedPrefixes:
+    - "claude-"
+    - "aegis-"
+```
+
+```yaml
+# skills/frontend-dev/SKILL.yaml
+id: frontend-dev
+displayName: Frontend Development
+description: Frontend component development tools
+
+allowedRoles:
+  - frontend
+
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+
+grants:
+  memory: isolated
+
+identity:
+  mappings:
+    - pattern: "aegis-frontend-*"
+      role: frontend
+      priority: 50
+
+    - pattern: "*-ui-agent"
+      role: frontend
+      priority: 10
+```
+
+#### Benefits of Skill-Based Identity
+
+| Aspect | Benefit |
+|--------|---------|
+| Single Source of Truth | Skills define roles, tools, memory, AND identity |
+| Distributed Config | Each skill manages its own identity patterns |
+| Dynamic Updates | Reload skills to update identity patterns |
+| Audit Trail | Track which skill granted which identity pattern |
+
+#### Pattern Aggregation
+
+When multiple skills define identity patterns:
+1. All patterns are aggregated from all skills
+2. Patterns are sorted by priority (higher first)
+3. First matching pattern determines the role
+4. Trusted prefixes are merged from all skills
+
+#### Legacy Configuration (`aegis-identity.yaml`)
+
+For backwards compatibility, patterns can also be defined in a separate file:
 
 ```yaml
 version: "1.0.0"
@@ -464,6 +572,10 @@ const manifest = await router.setRoleFromIdentity({
   name: 'aegis-frontend-component-builder',
   version: '1.0.0'
 });
+
+// Get identity statistics
+const stats = router.getIdentityStats();
+// { totalPatterns: 6, patternsByRole: { admin: 2, frontend: 2, backend: 2 }, ... }
 ```
 
 #### Resolution Result
