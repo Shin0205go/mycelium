@@ -12,6 +12,7 @@ import { ToolVisibilityManager, createToolVisibilityManager } from './tool-visib
 import { AuditLogger, createAuditLogger } from './audit-logger.js';
 import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
 import { RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from './role-memory.js';
+import { IdentityResolver, createIdentityResolver } from './identity-resolver.js';
 import type {
   Role,
   AegisRouterState,
@@ -24,7 +25,10 @@ import type {
   SetRoleOptions,
   ListRolesResult,
   SkillManifest,
-  SkillDefinition
+  SkillDefinition,
+  AgentIdentity,
+  IdentityResolution,
+  IdentityConfig
 } from '../types/router-types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -46,9 +50,13 @@ export class AegisRouterCore extends EventEmitter {
   private auditLogger: AuditLogger;
   private rateLimiter: RateLimiter;
   private memoryStore: RoleMemoryStore;
+  private identityResolver: IdentityResolver;
 
   // Router state
   private state: AegisRouterState;
+
+  // Current identity resolution result
+  private currentIdentity: IdentityResolution | null = null;
 
   // Notification callback for tools/list_changed
   private toolsChangedCallback?: () => Promise<void>;
@@ -57,16 +65,22 @@ export class AegisRouterCore extends EventEmitter {
   private initialized: boolean = false;
   private initializationPromise: Promise<void> | null = null;
 
+  // A2A mode: when true, set_role tool is disabled
+  private a2aMode: boolean = false;
+
   constructor(
     logger: Logger,
     options?: {
       rolesDir?: string;
       configFile?: string;
       memoryDir?: string;
+      identityConfigPath?: string;
+      a2aMode?: boolean;
     }
   ) {
     super();
     this.logger = logger;
+    this.a2aMode = options?.a2aMode ?? false;
 
     // Initialize StdioRouter for managing upstream servers
     this.stdioRouter = new StdioRouter(logger);
@@ -74,8 +88,10 @@ export class AegisRouterCore extends EventEmitter {
     // Initialize role manager
     this.roleManager = createRoleManager(logger);
 
-    // Initialize tool visibility manager
-    this.toolVisibility = createToolVisibilityManager(logger, this.roleManager);
+    // Initialize tool visibility manager (with A2A mode awareness)
+    this.toolVisibility = createToolVisibilityManager(logger, this.roleManager, {
+      hideSetRoleTool: this.a2aMode
+    });
 
     // Initialize audit logger
     this.auditLogger = createAuditLogger(logger);
@@ -85,6 +101,9 @@ export class AegisRouterCore extends EventEmitter {
 
     // Initialize role memory store
     this.memoryStore = createRoleMemoryStore(options?.memoryDir || './memory');
+
+    // Initialize identity resolver
+    this.identityResolver = createIdentityResolver(logger);
 
     // Initialize state
     this.state = {
@@ -100,7 +119,8 @@ export class AegisRouterCore extends EventEmitter {
     };
 
     this.logger.debug('AegisRouterCore created', {
-      sessionId: this.state.metadata.sessionId
+      sessionId: this.state.metadata.sessionId,
+      a2aMode: this.a2aMode
     });
   }
 
@@ -154,6 +174,96 @@ export class AegisRouterCore extends EventEmitter {
       this.logger.error('Failed to initialize router core:', error);
       throw error;
     }
+  }
+
+  // ============================================================================
+  // A2A Identity Resolution
+  // ============================================================================
+
+  /**
+   * Load identity configuration from file
+   */
+  async loadIdentityConfig(configPath: string): Promise<void> {
+    await this.identityResolver.loadFromFile(configPath);
+    this.logger.info(`Identity configuration loaded from ${configPath}`);
+  }
+
+  /**
+   * Resolve agent identity and set role automatically (A2A mode)
+   *
+   * This is the main entry point for A2A connections. Instead of
+   * using set_role, agents are assigned roles based on their identity
+   * (clientInfo.name from MCP handshake).
+   *
+   * @param identity Agent identity from MCP connection
+   * @returns The resolved role information
+   */
+  async setRoleFromIdentity(identity: AgentIdentity): Promise<AgentManifest> {
+    this.logger.info(`🔐 A2A Identity resolution for: ${identity.name}`);
+
+    // Resolve identity to role
+    const resolution = this.identityResolver.resolve(identity);
+    this.currentIdentity = resolution;
+
+    // Check if the resolved role exists
+    const role = this.state.availableRoles.get(resolution.roleId);
+    if (!role) {
+      this.logger.warn(`Resolved role '${resolution.roleId}' not found, using default`);
+      const defaultRoleId = this.roleManager.getDefaultRoleId();
+      const defaultRole = this.state.availableRoles.get(defaultRoleId);
+
+      if (!defaultRole) {
+        throw new Error(`No valid role found for identity: ${identity.name}`);
+      }
+
+      // Update resolution with fallback role
+      resolution.roleId = defaultRoleId;
+    }
+
+    // Set the role internally (without exposing set_role tool)
+    const manifest = await this.setRole({
+      role: resolution.roleId,
+      includeToolDescriptions: true
+    });
+
+    this.logger.info(`✅ A2A Identity resolved: ${identity.name} → ${resolution.roleId}`, {
+      matchedPattern: resolution.matchedPattern,
+      isTrusted: resolution.isTrusted
+    });
+
+    return manifest;
+  }
+
+  /**
+   * Get the current identity resolution
+   */
+  getCurrentIdentity(): IdentityResolution | null {
+    return this.currentIdentity;
+  }
+
+  /**
+   * Check if running in A2A mode
+   */
+  isA2AMode(): boolean {
+    return this.a2aMode;
+  }
+
+  /**
+   * Enable A2A mode (disables set_role tool)
+   */
+  enableA2AMode(): void {
+    this.a2aMode = true;
+    this.toolVisibility.setHideSetRoleTool(true);
+    this.logger.info('A2A mode enabled - set_role tool disabled');
+  }
+
+  /**
+   * Disable A2A mode (enables set_role tool)
+   */
+  disableA2AMode(): void {
+    this.a2aMode = false;
+    this.toolVisibility.setHideSetRoleTool(false);
+    this.logger.info('A2A mode disabled - set_role tool enabled');
   }
 
   // ============================================================================
@@ -623,8 +733,22 @@ export class AegisRouterCore extends EventEmitter {
   async routeRequest(request: any): Promise<any> {
     const { method, params } = request;
 
-    // Handle internal tools
+    // Handle set_role - reject in A2A mode
     if (method === 'tools/call' && params?.name === 'set_role') {
+      if (this.a2aMode) {
+        return {
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: 'Error: set_role is disabled in A2A mode. ' +
+                  'Role is automatically assigned based on agent identity at connection time.'
+              }
+            ],
+            isError: true
+          }
+        };
+      }
       return await this.handleSetRole(params.arguments || {});
     }
 

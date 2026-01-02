@@ -673,3 +673,80 @@ export interface SkillMcpClient {
    */
   generateRoleManifest(skills: SkillDefinition[]): RoleManifest;
 }
+
+// ============================================================================
+// A2A Identity Resolution (Agent-to-Agent Zero-Trust)
+// ============================================================================
+
+/**
+ * Identity pattern for matching agent names
+ * Supports glob-style patterns: *, ?, [abc]
+ */
+export interface IdentityPattern {
+  /** Glob pattern to match against clientInfo.name */
+  pattern: string;
+
+  /** Role to assign when pattern matches */
+  role: string;
+
+  /** Optional description for this mapping */
+  description?: string;
+
+  /** Priority (higher = checked first, default: 0) */
+  priority?: number;
+}
+
+/**
+ * A2A Identity Configuration
+ * Loaded from aegis-identity.yaml
+ */
+export interface IdentityConfig {
+  /** Configuration version */
+  version: string;
+
+  /** Default role when no pattern matches */
+  defaultRole: string;
+
+  /** Identity patterns (checked in priority order) */
+  patterns: IdentityPattern[];
+
+  /** Whether to reject connections that don't match any pattern */
+  rejectUnknown?: boolean;
+
+  /** Trusted agent prefixes (e.g., "claude-", "aegis-") */
+  trustedPrefixes?: string[];
+}
+
+/**
+ * Result of identity resolution
+ */
+export interface IdentityResolution {
+  /** Resolved role ID */
+  roleId: string;
+
+  /** Original agent name from clientInfo */
+  agentName: string;
+
+  /** Which pattern matched (null if default) */
+  matchedPattern: string | null;
+
+  /** Whether this is a trusted agent */
+  isTrusted: boolean;
+
+  /** Resolution timestamp */
+  resolvedAt: Date;
+}
+
+/**
+ * Agent identity information from MCP connection
+ */
+export interface AgentIdentity {
+  /** Agent name from clientInfo.name */
+  name: string;
+
+  /** Agent version from clientInfo.version */
+  version?: string;
+
+  /** Additional metadata */
+  metadata?: Record<string, unknown>;
+}

@@ -9,6 +9,14 @@ import type { Role, ToolInfo, MemoryPolicy } from '../types/router-types.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 /**
+ * Options for ToolVisibilityManager
+ */
+export interface ToolVisibilityOptions {
+  /** Hide the set_role tool (for A2A mode) */
+  hideSetRoleTool?: boolean;
+}
+
+/**
  * Tool Visibility Manager
  * Handles tool discovery, filtering, and access control based on roles
  */
@@ -25,10 +33,26 @@ export class ToolVisibilityManager {
   // Current role reference
   private currentRole: Role | null = null;
 
-  constructor(logger: Logger, roleManager: RoleManager) {
+  // A2A mode: hide set_role tool
+  private hideSetRoleTool: boolean = false;
+
+  constructor(logger: Logger, roleManager: RoleManager, options?: ToolVisibilityOptions) {
     this.logger = logger;
     this.roleManager = roleManager;
-    this.logger.debug('ToolVisibilityManager initialized');
+    this.hideSetRoleTool = options?.hideSetRoleTool ?? false;
+    this.logger.debug('ToolVisibilityManager initialized', {
+      hideSetRoleTool: this.hideSetRoleTool
+    });
+  }
+
+  /**
+   * Set whether to hide the set_role tool (for A2A mode)
+   */
+  setHideSetRoleTool(hide: boolean): void {
+    this.hideSetRoleTool = hide;
+    // Re-filter visible tools
+    this.updateVisibleTools();
+    this.logger.debug(`set_role tool visibility: ${hide ? 'hidden' : 'visible'}`);
   }
 
   // ============================================================================
@@ -176,37 +200,39 @@ export class ToolVisibilityManager {
    * Add system tools (always visible) and memory tools (permission-based)
    */
   private addSystemTool(): void {
-    // set_role tool (always available)
-    const setRoleTool: Tool = {
-      name: 'set_role',
-      description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
-        'Use this tool to change your operational context and capabilities.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role_id: {
-            type: 'string',
-            description: 'The role ID to switch to. Use "list" to see available roles.'
+    // set_role tool - only add if not in A2A mode (hideSetRoleTool = false)
+    if (!this.hideSetRoleTool) {
+      const setRoleTool: Tool = {
+        name: 'set_role',
+        description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
+          'Use this tool to change your operational context and capabilities.',
+        inputSchema: {
+          type: 'object' as const,
+          properties: {
+            role_id: {
+              type: 'string',
+              description: 'The role ID to switch to. Use "list" to see available roles.'
+            },
+            includeToolDescriptions: {
+              type: 'boolean',
+              description: 'Whether to include full tool descriptions in the response',
+              default: true
+            }
           },
-          includeToolDescriptions: {
-            type: 'boolean',
-            description: 'Whether to include full tool descriptions in the response',
-            default: true
-          }
-        },
-        required: ['role_id']
-      }
-    };
+          required: ['role_id']
+        }
+      };
 
-    // Register set_role (always visible)
-    const setRoleInfo: ToolInfo = {
-      tool: setRoleTool,
-      sourceServer: 'aegis-router',
-      prefixedName: 'set_role',
-      visible: true,
-      visibilityReason: 'system_tool'
-    };
-    this.visibleTools.set('set_role', setRoleInfo);
+      // Register set_role (visible when not in A2A mode)
+      const setRoleInfo: ToolInfo = {
+        tool: setRoleTool,
+        sourceServer: 'aegis-router',
+        prefixedName: 'set_role',
+        visible: true,
+        visibilityReason: 'system_tool'
+      };
+      this.visibleTools.set('set_role', setRoleInfo);
+    }
 
     // Check if current role has memory permission
     const roleId = this.currentRole?.id;
@@ -343,9 +369,6 @@ export class ToolVisibilityManager {
   // Access Control
   // ============================================================================
 
-  // System tools that are always accessible (memory tools are now permission-based)
-  private static readonly SYSTEM_TOOLS = ['set_role'];
-
   // Memory tools (only visible if role has memory permission)
   private static readonly MEMORY_TOOLS = ['save_memory', 'recall_memory', 'list_memories'];
 
@@ -353,8 +376,14 @@ export class ToolVisibilityManager {
    * Check if a tool is accessible (throws if not)
    */
   checkAccess(toolName: string): void {
-    // System tools always accessible
-    if (ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName)) {
+    // set_role: accessible only when not in A2A mode
+    if (toolName === 'set_role') {
+      if (this.hideSetRoleTool) {
+        throw new Error(
+          `Tool 'set_role' is disabled in A2A mode. ` +
+          `Role is automatically assigned based on agent identity at connection time.`
+        );
+      }
       return;
     }
 
@@ -373,9 +402,11 @@ export class ToolVisibilityManager {
 
     if (!this.visibleTools.has(toolName)) {
       const roleId = this.currentRole?.id || 'none';
+      const hint = this.hideSetRoleTool
+        ? 'Check available tools for your assigned role.'
+        : 'Use set_role to switch roles or check available tools.';
       throw new Error(
-        `Tool '${toolName}' is not accessible for role '${roleId}'. ` +
-        `Use set_role to switch roles or check available tools.`
+        `Tool '${toolName}' is not accessible for role '${roleId}'. ${hint}`
       );
     }
   }
@@ -384,8 +415,9 @@ export class ToolVisibilityManager {
    * Check if a tool is visible (returns boolean)
    */
   isVisible(toolName: string): boolean {
-    if (ToolVisibilityManager.SYSTEM_TOOLS.includes(toolName)) {
-      return true;
+    // set_role: visible only when not in A2A mode
+    if (toolName === 'set_role') {
+      return !this.hideSetRoleTool;
     }
 
     // Memory tools are visible only if role has memory permission
@@ -464,7 +496,8 @@ export class ToolVisibilityManager {
 
 export function createToolVisibilityManager(
   logger: Logger,
-  roleManager: RoleManager
+  roleManager: RoleManager,
+  options?: ToolVisibilityOptions
 ): ToolVisibilityManager {
-  return new ToolVisibilityManager(logger, roleManager);
+  return new ToolVisibilityManager(logger, roleManager, options);
 }

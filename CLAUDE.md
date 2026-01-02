@@ -393,6 +393,91 @@ When granted, these tools become available:
 - `recall_memory` - Search and retrieve memories (with `all_roles=true` for admin)
 - `list_memories` - Get memory statistics
 
+### A2A Identity Resolution (Agent-to-Agent Zero-Trust)
+
+The A2A Identity Resolution feature enables automatic role assignment based on agent identity, eliminating the need for the `set_role` tool in agent-to-agent communication.
+
+#### How It Works
+
+When A2A mode is enabled:
+1. Agents connect and provide their identity via MCP `clientInfo.name`
+2. The router matches the agent name against configured patterns
+3. A role is automatically assigned based on the first matching pattern
+4. The `set_role` tool is hidden from the tools list
+
+#### Configuration (`aegis-identity.yaml`)
+
+```yaml
+version: "1.0.0"
+
+# Default role when no pattern matches
+defaultRole: guest
+
+# Reject unknown agents (for strict Zero-Trust)
+rejectUnknown: false
+
+# Trusted agent prefixes
+trustedPrefixes:
+  - "claude-"
+  - "aegis-"
+
+# Identity patterns (higher priority checked first)
+patterns:
+  - pattern: "aegis-admin-*"
+    role: admin
+    description: "Admin agents"
+    priority: 100
+
+  - pattern: "claude-code"
+    role: admin
+    description: "Claude Code"
+    priority: 100
+
+  - pattern: "aegis-frontend-*"
+    role: frontend
+    priority: 50
+
+  - pattern: "aegis-backend-*"
+    role: backend
+    priority: 50
+```
+
+#### Pattern Syntax
+- `*` - Matches any characters
+- `?` - Matches single character
+- Patterns are case-insensitive
+
+#### Enabling A2A Mode
+
+```typescript
+// In AegisRouterCore constructor
+const router = new AegisRouterCore(logger, {
+  a2aMode: true,
+  identityConfigPath: './aegis-identity.yaml'
+});
+
+// Or enable dynamically
+router.enableA2AMode();
+
+// Set role from agent identity
+const manifest = await router.setRoleFromIdentity({
+  name: 'aegis-frontend-component-builder',
+  version: '1.0.0'
+});
+```
+
+#### Resolution Result
+
+```typescript
+interface IdentityResolution {
+  roleId: string;        // Resolved role
+  agentName: string;     // Original agent name
+  matchedPattern: string | null;  // Pattern that matched
+  isTrusted: boolean;    // Based on trustedPrefixes
+  resolvedAt: Date;      // Resolution timestamp
+}
+```
+
 ## Code Style and Conventions
 
 - **TypeScript**: Strict mode enabled, ES2022 target

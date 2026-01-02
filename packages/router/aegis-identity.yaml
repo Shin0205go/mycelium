@@ -1,0 +1,94 @@
+# ============================================================================
+# AEGIS Identity Configuration
+# A2A Zero-Trust identity resolution for agent-to-agent communication
+# ============================================================================
+#
+# This file maps agent identities (clientInfo.name) to roles.
+# Patterns are checked in priority order; first match wins.
+#
+# Pattern syntax:
+#   *       - Matches any characters
+#   ?       - Matches single character
+#   [abc]   - Matches a, b, or c
+#
+# Example agent names from MCP clients:
+#   - "claude-code"           (Claude Code)
+#   - "aegis-frontend-agent"  (Aegis sub-agent)
+#   - "my-custom-tool"        (Custom MCP client)
+#
+# ============================================================================
+
+version: "1.0.0"
+
+# Default role when no pattern matches
+defaultRole: guest
+
+# Whether to reject connections that don't match any pattern
+# Set to true for strict Zero-Trust (recommended for production)
+rejectUnknown: false
+
+# Trusted agent prefixes (these agents get isTrusted=true in resolution)
+trustedPrefixes:
+  - "claude-"
+  - "aegis-"
+
+# Identity patterns (checked in priority order, higher priority first)
+patterns:
+  # ============================================================================
+  # Admin patterns (highest priority)
+  # ============================================================================
+  - pattern: "aegis-admin-*"
+    role: admin
+    description: "AEGIS admin agents have full access"
+    priority: 100
+
+  - pattern: "claude-code"
+    role: admin
+    description: "Claude Code gets admin access for development"
+    priority: 100
+
+  # ============================================================================
+  # Role-specific patterns
+  # ============================================================================
+  - pattern: "aegis-frontend-*"
+    role: frontend
+    description: "Frontend agents for UI development"
+    priority: 50
+
+  - pattern: "aegis-backend-*"
+    role: backend
+    description: "Backend agents for API development"
+    priority: 50
+
+  - pattern: "aegis-security-*"
+    role: security
+    description: "Security agents for auditing"
+    priority: 50
+
+  - pattern: "aegis-qa-*"
+    role: qa
+    description: "QA agents for testing"
+    priority: 50
+
+  - pattern: "aegis-devops-*"
+    role: devops
+    description: "DevOps agents for deployment"
+    priority: 50
+
+  - pattern: "aegis-docs-*"
+    role: docs
+    description: "Documentation agents"
+    priority: 50
+
+  # ============================================================================
+  # Generic patterns (lower priority)
+  # ============================================================================
+  - pattern: "agent-*-*"
+    role: developer
+    description: "Generic agent pattern: agent-{role}-{id}"
+    priority: 10
+
+  - pattern: "*-agent"
+    role: developer
+    description: "Any agent suffix"
+    priority: 5
