@@ -2,16 +2,13 @@
   "mcpServers": {
     "aegis-skills": {
       "command": "node",
-      "args": ["packages/skills/dist/index.js", "packages/skills/skills"],
+      "args": ["/home/user/Aegis-cli/packages/skills/dist/index.js", "/home/user/Aegis-cli/packages/skills/skills"],
       "comment": "Skill MCP Server - provides list_skills tool"
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/shingo/Develop"]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
+      "comment": "Filesystem server for this environment"
     }
   },
   "roles": {
