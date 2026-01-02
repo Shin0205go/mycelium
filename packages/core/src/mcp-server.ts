@@ -26,7 +26,8 @@ const AEGIS_CLI_PATH = process.env.AEGIS_CLI_PATH ||
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PROJECT_ROOT = join(__dirname, '..');
+// Go up from dist/ -> packages/core/ -> packages/ -> project root
+const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
 const logger = new Logger('info');
 
@@ -227,6 +228,7 @@ async function main() {
   // Initialize Router Core with explicit paths
   const routerCore = createAegisRouterCore(logger, {
     rolesDir: join(PROJECT_ROOT, 'roles'),
+    cwd: PROJECT_ROOT,
   });
 
   // Load server configuration from environment or default config file

@@ -74,6 +74,7 @@ export class AegisRouterCore extends EventEmitter {
       memoryDir?: string;
       identityConfigPath?: string;
       a2aMode?: boolean;
+      cwd?: string;
     }
   ) {
     super();
@@ -81,7 +82,7 @@ export class AegisRouterCore extends EventEmitter {
     this.a2aMode = options?.a2aMode ?? false;
 
     // Initialize StdioRouter for managing upstream servers
-    this.stdioRouter = new StdioRouter(logger);
+    this.stdioRouter = new StdioRouter(logger, { cwd: options?.cwd });
 
     // Initialize role manager
     this.roleManager = createRoleManager(logger);
@@ -1419,6 +1420,10 @@ export function createAegisRouterCore(
   options?: {
     rolesDir?: string;
     configFile?: string;
+    memoryDir?: string;
+    identityConfigPath?: string;
+    a2aMode?: boolean;
+    cwd?: string;
   }
 ): AegisRouterCore {
   return new AegisRouterCore(logger, options);

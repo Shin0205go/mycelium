@@ -23,6 +23,7 @@ export interface UpstreamServerInfo {
 export class StdioRouter extends EventEmitter {
   private upstreamServers = new Map<string, UpstreamServerInfo>();
   private logger: Logger;
+  private cwd?: string;
   private currentRequestId?: string | number;
   private pendingRequests = new Map<string | number, {
     resolve: (value: any) => void;
@@ -30,9 +31,10 @@ export class StdioRouter extends EventEmitter {
     targetServer?: string;
   }>();
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, options?: { cwd?: string }) {
     super();
     this.logger = logger;
+    this.cwd = options?.cwd;
   }
 
   /**
@@ -141,7 +143,8 @@ export class StdioRouter extends EventEmitter {
         
         const proc = spawn(server.config.command, server.config.args || [], {
           env,
-          stdio: ['pipe', 'pipe', 'pipe']
+          stdio: ['pipe', 'pipe', 'pipe'],
+          cwd: this.cwd
         });
 
         server.process = proc;
