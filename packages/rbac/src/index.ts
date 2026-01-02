@@ -34,3 +34,13 @@ export {
   createToolVisibilityManager,
   type ToolVisibilityOptions
 } from './tool-visibility-manager.js';
+
+// Role Memory Store
+export {
+  RoleMemoryStore,
+  createRoleMemoryStore,
+  type MemoryEntry,
+  type RoleMemory,
+  type MemorySearchOptions,
+  type SaveMemoryOptions
+} from './role-memory.js';
