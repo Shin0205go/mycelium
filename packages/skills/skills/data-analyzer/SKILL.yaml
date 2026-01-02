@@ -1,6 +1,8 @@
-id: data-analyzer
-displayName: Data Analyzer
-description: データ分析と可視化を行うスキル
+# Official Claude Skills compatible format
+name: data-analyzer
+description: データ分析と可視化を行うスキル。CSV/JSONデータの読み込み、統計分析、データクレンジング、グラフ生成などを実行。
+
+# AEGIS RBAC extensions
 allowedRoles:
   - analyst
   - data-scientist

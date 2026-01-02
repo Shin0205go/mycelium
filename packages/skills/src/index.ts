@@ -20,31 +20,45 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Skill definition with role permissions
+ *
+ * Compatible with official Claude Agent Skills format:
+ * - name: Skill identifier (required, max 64 chars, lowercase/numbers/hyphens)
+ * - description: What the skill does and when to use it (required, max 1024 chars)
+ *
+ * AEGIS RBAC extensions:
+ * - allowedRoles: Roles that can use this skill
+ * - allowedTools: MCP tools this skill grants access to
  */
 interface SkillDefinition {
-  id: string;
-  displayName: string;
-  description: string;
-  allowedRoles: string[];
-  allowedTools: string[];
+  id: string;           // Internal ID (defaults to name)
+  name: string;         // Official: skill name
+  displayName: string;  // Human-readable name
+  description: string;  // Official: skill description
+  allowedRoles: string[];  // AEGIS: roles that can use this skill
+  allowedTools: string[];  // AEGIS: tools this skill grants
   version?: string;
   category?: string;
   tags?: string[];
-  instruction?: string;
+  instruction?: string;  // Content from SKILL.md body or README.md
 }
 
 /**
- * Raw YAML structure (supports multiple key formats)
+ * Raw YAML structure (supports official + AEGIS formats)
  */
 interface RawSkillYaml {
-  id?: string;
-  name?: string;
-  displayName?: string;
-  description?: string;
+  // Official Claude Skills fields
+  name?: string;           // Required in official format
+  description?: string;    // Required in official format
+
+  // AEGIS RBAC fields
+  id?: string;             // Optional, defaults to name
+  displayName?: string;    // Optional, defaults to name
   allowedRoles?: string[];
   'allowed-roles'?: string[];
   allowedTools?: string[];
   'allowed-tools'?: string[];
+
+  // Optional metadata
   version?: string;
   category?: string;
   tags?: string[];
@@ -121,15 +135,19 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
           }
         }
 
-        // Normalize field names (support both formats)
+        // Normalize field names (support official + AEGIS formats)
+        const skillName = manifest.name || manifest.id;
         const skillId = manifest.id || manifest.name;
         const allowedRoles = manifest.allowedRoles || manifest['allowed-roles'] || [];
         const allowedTools = manifest.allowedTools || manifest['allowed-tools'] || [];
 
-        if (skillId && allowedRoles.length > 0) {
+        // Official format requires name and description
+        // AEGIS format requires allowedRoles
+        if (skillName && allowedRoles.length > 0) {
           skills.push({
-            id: skillId,
-            displayName: manifest.displayName || skillId,
+            id: skillId!,
+            name: skillName,
+            displayName: manifest.displayName || skillName,
             description: manifest.description || '',
             allowedRoles: allowedRoles,
             allowedTools: allowedTools,

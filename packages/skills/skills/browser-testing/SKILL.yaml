@@ -1,6 +1,8 @@
-id: browser-testing
-displayName: Browser Testing
-description: ブラウザ自動化とE2Eテストを行うスキル
+# Official Claude Skills compatible format
+name: browser-testing
+description: ブラウザ自動化とE2Eテストを行うスキル。Playwrightを使用してWebページのナビゲーション、要素操作、スクリーンショット撮影などを実行。
+
+# AEGIS RBAC extensions
 allowedRoles:
   - developer
   - senior-developer

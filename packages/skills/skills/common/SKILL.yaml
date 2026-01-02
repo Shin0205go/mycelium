@@ -1,6 +1,8 @@
-id: common
-displayName: Common Tools
-description: 全ロール共通で使用できる基本ツール
+# Official Claude Skills compatible format
+name: common
+description: 全ロール共通で使用できる基本ツール。スキル情報の取得やリソースへのアクセスを提供。
+
+# AEGIS RBAC extensions
 allowedRoles:
   - "*"
 allowedTools:

@@ -1,6 +1,8 @@
-id: orchestrator
-displayName: Orchestrator
-description: タスクの調整と他のロールへの委譲を行うコーディネーターロール
+# Official Claude Skills compatible format
+name: orchestrator
+description: タスクの調整と他のロールへの委譲を行うコーディネーターロール。スキル一覧の確認とサブエージェントの管理を実行。
+
+# AEGIS RBAC extensions
 allowedRoles:
   - orchestrator
 allowedTools:
