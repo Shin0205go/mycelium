@@ -1,0 +1,205 @@
+/**
+ * Agent SDK integration for AEGIS CLI
+ * Routes all tool calls through AEGIS Router, excluding built-in tools
+ */
+
+import { query, type SDKMessage, type Query, type Options } from '@anthropic-ai/claude-agent-sdk';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Resolve paths relative to project root (one level up from src/)
+const projectRoot = join(__dirname, '..');
+const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
+  join(projectRoot, 'dist', 'mcp-server.js');
+const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+  join(projectRoot, 'config.json');
+
+export interface AgentConfig {
+  model?: string;
+  cwd?: string;
+  systemPrompt?: string;
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'dontAsk';
+  allowDangerouslySkipPermissions?: boolean;
+  maxTurns?: number;
+  includePartialMessages?: boolean;
+  useApiKey?: boolean; // true = use ANTHROPIC_API_KEY, false = use Claude Code auth
+}
+
+export interface AgentResult {
+  success: boolean;
+  result?: string;
+  error?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    costUSD: number;
+  };
+}
+
+/**
+ * Create agent options with AEGIS Router as the only tool source
+ */
+export function createAgentOptions(config: AgentConfig = {}): Options {
+  // Determine which env to use based on useApiKey flag
+  let envToUse: Record<string, string>;
+
+  if (config.useApiKey) {
+    // Use ANTHROPIC_API_KEY (課金)
+    envToUse = process.env as Record<string, string>;
+  } else {
+    // Remove ANTHROPIC_API_KEY to use Claude Code auth (Max plan)
+    const { ANTHROPIC_API_KEY, ...envWithoutApiKey } = process.env;
+    envToUse = envWithoutApiKey as Record<string, string>;
+  }
+
+  return {
+    // Disable all built-in tools
+    tools: [],
+
+    // Use appropriate auth
+    env: envToUse,
+
+    // Route everything through AEGIS Router
+    mcpServers: {
+      'aegis-router': {
+        command: 'node',
+        args: [AEGIS_ROUTER_PATH],
+        env: {
+          AEGIS_CONFIG_PATH
+        }
+      }
+    },
+
+    // Configuration
+    model: config.model || 'claude-sonnet-4-5-20250929',
+    cwd: config.cwd || process.cwd(),
+    systemPrompt: config.systemPrompt,
+    // Use bypassPermissions for MCP tools - AEGIS Router handles access control
+    permissionMode: config.permissionMode || 'bypassPermissions',
+    allowDangerouslySkipPermissions: true,
+    maxTurns: config.maxTurns || 50,
+    includePartialMessages: config.includePartialMessages ?? true,
+
+    // Don't persist sessions for CLI usage
+    persistSession: false
+  };
+}
+
+/**
+ * Run a single query through the agent
+ */
+export async function runQuery(
+  prompt: string,
+  config: AgentConfig = {},
+  onMessage?: (message: SDKMessage) => void
+): Promise<AgentResult> {
+  const options = createAgentOptions(config);
+
+  try {
+    const queryResult = query({ prompt, options });
+
+    let result: string | undefined;
+    let usage: AgentResult['usage'] | undefined;
+    let error: string | undefined;
+
+    for await (const message of queryResult) {
+      // Callback for streaming
+      if (onMessage) {
+        onMessage(message);
+      }
+
+      // Capture result
+      if (message.type === 'result') {
+        if (message.subtype === 'success') {
+          result = message.result;
+          usage = {
+            inputTokens: message.usage.input_tokens,
+            outputTokens: message.usage.output_tokens,
+            costUSD: message.total_cost_usd
+          };
+        } else {
+          error = message.errors?.join(', ') || `Error: ${message.subtype}`;
+        }
+      }
+    }
+
+    return {
+      success: !error,
+      result,
+      error,
+      usage
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      error: e.message || String(e)
+    };
+  }
+}
+
+/**
+ * Create a streaming query for interactive use
+ */
+export function createQuery(
+  prompt: string,
+  config: AgentConfig = {}
+): Query {
+  const options = createAgentOptions(config);
+  return query({ prompt, options });
+}
+
+// Content block types from API
+interface TextBlock {
+  type: 'text';
+  text: string;
+}
+
+interface ToolUseBlock {
+  type: 'tool_use';
+  id: string;
+  name: string;
+  input: unknown;
+}
+
+type ContentBlock = TextBlock | ToolUseBlock | { type: string };
+
+/**
+ * Extract text content from assistant messages
+ */
+export function extractTextFromMessage(message: SDKMessage): string | null {
+  if (message.type === 'assistant' && message.message.content) {
+    const content = message.message.content as ContentBlock[];
+    const textBlocks = content.filter(
+      (block): block is TextBlock => block.type === 'text'
+    );
+    return textBlocks.map(b => b.text).join('');
+  }
+  return null;
+}
+
+/**
+ * Check if message is a tool use
+ */
+export function isToolUseMessage(message: SDKMessage): boolean {
+  if (message.type === 'assistant' && message.message.content) {
+    const content = message.message.content as ContentBlock[];
+    return content.some(block => block.type === 'tool_use');
+  }
+  return false;
+}
+
+/**
+ * Get tool use info from message
+ */
+export function getToolUseInfo(message: SDKMessage): Array<{ name: string; input: unknown }> {
+  if (message.type === 'assistant' && message.message.content) {
+    const content = message.message.content as ContentBlock[];
+    return content
+      .filter((block): block is ToolUseBlock => block.type === 'tool_use')
+      .map(block => ({ name: block.name, input: block.input }));
+  }
+  return [];
+}
