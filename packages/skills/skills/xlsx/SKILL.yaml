@@ -1,0 +1,11 @@
+# AEGIS RBAC extensions for Anthropic skill
+allowedRoles:
+  - analyst
+  - data-scientist
+  - admin
+  - "*"
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+  - filesystem__create_directory
+  - filesystem__list_directory

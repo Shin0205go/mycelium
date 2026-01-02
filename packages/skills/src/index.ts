@@ -102,25 +102,40 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
         let manifest: RawSkillYaml = {};
         let instruction: string | undefined;
 
-        // Try SKILL.yaml first, then fall back to SKILL.md
+        // Try SKILL.yaml first, then fall back to SKILL.md for metadata
         const yamlPath = path.join(skillDir, 'SKILL.yaml');
         const mdPath = path.join(skillDir, 'SKILL.md');
         const readmePath = path.join(skillDir, 'README.md');
 
+        let hasYaml = false;
         try {
           const yamlContent = await fs.readFile(yamlPath, 'utf-8');
           manifest = parseSkillYaml(yamlContent);
+          hasYaml = true;
         } catch {
-          // Fall back to SKILL.md
-          try {
-            const mdContent = await fs.readFile(mdPath, 'utf-8');
-            manifest = parseSkillMdFrontmatter(mdContent);
-            // Extract instruction from SKILL.md content after frontmatter
-            const instructionMatch = mdContent.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-            if (instructionMatch) {
-              instruction = instructionMatch[1].trim();
-            }
-          } catch {
+          // No SKILL.yaml, will try SKILL.md
+        }
+
+        // Try SKILL.md - for metadata and/or instruction content
+        try {
+          const mdContent = await fs.readFile(mdPath, 'utf-8');
+          const mdManifest = parseSkillMdFrontmatter(mdContent);
+
+          if (hasYaml) {
+            // Merge: SKILL.md provides base metadata, SKILL.yaml overrides/extends
+            manifest = { ...mdManifest, ...manifest };
+          } else {
+            // Use SKILL.md for metadata
+            manifest = mdManifest;
+          }
+
+          // Extract instruction from SKILL.md content after frontmatter
+          const instructionMatch = mdContent.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+          if (instructionMatch) {
+            instruction = instructionMatch[1].trim();
+          }
+        } catch {
+          if (!hasYaml) {
             // Skip if neither exists
             continue;
           }
