@@ -35,7 +35,7 @@ interface SkillDefinition {
 /**
  * Parse SKILL.md frontmatter
  */
-function parseSkillManifest(content: string): Partial<SkillDefinition> & { instruction?: string } {
+function parseSkillManifest(content: string): Partial<SkillDefinition> & { instruction?: string; name?: string } {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!frontmatterMatch) {
     return {};
@@ -103,13 +103,18 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
           const content = await fs.readFile(skillPath, 'utf-8');
           const manifest = parseSkillManifest(content);
 
-          if (manifest.id && manifest.allowedRoles) {
+          const skillId = manifest.id || (manifest as any).name;
+          // Support both 'allowedRoles' and 'allowed-roles', 'allowedTools' and 'allowed-tools'
+          const allowedRoles = manifest.allowedRoles || (manifest as any)['allowedRoles'] || [];
+          const allowedTools = manifest.allowedTools || (manifest as any)['allowed-tools'] || [];
+
+          if (skillId && allowedRoles.length > 0) {
             skills.push({
-              id: manifest.id,
-              displayName: manifest.displayName || manifest.id,
+              id: skillId,
+              displayName: manifest.displayName || skillId,
               description: manifest.description || '',
-              allowedRoles: manifest.allowedRoles || [],
-              allowedTools: manifest.allowedTools || [],
+              allowedRoles: allowedRoles,
+              allowedTools: allowedTools,
               version: manifest.version,
               category: manifest.category,
               tags: manifest.tags,
