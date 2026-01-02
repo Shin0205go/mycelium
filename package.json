@@ -9,8 +9,8 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
-    "dev": "npm run dev --workspace=@aegis/router",
-    "start": "npm run start --workspace=@aegis/router"
+    "dev": "npm run dev --workspace=@aegis/core",
+    "start": "npm run start --workspace=@aegis/core"
   },
   "keywords": [
     "aegis",
