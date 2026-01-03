@@ -59,6 +59,20 @@ export interface AgentIdentity {
 // ============================================================================
 
 /**
+ * Context conditions for time-based access control
+ */
+export interface RuleContext {
+  /** Allowed time range in 24h format (e.g., "09:00-18:00") */
+  allowedTime?: string;
+
+  /** Allowed days of week (0=Sunday, 1=Monday, ..., 6=Saturday) */
+  allowedDays?: number[];
+
+  /** Timezone for time checks (default: system timezone) */
+  timezone?: string;
+}
+
+/**
  * A2A Skill-based role matching rule
  * Matches agents based on their declared skills in Agent Card
  */
@@ -74,6 +88,12 @@ export interface SkillMatchRule {
 
   /** Minimum number of anySkills that must match (default: 1) */
   minSkillMatch?: number;
+
+  /** Skills that MUST NOT be present (immediate rejection) */
+  forbiddenSkills?: string[];
+
+  /** Context conditions (time-based access control) */
+  context?: RuleContext;
 
   /** Optional description for this rule */
   description?: string;

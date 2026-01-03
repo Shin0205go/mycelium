@@ -177,8 +177,33 @@ export class IdentityResolver {
   private matchRule(
     agentSkills: string[],
     rule: SkillMatchRule
-  ): { matched: boolean; matchedSkills: string[] } {
+  ): { matched: boolean; matchedSkills: string[]; rejectionReason?: string } {
     const matchedSkills: string[] = [];
+
+    // Check forbiddenSkills FIRST (immediate rejection)
+    if (rule.forbiddenSkills && rule.forbiddenSkills.length > 0) {
+      for (const forbidden of rule.forbiddenSkills) {
+        if (agentSkills.includes(forbidden)) {
+          return {
+            matched: false,
+            matchedSkills: [],
+            rejectionReason: `Forbidden skill detected: ${forbidden}`
+          };
+        }
+      }
+    }
+
+    // Check context conditions (time-based access control)
+    if (rule.context) {
+      const contextCheck = this.checkContext(rule.context);
+      if (!contextCheck.allowed) {
+        return {
+          matched: false,
+          matchedSkills: [],
+          rejectionReason: contextCheck.reason
+        };
+      }
+    }
 
     // Check requiredSkills (ALL must be present)
     if (rule.requiredSkills && rule.requiredSkills.length > 0) {
@@ -214,6 +239,72 @@ export class IdentityResolver {
     }
 
     return { matched: true, matchedSkills };
+  }
+
+  /**
+   * Check context conditions (time-based access control)
+   */
+  private checkContext(context: import('./types.js').RuleContext): { allowed: boolean; reason?: string } {
+    const now = new Date();
+
+    // Check allowed days
+    if (context.allowedDays && context.allowedDays.length > 0) {
+      const currentDay = now.getDay(); // 0=Sunday, 6=Saturday
+      if (!context.allowedDays.includes(currentDay)) {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        return {
+          allowed: false,
+          reason: `Access denied: ${dayNames[currentDay]} is not in allowed days`
+        };
+      }
+    }
+
+    // Check allowed time range
+    if (context.allowedTime) {
+      const timeCheck = this.checkTimeRange(context.allowedTime, now);
+      if (!timeCheck.allowed) {
+        return timeCheck;
+      }
+    }
+
+    return { allowed: true };
+  }
+
+  /**
+   * Check if current time is within allowed range
+   * Format: "HH:MM-HH:MM" (e.g., "09:00-18:00")
+   */
+  private checkTimeRange(timeRange: string, now: Date): { allowed: boolean; reason?: string } {
+    const match = timeRange.match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
+    if (!match) {
+      this.logger.warn(`Invalid time range format: ${timeRange}`);
+      return { allowed: true }; // Invalid format, allow by default
+    }
+
+    const [, startHour, startMin, endHour, endMin] = match;
+    const startMinutes = parseInt(startHour) * 60 + parseInt(startMin);
+    const endMinutes = parseInt(endHour) * 60 + parseInt(endMin);
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Handle overnight ranges (e.g., "22:00-06:00")
+    let inRange: boolean;
+    if (startMinutes <= endMinutes) {
+      // Normal range (e.g., "09:00-18:00")
+      inRange = currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    } else {
+      // Overnight range (e.g., "22:00-06:00")
+      inRange = currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+    }
+
+    if (!inRange) {
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      return {
+        allowed: false,
+        reason: `Access denied: Current time ${currentTime} is outside allowed range ${timeRange}`
+      };
+    }
+
+    return { allowed: true };
   }
 
   /**

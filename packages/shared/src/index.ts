@@ -68,6 +68,9 @@ export interface Role {
   /** Role description */
   description: string;
 
+  /** Parent role ID to inherit permissions from */
+  inherits?: string;
+
   /** List of allowed upstream server names */
   allowedServers: string[];
 

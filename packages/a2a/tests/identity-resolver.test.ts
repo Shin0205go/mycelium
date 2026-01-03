@@ -316,7 +316,235 @@ describe('IdentityResolver', () => {
     });
   });
 
-  describe('Edge Cases', () => {
+  describe('Forbidden Skills', () => {
+  it('should reject agent with forbidden skill', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.setDefaultRole('guest');
+    resolver.addRule({
+      role: 'admin',
+      requiredSkills: ['admin_access'],
+      forbiddenSkills: ['trial_user', 'sandbox_mode']
+    });
+
+    // Agent with required skill but also has forbidden skill
+    const trialAgent: AgentIdentity = {
+      name: 'trial-admin',
+      skills: [{ id: 'admin_access' }, { id: 'trial_user' }]
+    };
+
+    // Should NOT match admin role due to forbidden skill
+    const result = resolver.resolve(trialAgent);
+    expect(result.roleId).toBe('guest');
+  });
+
+  it('should allow agent without forbidden skills', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.addRule({
+      role: 'admin',
+      requiredSkills: ['admin_access'],
+      forbiddenSkills: ['trial_user']
+    });
+
+    const realAdmin: AgentIdentity = {
+      name: 'real-admin',
+      skills: [{ id: 'admin_access' }, { id: 'full_license' }]
+    };
+
+    const result = resolver.resolve(realAdmin);
+    expect(result.roleId).toBe('admin');
+  });
+
+  it('should check forbidden skills before required skills', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.setDefaultRole('guest');
+    resolver.addRule({
+      role: 'premium',
+      requiredSkills: ['premium_access'],
+      forbiddenSkills: ['deprecated_agent']
+    });
+
+    // Even with required skill, forbidden takes precedence
+    const deprecatedAgent: AgentIdentity = {
+      name: 'old-agent',
+      skills: [{ id: 'premium_access' }, { id: 'deprecated_agent' }]
+    };
+
+    expect(resolver.resolve(deprecatedAgent).roleId).toBe('guest');
+  });
+
+  it('should handle multiple forbidden skills', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.setDefaultRole('guest');
+    resolver.addRule({
+      role: 'secure',
+      anySkills: ['coding'],
+      forbiddenSkills: ['untrusted', 'compromised', 'blacklisted']
+    });
+
+    // Any single forbidden skill should block
+    const agent1: AgentIdentity = {
+      name: 'agent1',
+      skills: [{ id: 'coding' }, { id: 'compromised' }]
+    };
+    expect(resolver.resolve(agent1).roleId).toBe('guest');
+
+    // Clean agent should pass
+    const agent2: AgentIdentity = {
+      name: 'agent2',
+      skills: [{ id: 'coding' }]
+    };
+    expect(resolver.resolve(agent2).roleId).toBe('secure');
+  });
+});
+
+describe('Context Conditions - Time Based', () => {
+  it('should allow access during allowed days', () => {
+    const resolver = createIdentityResolver(testLogger);
+    const today = new Date().getDay(); // 0-6
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [today] // Allow today
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('worker');
+  });
+
+  it('should deny access on non-allowed days', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.setDefaultRole('guest');
+    const today = new Date().getDay();
+    const tomorrow = (today + 1) % 7;
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [tomorrow] // Only allow tomorrow
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    // Should fall back to default since today is not allowed
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('guest');
+  });
+
+  it('should allow access during allowed time range', () => {
+    const resolver = createIdentityResolver(testLogger);
+
+    // Create a time range that includes current time
+    const now = new Date();
+    const startHour = now.getHours();
+    const endHour = (startHour + 2) % 24;
+    const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(2, '0')}:00`;
+
+    resolver.addRule({
+      role: 'shift-worker',
+      anySkills: ['work'],
+      context: {
+        allowedTime: timeRange
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'shift-worker',
+      skills: [{ id: 'work' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('shift-worker');
+  });
+
+  it('should deny access outside allowed time range', () => {
+    const resolver = createIdentityResolver(testLogger);
+    resolver.setDefaultRole('guest');
+
+    // Create a time range that excludes current time
+    const now = new Date();
+    const futureHour = (now.getHours() + 5) % 24;
+    const futureEndHour = (futureHour + 2) % 24;
+    const timeRange = `${String(futureHour).padStart(2, '0')}:00-${String(futureEndHour).padStart(2, '0')}:00`;
+
+    resolver.addRule({
+      role: 'night-worker',
+      anySkills: ['work'],
+      context: {
+        allowedTime: timeRange
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'work' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('guest');
+  });
+
+  it('should combine day and time restrictions', () => {
+    const resolver = createIdentityResolver(testLogger);
+    const today = new Date().getDay();
+    const now = new Date();
+    const startHour = now.getHours();
+    const endHour = (startHour + 2) % 24;
+    const timeRange = `${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(2, '0')}:00`;
+
+    resolver.addRule({
+      role: 'office-worker',
+      anySkills: ['work'],
+      context: {
+        allowedDays: [today],
+        allowedTime: timeRange
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'office-worker',
+      skills: [{ id: 'work' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('office-worker');
+  });
+
+  it('should handle invalid time format gracefully', () => {
+    const resolver = createIdentityResolver(testLogger);
+
+    resolver.addRule({
+      role: 'flexible',
+      anySkills: ['work'],
+      context: {
+        allowedTime: 'invalid-format' // Should be ignored
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'work' }]
+    };
+
+    // Invalid format should allow access (fail-open for invalid config)
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('flexible');
+  });
+});
+
+describe('Edge Cases', () => {
     it('should handle empty agent name by using fallback', () => {
       const resolver = createIdentityResolver(testLogger);
       const result = resolver.resolve({ name: '', skills: [] });
