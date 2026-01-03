@@ -12,6 +12,7 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 - **Skill-Driven RBAC**: Skills declare which roles can use them; roles are dynamically generated from skill definitions
 - **Router Proxy**: Routes tool calls from Claude to appropriate backend MCP servers
 - **Dynamic Role Switching**: Agents can switch roles at runtime via `set_role` tool
+- **Interactive CLI**: REPL interface with Claude Agent SDK for role-aware conversations
 
 ## AEGIS Architecture Rules
 
@@ -56,6 +57,19 @@ Aegis is organized as a monorepo with modular packages:
 
 ```
 packages/
+├── cli/                  # @aegis/cli - Command-Line Interface
+│   └── src/
+│       ├── index.ts              # CLI entry point (aegis command)
+│       ├── commands/
+│       │   ├── init.ts           # aegis init - project scaffolding
+│       │   ├── skill.ts          # aegis skill add/list/templates
+│       │   ├── policy.ts         # aegis policy check/test/roles
+│       │   └── mcp.ts            # aegis mcp start/status
+│       └── lib/
+│           ├── interactive-cli.ts # REPL with role switching
+│           ├── mcp-client.ts      # MCP client wrapper
+│           └── agent.ts           # Claude Agent SDK integration
+│
 ├── shared/               # @aegis/shared - Common types and interfaces
 │   └── src/
 │       └── index.ts      # Role, ToolPermissions, SkillManifest types
@@ -81,7 +95,8 @@ packages/
 │   │   ├── identity-resolver.ts  # A2A capability-based identity resolution
 │   │   └── types.ts              # A2A-specific types
 │   └── tests/
-│       └── identity-resolver.test.ts
+│       ├── identity-resolver.test.ts
+│       └── types.test.ts
 │
 ├── audit/                # @aegis/audit - Audit and Rate Limiting
 │   └── src/
@@ -93,9 +108,23 @@ packages/
 │
 ├── core/                 # @aegis/core - Integration Layer
 │   ├── src/
-│   │   └── index.ts      # Re-exports all packages, AegisCore
-│   └── tests/
-│       └── real-e2e.test.ts  # E2E tests with aegis-skills server
+│   │   ├── index.ts              # Re-exports all packages
+│   │   ├── mcp-server.ts         # MCP server entry point
+│   │   ├── mcp-client.ts         # MCP client implementation
+│   │   ├── agent.ts              # Claude Agent SDK wrapper
+│   │   ├── router/
+│   │   │   ├── aegis-router-core.ts  # Central routing system (司令塔)
+│   │   │   ├── rate-limiter.ts       # Rate limiting
+│   │   │   └── audit-logger.ts       # Audit logging
+│   │   ├── mcp/
+│   │   │   ├── stdio-router.ts       # Stdio-based MCP routing
+│   │   │   └── tool-discovery.ts     # Tool discovery
+│   │   └── utils/
+│   │       └── logger.ts             # Winston logger
+│   └── tests/                        # 18 test files
+│       ├── aegis-router-core.test.ts
+│       ├── real-e2e.test.ts          # E2E tests with aegis-skills server
+│       └── ...
 │
 └── skills/               # @aegis/skills - Skill MCP Server
     └── src/
@@ -106,12 +135,13 @@ packages/
 
 | Package | Description |
 |---------|-------------|
+| `@aegis/cli` | Command-line interface with interactive mode, project scaffolding, and policy verification |
 | `@aegis/shared` | Common types and interfaces used across all packages |
 | `@aegis/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
 | `@aegis/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
 | `@aegis/audit` | Audit logging and rate limiting (placeholder) |
 | `@aegis/gateway` | MCP gateway/proxy for server connections (placeholder) |
-| `@aegis/core` | Integration layer that re-exports all packages |
+| `@aegis/core` | Integration layer with MCP server/client and AegisRouterCore implementation |
 | `@aegis/skills` | Skill MCP Server for loading and serving skill definitions |
 
 ## Key Components
@@ -151,7 +181,24 @@ A2A Zero-Trust identity resolution for agent-to-agent communication:
 - Loads patterns from skills (skill-driven identity)
 - Trusted prefix detection for agent trust levels
 
-### 5. Shared Types (`packages/shared/src/index.ts`)
+### 5. AegisRouterCore (`packages/core/src/router/aegis-router-core.ts`)
+Central routing system (司令塔) that orchestrates all components:
+- Manages connections to multiple sub-MCP servers via StdioRouter
+- Maintains virtual tool table filtered by current role
+- Handles role switching via `set_role` tool
+- Integrates RoleManager, ToolVisibilityManager, AuditLogger, RateLimiter
+- Supports A2A mode for automatic role assignment
+- Loads roles dynamically from aegis-skills server
+
+### 6. InteractiveCLI (`packages/cli/src/lib/interactive-cli.ts`)
+REPL interface for role-aware conversations:
+- Connects to AEGIS Router via MCP
+- Role selection with arrow-key navigation
+- Model switching (Haiku, Sonnet, Opus)
+- Tool listing per role
+- Claude Agent SDK integration for streaming responses
+
+### 7. Shared Types (`packages/shared/src/index.ts`)
 Common types used across all packages:
 - `Role`, `ToolPermissions`, `RoleMetadata`
 - `BaseSkillDefinition`, `SkillManifest`, `SkillGrants`
@@ -186,18 +233,49 @@ npm run test:watch
 
 ## CLI Usage
 
-### Interactive Mode (Default)
+The AEGIS CLI (`@aegis/cli`) provides multiple commands for project management and interactive use.
+
+### Project Management Commands
+
 ```bash
-npm start
-# or
-aegis-cli
+# Initialize a new AEGIS project
+aegis init [directory]
+aegis init --minimal          # Without example skills
+
+# Manage skills
+aegis skill add <name>                    # Add new skill from template
+aegis skill add <name> --template <tpl>   # Use specific template
+aegis skill list                          # List all skills
+aegis skill templates                     # Show available templates
+
+# Available skill templates:
+#   basic, browser-limited, code-reviewer, data-analyst,
+#   flight-booking, personal-assistant
+
+# Policy verification
+aegis policy check --role <role>          # Check permissions for role
+aegis policy test --agent <name> --skills <skills>  # Test A2A resolution
+aegis policy roles                        # List all available roles
+
+# MCP server management
+aegis mcp start                           # Start MCP server
+aegis mcp start --dev                     # Development mode (tsx)
+aegis mcp start --background              # Run in background
+aegis mcp status                          # Check server status
 ```
 
-Commands:
-- `/roles` - Select and switch roles
+### Interactive Mode (Default)
+```bash
+aegis                          # Start interactive chat
+aegis --role developer         # Start with specific role
+aegis --model claude-sonnet-4-5-20250929  # Use specific model
+```
+
+REPL Commands:
+- `/roles` - Select and switch roles (with arrow-key navigation)
 - `/tools` - List available tools for current role
 - `/model <name>` - Change Claude model
-- `/status` - Show current status
+- `/status` - Show current status (role, model, auth, tools)
 - `/help` - Show help
 - `/quit` - Exit
 
@@ -318,20 +396,24 @@ interface A2AAgentSkill {
 
 ## Testing
 
-Tests use Vitest and are distributed across packages (745 tests total):
+Tests use Vitest and are distributed across packages (34 test files):
 
-| Package | Tests | Description |
-|---------|-------|-------------|
-| `@aegis/core` | 377 | Router, MCP client, tool discovery, rate limiting, audit logging |
-| `@aegis/rbac` | 167 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
-| `@aegis/a2a` | 53 | IdentityResolver, types for A2A capability-based matching |
-| `@aegis/shared` | 30 | Error classes, type exports |
-| `@aegis/skills` | 29 | YAML/MD parsing, skill filtering, MCP tool definitions |
-| `@aegis/gateway` | 6 | Gateway constants |
-| `@aegis/audit` | 5 | Audit constants |
+| Package | Test Files | Description |
+|---------|------------|-------------|
+| `@aegis/core` | 18 | Router, MCP client, tool discovery, rate limiting, audit logging, agent |
+| `@aegis/rbac` | 9 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
+| `@aegis/a2a` | 2 | IdentityResolver, types for A2A capability-based matching |
+| `@aegis/cli` | 1 | CLI command tests |
+| `@aegis/shared` | 1 | Error classes, type exports |
+| `@aegis/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
+| `@aegis/gateway` | 1 | Gateway constants |
+| `@aegis/audit` | 1 | Audit constants |
 
 ```bash
 # Run all tests (from root)
+npm test
+
+# Or directly with vitest
 npx vitest run
 
 # Run tests for specific package
@@ -822,6 +904,32 @@ interface IdentityResolution {
 
 ## Common Tasks
 
+### Creating a New AEGIS Project
+```bash
+# Initialize with example skills
+aegis init my-project
+cd my-project
+
+# Or minimal setup
+aegis init my-project --minimal
+
+# This creates:
+#   config.json         - MCP server configuration
+#   skills/             - Skill definitions directory
+#   skills/guest-access/SKILL.md
+#   skills/developer-tools/SKILL.md
+#   skills/admin-access/SKILL.md
+```
+
+### Adding a New Skill
+```bash
+# Add from template
+aegis skill add my-skill --template code-reviewer
+
+# Edit the generated skill
+# skills/my-skill/SKILL.md
+```
+
 ### Adding a New Backend Server
 1. Add configuration to `config.json` under `mcpServers`
 2. Server will be auto-discovered on router startup
@@ -829,14 +937,28 @@ interface IdentityResolution {
 
 ### Creating a New Role
 Roles are auto-generated from skill definitions. To add a new role:
-1. Create/modify skill in aegis-skills with `allowedRoles` including new role
-2. Restart router to reload skill manifest
-3. Role will be available via `set_role`
+1. Create/modify skill with `allowedRoles` including the new role
+2. Use `aegis skill add <name>` or create `skills/<name>/SKILL.md` manually
+3. Restart router to reload skill manifest
+4. Role will be available via `set_role` or in interactive mode
+
+### Verifying Policies
+```bash
+# Check what a role can access
+aegis policy check --role developer
+
+# Test A2A identity resolution
+aegis policy test --agent my-agent --skills react,typescript
+
+# List all roles derived from skills
+aegis policy roles
+```
 
 ### Debugging
 - Set log level in Logger constructor
 - Check `logs/` directory for output
 - Use `--json` flag for structured output in sub-agent mode
+- Use `aegis mcp status` to check server status
 
 ### Configuring Rate Limits
 ```typescript
