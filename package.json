@@ -10,7 +10,9 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
     "dev": "npm run dev --workspace=@aegis/core",
-    "start": "npm run start --workspace=@aegis/core"
+    "dev:mcp": "npm run dev:mcp --workspace=@aegis/core",
+    "start": "npm run start --workspace=@aegis/core",
+    "start:mcp": "npm run start:mcp --workspace=@aegis/core"
   },
   "keywords": [
     "aegis",

@@ -296,22 +296,28 @@ interface A2AAgentSkill {
 
 ## Testing
 
-Tests use Vitest and are distributed across packages (172 tests total):
+Tests use Vitest and are distributed across packages (585 tests total):
 
 | Package | Tests | Description |
 |---------|-------|-------------|
+| `@aegis/core` | 336 | Router, MCP client, tool discovery, rate limiting, audit logging |
 | `@aegis/rbac` | 126 | RoleManager, ToolVisibility, Memory, Skill integration |
-| `@aegis/a2a` | 33 | IdentityResolver capability-based matching |
-| `@aegis/core` | 13 | E2E tests with aegis-skills server |
+| `@aegis/a2a` | 53 | IdentityResolver, types for A2A capability-based matching |
+| `@aegis/shared` | 30 | Error classes, type exports |
+| `@aegis/skills` | 29 | YAML/MD parsing, skill filtering, MCP tool definitions |
+| `@aegis/gateway` | 6 | Gateway constants |
+| `@aegis/audit` | 5 | Audit constants |
 
 ```bash
 # Run all tests (from root)
 npm test
 
 # Run tests for specific package
+npm test --workspace=@aegis/core
 npm test --workspace=@aegis/rbac
 npm test --workspace=@aegis/a2a
-npm test --workspace=@aegis/core
+npm test --workspace=@aegis/shared
+npm test --workspace=@aegis/skills
 
 # Run specific test file
 npx vitest run packages/rbac/tests/role-manager.test.ts
@@ -320,8 +326,17 @@ npx vitest run packages/rbac/tests/role-manager.test.ts
 npm run test:watch --workspace=@aegis/rbac
 ```
 
+### Test-Driven Development (TDD)
+
+このプロジェクトではテスト駆動開発を採用しています：
+
+- **1:1 テストファイル対応**: 各 `.ts` ソースファイルに対応する `.test.ts` ファイルを作成
+- **新機能追加時**: まずテストを書いてから実装する
+- **バグ修正時**: 再現テストを書いてから修正する
+- **リファクタリング時**: 既存テストが通ることを確認しながら進める
+
 ### Test Categories
-- **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver
+- **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver, types
 - **Integration tests**: Skill integration, role switching, memory permissions
 - **E2E tests**: Full flow with aegis-skills server (`packages/core/tests/real-e2e.test.ts`)
 

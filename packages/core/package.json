@@ -1,19 +1,31 @@
 {
   "name": "@aegis/core",
   "version": "1.0.0",
-  "description": "AEGIS Core - Integration Layer",
+  "description": "AEGIS Core - Integration Layer with CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "aegis": "./dist/cli-entry.js",
+    "aegis-router": "./dist/mcp-server.js"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "start": "node dist/cli-entry.js",
+    "start:mcp": "node dist/mcp-server.js",
+    "dev": "tsx src/cli-entry.ts",
+    "dev:mcp": "tsx src/mcp-server.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": [
     "aegis",
     "core",
-    "integration"
+    "mcp",
+    "agent",
+    "rbac",
+    "router",
+    "skill-driven"
   ],
   "license": "MIT",
   "dependencies": {
@@ -22,10 +34,19 @@
     "@aegis/a2a": "*",
     "@aegis/gateway": "*",
     "@aegis/audit": "*",
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@aegis/skills": "*",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "chalk": "^5.3.0",
+    "uuid": "^9.0.0",
+    "winston": "^3.11.0",
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
   },
