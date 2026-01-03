@@ -73,7 +73,8 @@ packages/
 │       ├── memory-permission.test.ts
 │       ├── role-switching.test.ts
 │       ├── skill-integration.test.ts
-│       └── aegis-skills-access.test.ts
+│       ├── aegis-skills-access.test.ts
+│       └── red-team-verification.test.ts  # Security verification loop
 │
 ├── a2a/                  # @aegis/a2a - Agent-to-Agent Identity
 │   ├── src/
@@ -302,12 +303,12 @@ interface A2AAgentSkill {
 
 ## Testing
 
-Tests use Vitest and are distributed across packages (585 tests total):
+Tests use Vitest and are distributed across packages (745 tests total):
 
 | Package | Tests | Description |
 |---------|-------|-------------|
-| `@aegis/core` | 336 | Router, MCP client, tool discovery, rate limiting, audit logging |
-| `@aegis/rbac` | 126 | RoleManager, ToolVisibility, Memory, Skill integration |
+| `@aegis/core` | 377 | Router, MCP client, tool discovery, rate limiting, audit logging |
+| `@aegis/rbac` | 167 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
 | `@aegis/a2a` | 53 | IdentityResolver, types for A2A capability-based matching |
 | `@aegis/shared` | 30 | Error classes, type exports |
 | `@aegis/skills` | 29 | YAML/MD parsing, skill filtering, MCP tool definitions |
@@ -316,20 +317,17 @@ Tests use Vitest and are distributed across packages (585 tests total):
 
 ```bash
 # Run all tests (from root)
-npm test
+npx vitest run
 
 # Run tests for specific package
-npm test --workspace=@aegis/core
-npm test --workspace=@aegis/rbac
-npm test --workspace=@aegis/a2a
-npm test --workspace=@aegis/shared
-npm test --workspace=@aegis/skills
+npx vitest run packages/rbac/tests/
+npx vitest run packages/core/tests/
 
 # Run specific test file
 npx vitest run packages/rbac/tests/role-manager.test.ts
 
 # Watch mode
-npm run test:watch --workspace=@aegis/rbac
+npx vitest --watch
 ```
 
 ### Test-Driven Development (TDD)
@@ -345,6 +343,50 @@ npm run test:watch --workspace=@aegis/rbac
 - **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver, types
 - **Integration tests**: Skill integration, role switching, memory permissions
 - **E2E tests**: Full flow with aegis-skills server (`packages/core/tests/real-e2e.test.ts`)
+- **Red Team tests**: Security verification loop (`packages/rbac/tests/red-team-verification.test.ts`)
+
+### Red Team Verification Loop (検証ループ)
+
+セキュリティ製品であるAEGISでは、「自分で自分の成果物をテストさせる」検証ループを採用しています。
+
+**原則**: Routerのコードを書いた後、許可されていないロールで危険なツールを呼び出し、正しく拒否されることを確認する
+
+**Red Team テストスイート** (`packages/rbac/tests/red-team-verification.test.ts`):
+
+| Suite | Description | Example Attack |
+|-------|-------------|----------------|
+| Unauthorized Role Access | 権限のないロールが危険なツールにアクセス | `guest → delete_database` |
+| Memory Access Bypass | メモリ権限のないロールがメモリ操作 | `guest → save_memory` |
+| Pattern Matching Exploits | ツール名の操作による権限バイパス | `read_file_and_delete`, `query\u0000drop` |
+| Privilege Escalation | 存在しないロールへの切り替え試行 | `admin; DROP TABLE users` |
+| A2A Mode Security | A2Aモードでの`set_role`無効化確認 | `set_role` in A2A mode |
+| Server Access Control | 許可されていないサーバーへのアクセス | `filesystem_user → database__query` |
+| Tool Visibility Consistency | ロール切り替え時のツール漏洩確認 | Admin → Guest downgrade |
+
+```bash
+# Run Red Team tests
+npx vitest run packages/rbac/tests/red-team-verification.test.ts
+
+# Run with verbose output
+npx vitest run packages/rbac/tests/red-team-verification.test.ts --reporter=verbose
+```
+
+**検証ループの実行例**:
+```typescript
+// Attack: Guest tries to access delete_database
+it('MUST deny guest access to delete_database', () => {
+  const guestRole = roleManager.getRole('guest');
+  toolVisibility.setCurrentRole(guestRole!);
+
+  // Verify the tool is not visible
+  expect(toolVisibility.isVisible('database__delete_database')).toBe(false);
+
+  // Verify checkAccess throws an error
+  expect(() => {
+    toolVisibility.checkAccess('database__delete_database');
+  }).toThrow(/not accessible for role 'guest'/);
+});
+```
 
 ## Important Patterns
 
