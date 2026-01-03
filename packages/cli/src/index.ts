@@ -33,30 +33,19 @@ program.addCommand(skillCommand);
 program.addCommand(policyCommand);
 program.addCommand(mcpCommand);
 
-// Check if a subcommand was provided
-const subcommands = ['init', 'skill', 'policy', 'mcp', 'help'];
-const args = process.argv.slice(2);
-const firstArg = args[0];
-const hasSubcommand = firstArg && subcommands.includes(firstArg);
-const isHelpOrVersion = args.includes('-h') || args.includes('--help') ||
-                        args.includes('-V') || args.includes('--version');
-
-if (hasSubcommand || isHelpOrVersion) {
-  // Parse and let commander handle it
-  program.parse();
-} else {
-  // Parse options for interactive mode
-  program.parse();
+// Default action: run interactive mode when no subcommand is provided
+program.action(async () => {
   const opts = program.opts();
-
-  // Run interactive mode
   const cli = new InteractiveCLI({
     role: opts.role,
     model: opts.model,
     configPath: opts.config
   });
-  cli.run().catch((error) => {
-    console.error('Fatal error:', error);
-    process.exit(1);
-  });
-}
+  await cli.run();
+});
+
+// Parse and execute
+program.parseAsync().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});
