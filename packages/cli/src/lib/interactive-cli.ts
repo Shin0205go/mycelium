@@ -42,9 +42,10 @@ export class InteractiveCLI {
 
   constructor(private options: InteractiveCLIOptions = {}) {
     const projectRoot = process.cwd();
+    // Support both monorepo and installed package paths
     const routerPath = options.routerPath ||
       process.env.AEGIS_ROUTER_PATH ||
-      join(projectRoot, 'node_modules', '@aegis', 'core', 'dist', 'mcp-server.js');
+      join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
     const configPath = options.configPath ||
       process.env.AEGIS_CONFIG_PATH ||
       join(projectRoot, 'config.json');
