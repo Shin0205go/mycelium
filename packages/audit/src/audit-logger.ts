@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS Router - Audit Logger
+// AEGIS Audit - Audit Logger
 // Records all tool access attempts for compliance and debugging
 // ============================================================================
 
-import { Logger } from '../utils/logger.js';
+import { Logger } from '@aegis/shared';
 import { EventEmitter } from 'events';
 
 /**

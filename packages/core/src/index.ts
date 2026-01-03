@@ -7,6 +7,7 @@
 export * from '@aegis/shared';
 export * from '@aegis/rbac';
 export * from '@aegis/a2a';
+export * from '@aegis/audit';
 
 // TODO: Migrate AegisRouterCore (rename to AegisCore)
 // For now, re-export placeholder

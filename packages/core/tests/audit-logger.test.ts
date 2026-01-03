@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuditLogger, createAuditLogger } from '../src/router/audit-logger.js';
+import { AuditLogger, createAuditLogger } from '@aegis/audit';
 import type { Logger } from '@aegis/shared';
 
 // Silent test logger

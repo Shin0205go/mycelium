@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS Router - Rate Limiter
+// AEGIS Audit - Rate Limiter
 // Provides quota and rate limiting per role/session
 // ============================================================================
 
-import { Logger } from '../utils/logger.js';
+import { Logger } from '@aegis/shared';
 import { EventEmitter } from 'events';
 
 /**
@@ -137,7 +137,7 @@ export class RateLimiter extends EventEmitter {
    */
   setQuota(roleId: string, quota: RoleQuota): void {
     this.quotas.set(roleId, quota);
-    this.logger.info(`Quota set for role: ${roleId}`, quota);
+    this.logger.info(`Quota set for role: ${roleId}`, quota as unknown as Record<string, unknown>);
   }
 
   /**
