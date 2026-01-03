@@ -5,8 +5,7 @@
 
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
-import { StdioRouter, UpstreamServerInfo } from '../mcp/stdio-router.js';
-import type { MCPServerConfig } from '../types/mcp-types.js';
+import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@aegis/gateway';
 import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@aegis/rbac';
 import { IdentityResolver, createIdentityResolver } from '@aegis/a2a';
 import { AuditLogger, createAuditLogger } from '@aegis/audit';
