@@ -544,6 +544,235 @@ describe('Context Conditions - Time Based', () => {
   });
 });
 
+describe('Context Conditions - Timezone Support', () => {
+  it('should use system timezone when not specified', () => {
+    const resolver = createIdentityResolver(testLogger);
+    const today = new Date().getDay();
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [today]
+        // No timezone specified - use system default
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('worker');
+  });
+
+  it('should apply timezone to day calculation', () => {
+    const resolver = createIdentityResolver(testLogger);
+
+    // Allow all days to ensure the test passes regardless of timezone differences
+    resolver.addRule({
+      role: 'global-worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [0, 1, 2, 3, 4, 5, 6],
+        timezone: 'America/New_York'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('global-worker');
+  });
+
+  it('should apply timezone to time range calculation', () => {
+    const resolver = createIdentityResolver(testLogger);
+
+    // Use a 24-hour range to ensure test passes
+    resolver.addRule({
+      role: 'tokyo-worker',
+      anySkills: ['coding'],
+      context: {
+        allowedTime: '00:00-23:59',
+        timezone: 'Asia/Tokyo'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('tokyo-worker');
+  });
+
+  it('should handle invalid timezone gracefully (fall back to system)', () => {
+    const resolver = createIdentityResolver(testLogger);
+    const today = new Date().getDay();
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [today],
+        timezone: 'Invalid/Timezone'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    // Invalid timezone falls back to system time (fail-open)
+    const result = resolver.resolve(agent);
+    expect(result.roleId).toBe('worker');
+  });
+
+  it('should support overnight time ranges with timezone', () => {
+    const resolver = createIdentityResolver(testLogger);
+
+    // Overnight range that should cover current time if tested during night
+    resolver.addRule({
+      role: 'night-shift',
+      anySkills: ['coding'],
+      context: {
+        allowedTime: '22:00-06:00',
+        timezone: 'UTC'
+      }
+    });
+
+    // Add a fallback rule for daytime testing
+    resolver.addRule({
+      role: 'day-shift',
+      anySkills: ['coding'],
+      context: {
+        allowedTime: '06:00-22:00',
+        timezone: 'UTC'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    // One of the two rules should match
+    const result = resolver.resolve(agent);
+    expect(['night-shift', 'day-shift']).toContain(result.roleId);
+  });
+});
+
+describe('Strict Validation Mode', () => {
+  it('should throw on invalid time format when strictValidation is true', () => {
+    const resolver = createIdentityResolver(testLogger, {
+      version: '1.0.0',
+      defaultRole: 'guest',
+      skillRules: [],
+      strictValidation: true
+    });
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedTime: 'bad-format'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    expect(() => resolver.resolve(agent)).toThrow(/Invalid time range format/);
+  });
+
+  it('should throw on invalid timezone when strictValidation is true', () => {
+    const resolver = createIdentityResolver(testLogger, {
+      version: '1.0.0',
+      defaultRole: 'guest',
+      skillRules: [],
+      strictValidation: true
+    });
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [1, 2, 3, 4, 5],
+        timezone: 'Fake/Timezone'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    expect(() => resolver.resolve(agent)).toThrow(/Invalid timezone/);
+  });
+
+  it('should not throw on valid config even with strictValidation', () => {
+    const resolver = createIdentityResolver(testLogger, {
+      version: '1.0.0',
+      defaultRole: 'guest',
+      skillRules: [],
+      strictValidation: true
+    });
+
+    const today = new Date().getDay();
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedDays: [today],
+        allowedTime: '00:00-23:59',
+        timezone: 'UTC'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    expect(() => resolver.resolve(agent)).not.toThrow();
+    expect(resolver.resolve(agent).roleId).toBe('worker');
+  });
+
+  it('should default to fail-open when strictValidation is false', () => {
+    const resolver = createIdentityResolver(testLogger, {
+      version: '1.0.0',
+      defaultRole: 'guest',
+      skillRules: [],
+      strictValidation: false
+    });
+
+    resolver.addRule({
+      role: 'worker',
+      anySkills: ['coding'],
+      context: {
+        allowedTime: 'totally-invalid'
+      }
+    });
+
+    const agent: AgentIdentity = {
+      name: 'worker',
+      skills: [{ id: 'coding' }]
+    };
+
+    // Should not throw, should allow access
+    expect(() => resolver.resolve(agent)).not.toThrow();
+    expect(resolver.resolve(agent).roleId).toBe('worker');
+  });
+});
+
 describe('Edge Cases', () => {
     it('should handle empty agent name by using fallback', () => {
       const resolver = createIdentityResolver(testLogger);

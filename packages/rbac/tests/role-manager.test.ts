@@ -466,4 +466,157 @@ describe('Role Inheritance', () => {
       expect(effectivePerms.allowPatterns).toContain('tool__d');
     });
   });
+
+  describe('Effective Memory Permission', () => {
+    it('should return none policy when no memory permission set', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'basic', displayName: 'Basic', description: 'Basic', allowedRoles: ['basic'], allowedTools: ['tool__a'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const permission = roleManager.getEffectiveMemoryPermission('basic');
+      expect(permission.policy).toBe('none');
+    });
+
+    it('should inherit memory permission from parent role', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-mem', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['tool__a'], grants: { memory: 'isolated' } },
+          { id: 'child-skill', displayName: 'Child', description: 'Child', allowedRoles: ['child'], allowedTools: ['tool__b'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'base';
+
+      // Child inherits 'isolated' from base
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('isolated');
+    });
+
+    it('should use highest privilege from inheritance chain (all > team > isolated)', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'parent-skill', displayName: 'Parent', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'all' } },
+          { id: 'child-skill', displayName: 'Child', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'isolated' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'parent';
+
+      // Child has 'isolated' but parent has 'all' - highest wins
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('all');
+    });
+
+    it('should prefer team over isolated in inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'parent-skill', displayName: 'Parent', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['frontend'] } },
+          { id: 'child-skill', displayName: 'Child', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'isolated' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'parent';
+
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('frontend');
+    });
+
+    it('should merge teamRoles from multiple team policies in chain', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'gp-skill', displayName: 'GP', description: 'GP', allowedRoles: ['grandparent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['frontend'] } },
+          { id: 'p-skill', displayName: 'P', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['backend'] } },
+          { id: 'c-skill', displayName: 'C', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['qa'] } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const parentRole = roleManager.getRole('parent');
+      const childRole = roleManager.getRole('child');
+      if (parentRole) parentRole.inherits = 'grandparent';
+      if (childRole) childRole.inherits = 'parent';
+
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('frontend');
+      expect(permission.teamRoles).toContain('backend');
+      expect(permission.teamRoles).toContain('qa');
+    });
+
+    it('should return none policy on circular inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'a-skill', displayName: 'A', description: 'A', allowedRoles: ['role-a'], allowedTools: [], grants: { memory: 'all' } },
+          { id: 'b-skill', displayName: 'B', description: 'B', allowedRoles: ['role-b'], allowedTools: [], grants: { memory: 'all' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const roleA = roleManager.getRole('role-a');
+      const roleB = roleManager.getRole('role-b');
+      if (roleA) roleA.inherits = 'role-b';
+      if (roleB) roleB.inherits = 'role-a';
+
+      // Circular inheritance returns none
+      const permission = roleManager.getEffectiveMemoryPermission('role-a');
+      expect(permission.policy).toBe('none');
+    });
+
+    it('should handle 3+ level inheritance with memory permissions', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'l1', displayName: 'L1', description: 'L1', allowedRoles: ['level1'], allowedTools: [] },
+          { id: 'l2', displayName: 'L2', description: 'L2', allowedRoles: ['level2'], allowedTools: [], grants: { memory: 'isolated' } },
+          { id: 'l3', displayName: 'L3', description: 'L3', allowedRoles: ['level3'], allowedTools: [] },
+          { id: 'l4', displayName: 'L4', description: 'L4', allowedRoles: ['level4'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['devops'] } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const l2 = roleManager.getRole('level2');
+      const l3 = roleManager.getRole('level3');
+      const l4 = roleManager.getRole('level4');
+
+      if (l2) l2.inherits = 'level1';
+      if (l3) l3.inherits = 'level2';
+      if (l4) l4.inherits = 'level3';
+
+      // level4 has 'team', level2 has 'isolated', level1/level3 have none
+      // 'team' > 'isolated' so 'team' wins
+      const permission = roleManager.getEffectiveMemoryPermission('level4');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('devops');
+    });
+  });
 });

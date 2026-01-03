@@ -174,6 +174,13 @@ export interface IdentityConfig {
 
   /** Trusted agent prefixes (for trust level, not role assignment) */
   trustedPrefixes?: string[];
+
+  /**
+   * Strict validation mode
+   * When true: invalid config (bad time format, invalid timezone) throws error
+   * When false (default): invalid config is logged and skipped (fail-open)
+   */
+  strictValidation?: boolean;
 }
 
 // ============================================================================

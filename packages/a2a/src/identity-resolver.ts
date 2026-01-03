@@ -245,23 +245,25 @@ export class IdentityResolver {
    * Check context conditions (time-based access control)
    */
   private checkContext(context: import('./types.js').RuleContext): { allowed: boolean; reason?: string } {
-    const now = new Date();
+    // Get current time in specified timezone (or system default)
+    const now = this.getCurrentTimeInTimezone(context.timezone);
 
     // Check allowed days
     if (context.allowedDays && context.allowedDays.length > 0) {
-      const currentDay = now.getDay(); // 0=Sunday, 6=Saturday
+      const currentDay = now.day;
       if (!context.allowedDays.includes(currentDay)) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const tzInfo = context.timezone ? ` (${context.timezone})` : '';
         return {
           allowed: false,
-          reason: `Access denied: ${dayNames[currentDay]} is not in allowed days`
+          reason: `Access denied: ${dayNames[currentDay]}${tzInfo} is not in allowed days`
         };
       }
     }
 
     // Check allowed time range
     if (context.allowedTime) {
-      const timeCheck = this.checkTimeRange(context.allowedTime, now);
+      const timeCheck = this.checkTimeRangeWithTimezone(context.allowedTime, now, context.timezone);
       if (!timeCheck.allowed) {
         return timeCheck;
       }
@@ -271,12 +273,75 @@ export class IdentityResolver {
   }
 
   /**
-   * Check if current time is within allowed range
-   * Format: "HH:MM-HH:MM" (e.g., "09:00-18:00")
+   * Get current time components in specified timezone
    */
-  private checkTimeRange(timeRange: string, now: Date): { allowed: boolean; reason?: string } {
+  private getCurrentTimeInTimezone(timezone?: string): { day: number; hours: number; minutes: number } {
+    const now = new Date();
+
+    if (!timezone) {
+      return {
+        day: now.getDay(),
+        hours: now.getHours(),
+        minutes: now.getMinutes()
+      };
+    }
+
+    try {
+      // Use Intl.DateTimeFormat to get time in specified timezone
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+      });
+
+      const parts = formatter.formatToParts(now);
+      const dayMap: Record<string, number> = {
+        'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
+      };
+
+      let day = now.getDay();
+      let hours = now.getHours();
+      let minutes = now.getMinutes();
+
+      for (const part of parts) {
+        if (part.type === 'weekday') {
+          day = dayMap[part.value] ?? now.getDay();
+        } else if (part.type === 'hour') {
+          hours = parseInt(part.value, 10);
+        } else if (part.type === 'minute') {
+          minutes = parseInt(part.value, 10);
+        }
+      }
+
+      return { day, hours, minutes };
+    } catch (error) {
+      if (this.config.strictValidation) {
+        throw new Error(`Invalid timezone: ${timezone}`);
+      }
+      this.logger.warn(`Invalid timezone: ${timezone}, using system default`);
+      return {
+        day: now.getDay(),
+        hours: now.getHours(),
+        minutes: now.getMinutes()
+      };
+    }
+  }
+
+  /**
+   * Check if current time is within allowed range (with timezone support)
+   */
+  private checkTimeRangeWithTimezone(
+    timeRange: string,
+    time: { hours: number; minutes: number },
+    timezone?: string
+  ): { allowed: boolean; reason?: string } {
     const match = timeRange.match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/);
     if (!match) {
+      if (this.config.strictValidation) {
+        throw new Error(`Invalid time range format: ${timeRange}. Expected HH:MM-HH:MM`);
+      }
       this.logger.warn(`Invalid time range format: ${timeRange}`);
       return { allowed: true }; // Invalid format, allow by default
     }
@@ -284,7 +349,7 @@ export class IdentityResolver {
     const [, startHour, startMin, endHour, endMin] = match;
     const startMinutes = parseInt(startHour) * 60 + parseInt(startMin);
     const endMinutes = parseInt(endHour) * 60 + parseInt(endMin);
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = time.hours * 60 + time.minutes;
 
     // Handle overnight ranges (e.g., "22:00-06:00")
     let inRange: boolean;
@@ -297,10 +362,11 @@ export class IdentityResolver {
     }
 
     if (!inRange) {
-      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const currentTime = `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}`;
+      const tzInfo = timezone ? ` (${timezone})` : '';
       return {
         allowed: false,
-        reason: `Access denied: Current time ${currentTime} is outside allowed range ${timeRange}`
+        reason: `Access denied: Current time ${currentTime}${tzInfo} is outside allowed range ${timeRange}`
       };
     }
 

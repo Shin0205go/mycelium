@@ -264,7 +264,7 @@ export class RoleManager {
   // ============================================================================
 
   /**
-   * Get memory permission for a role
+   * Get memory permission for a role (direct, without inheritance)
    * Returns 'none' if no memory skill is granted
    */
   getMemoryPermission(roleId: string): RoleMemoryPermission {
@@ -273,6 +273,52 @@ export class RoleManager {
       return { policy: 'none' };
     }
     return permission;
+  }
+
+  /**
+   * Get effective memory permission for a role (including inherited)
+   * Returns the highest privilege from the inheritance chain
+   * Priority: all > team > isolated > none
+   */
+  getEffectiveMemoryPermission(roleId: string): RoleMemoryPermission {
+    const chain = this.getInheritanceChain(roleId);
+
+    if (chain.length === 0) {
+      // Circular inheritance detected, return no access
+      return { policy: 'none' };
+    }
+
+    const policyOrder: MemoryPolicy[] = ['none', 'isolated', 'team', 'all'];
+    let highestPermission: RoleMemoryPermission = { policy: 'none' };
+    let highestIndex = 0;
+    const mergedTeamRoles = new Set<string>();
+
+    for (const id of chain) {
+      const permission = this.memoryPermissions.get(id);
+      if (permission) {
+        const currentIndex = policyOrder.indexOf(permission.policy);
+
+        // Collect team roles from all 'team' policies in chain
+        if (permission.policy === 'team' && permission.teamRoles) {
+          for (const teamRole of permission.teamRoles) {
+            mergedTeamRoles.add(teamRole);
+          }
+        }
+
+        // Higher privilege wins
+        if (currentIndex > highestIndex) {
+          highestIndex = currentIndex;
+          highestPermission = { ...permission };
+        }
+      }
+    }
+
+    // If effective policy is 'team', merge all teamRoles from chain
+    if (highestPermission.policy === 'team') {
+      highestPermission.teamRoles = Array.from(mergedTeamRoles);
+    }
+
+    return highestPermission;
   }
 
   /**
