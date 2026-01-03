@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis start - Start the AEGIS MCP server
+// aegis mcp - MCP server management commands
 // ============================================================================
 
 import { Command } from 'commander';
@@ -8,7 +8,12 @@ import { access } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
 
-export const startCommand = new Command('start')
+export const mcpCommand = new Command('mcp')
+  .description('MCP server management');
+
+// aegis mcp start
+mcpCommand
+  .command('start')
   .description('Start the AEGIS MCP server')
   .option('-c, --config <path>', 'Config file path', './config.json')
   .option('--background', 'Run in background')
@@ -114,4 +119,16 @@ export const startCommand = new Command('start')
       console.error(chalk.red('❌ Failed to start server:'), error);
       process.exit(1);
     }
+  });
+
+// aegis mcp status
+mcpCommand
+  .command('status')
+  .description('Check MCP server status')
+  .action(() => {
+    console.log(chalk.blue('📊 MCP Server Status'));
+    console.log();
+    console.log(chalk.gray('  Status checking not yet implemented.'));
+    console.log(chalk.gray('  Use `ps aux | grep aegis` to check running servers.'));
+    console.log();
   });

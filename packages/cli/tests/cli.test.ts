@@ -31,7 +31,7 @@ describe('AEGIS CLI', () => {
       expect(output).toContain('init');
       expect(output).toContain('skill');
       expect(output).toContain('policy');
-      expect(output).toContain('start');
+      expect(output).toContain('mcp');
     });
 
     it('should show version with --version', () => {
