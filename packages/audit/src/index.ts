@@ -3,13 +3,22 @@
 // Compliance logging and quota management
 // ============================================================================
 
-// TODO: Migrate AuditLogger and RateLimiter from @aegis/router
-// For now, re-export placeholder
-
 export const AUDIT_VERSION = '1.0.0';
 
-// Will export:
-// - AuditLogger
-// - AuditLogEntry
-// - RateLimiter
-// - RoleQuota
+// Audit Logger
+export {
+  AuditLogger,
+  createAuditLogger,
+  type AuditLogEntry,
+  type AuditQueryOptions,
+  type AuditStats,
+} from './audit-logger.js';
+
+// Rate Limiter
+export {
+  RateLimiter,
+  createRateLimiter,
+  type RoleQuota,
+  type RateLimitResult,
+  type RateLimitEvent,
+} from './rate-limiter.js';

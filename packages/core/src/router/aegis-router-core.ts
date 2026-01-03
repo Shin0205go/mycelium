@@ -9,8 +9,8 @@ import { StdioRouter, UpstreamServerInfo } from '../mcp/stdio-router.js';
 import type { MCPServerConfig } from '../types/mcp-types.js';
 import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@aegis/rbac';
 import { IdentityResolver, createIdentityResolver } from '@aegis/a2a';
-import { AuditLogger, createAuditLogger } from './audit-logger.js';
-import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
+import { AuditLogger, createAuditLogger } from '@aegis/audit';
+import { RateLimiter, createRateLimiter, type RoleQuota } from '@aegis/audit';
 import type {
   Role,
   AegisRouterState,

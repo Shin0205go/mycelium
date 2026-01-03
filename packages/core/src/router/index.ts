@@ -37,22 +37,22 @@ export {
 // Router adapter for proxy integration
 export { RouterAdapter, createRouterAdapter } from './router-adapter.js';
 
-// Audit logging
+// Audit logging - re-export from @aegis/audit
 export {
   AuditLogger,
   createAuditLogger,
   type AuditLogEntry,
   type AuditQueryOptions,
   type AuditStats
-} from './audit-logger.js';
+} from '@aegis/audit';
 
-// Rate limiting
+// Rate limiting - re-export from @aegis/audit
 export {
   RateLimiter,
   createRateLimiter,
   type RoleQuota,
   type RateLimitResult,
   type RateLimitEvent
-} from './rate-limiter.js';
+} from '@aegis/audit';
 
 // Types are exported from ../types/index.js to avoid duplicate exports

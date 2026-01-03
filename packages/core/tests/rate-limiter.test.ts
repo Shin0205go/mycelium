@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RateLimiter, createRateLimiter, type RoleQuota } from '../src/router/rate-limiter.js';
+import { RateLimiter, createRateLimiter, type RoleQuota } from '@aegis/audit';
 import type { Logger } from '@aegis/shared';
 
 // Silent test logger
