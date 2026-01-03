@@ -122,6 +122,8 @@ Handles role definitions and permission checking:
 - Generates roles from skill definitions (inverted RBAC)
 - Checks server/tool permissions for roles
 - Supports wildcard (`*`) and pattern matching
+- Role inheritance with `getEffectiveServers()`, `getEffectiveToolPermissions()`
+- Memory permission inheritance with `getEffectiveMemoryPermission()`
 
 ### 2. ToolVisibilityManager (`packages/rbac/src/tool-visibility-manager.ts`)
 Manages tool discovery and role-based visibility:
@@ -142,6 +144,9 @@ Transparent Markdown-based memory system per role:
 A2A Zero-Trust identity resolution for agent-to-agent communication:
 - Capability-based role matching (A2A Agent Card skills)
 - `requiredSkills` (AND logic) and `anySkills` (OR logic) matching
+- `forbiddenSkills` for negative matching (block specific agents)
+- Context conditions for time-based access control (timezone support)
+- `strictValidation` mode for fail-close error handling
 - Priority-based rule ordering
 - Loads patterns from skills (skill-driven identity)
 - Trusted prefix detection for agent trust levels
@@ -219,6 +224,7 @@ interface Role {
   id: string;                    // Unique identifier
   name: string;                  // Display name
   description: string;           // Role description
+  inherits?: string;             // Parent role ID for inheritance
   allowedServers: string[];      // Allowed MCP servers (* for all)
   systemInstruction: string;     // System prompt for this role
   toolPermissions?: ToolPermissions;
@@ -249,8 +255,17 @@ interface SkillMatchRule {
   requiredSkills?: string[];    // ALL must be present (AND logic)
   anySkills?: string[];         // At least minSkillMatch present (OR logic)
   minSkillMatch?: number;       // Min anySkills matches (default: 1)
+  forbiddenSkills?: string[];   // Skills that MUST NOT be present
+  context?: RuleContext;        // Time-based access control
   description?: string;         // Optional description
   priority?: number;            // Priority (higher = checked first)
+}
+
+// Time-based access control conditions
+interface RuleContext {
+  allowedTime?: string;         // Time range (e.g., "09:00-18:00")
+  allowedDays?: number[];       // Days of week (0=Sunday, 6=Saturday)
+  timezone?: string;            // IANA timezone (e.g., "Asia/Tokyo")
 }
 
 // Agent Card skills from A2A protocol
@@ -469,6 +484,77 @@ When a role has multiple skills with different memory grants, the highest privil
 
 For `team` policies, team roles are merged across skills.
 
+#### Memory Permission Inheritance
+
+Memory permissions are also inherited through role hierarchy. Use `getEffectiveMemoryPermission()` to get resolved permissions:
+
+```typescript
+// Get effective memory permission (including inherited)
+const permission = roleManager.getEffectiveMemoryPermission('child-role');
+// Returns: { policy: 'team', teamRoles: ['frontend', 'backend'] }
+```
+
+**Inheritance Rules**:
+- Highest privilege in chain wins: `all` > `team` > `isolated` > `none`
+- Team roles are merged from all `team` policies in the chain
+- Circular inheritance returns `none` (safe fallback)
+
+### Role Inheritance
+
+Roles can inherit permissions from parent roles, enabling hierarchical access control.
+
+#### Defining Role Inheritance
+
+Set the `inherits` field on a role to specify its parent:
+
+```typescript
+// In role definition or dynamically
+const seniorRole = roleManager.getRole('senior');
+if (seniorRole) {
+  seniorRole.inherits = 'base';  // Inherit from 'base' role
+}
+```
+
+#### Inheritance Chain Resolution
+
+```typescript
+// Get the full inheritance chain (child → parent → grandparent)
+const chain = roleManager.getInheritanceChain('senior');
+// Returns: ['senior', 'base', 'root']
+
+// Get effective servers (merged from all ancestors)
+const servers = roleManager.getEffectiveServers('senior');
+// Returns: ['filesystem', 'git', 'database']  // Merged from chain
+
+// Get effective tool permissions (merged from all ancestors)
+const perms = roleManager.getEffectiveToolPermissions('senior');
+// Returns merged allowPatterns, denyPatterns, etc.
+```
+
+#### Multi-Level Inheritance Example
+
+```
+root (servers: [filesystem])
+  └── base (servers: [git], inherits: root)
+        └── senior (servers: [database], inherits: base)
+              └── admin (servers: [*], inherits: senior)
+
+admin's effective servers = [filesystem, git, database, *]
+```
+
+#### Circular Inheritance Protection
+
+The system detects and handles circular inheritance:
+
+```typescript
+roleA.inherits = 'roleB';
+roleB.inherits = 'roleA';  // Circular!
+
+const chain = roleManager.getInheritanceChain('roleA');
+// Returns: [] (empty chain on circular reference)
+// Warning logged: "Circular inheritance detected for role: roleA"
+```
+
 #### Memory Storage
 Memory is stored in Markdown files per role (`memory/{role_id}.memory.md`):
 ```markdown
@@ -592,8 +678,74 @@ identity:
 | `requiredSkills` | AND | ALL listed skills must be in Agent Card |
 | `anySkills` | OR | At least `minSkillMatch` skills must match |
 | `minSkillMatch` | threshold | Minimum anySkills matches (default: 1) |
+| `forbiddenSkills` | REJECT | Any forbidden skill blocks matching |
+| `context` | TIME | Time-based access restrictions |
 
 When both `requiredSkills` and `anySkills` are specified, **both conditions** must be satisfied.
+
+#### Forbidden Skills (Negative Matching)
+
+Use `forbiddenSkills` to block agents with specific skills:
+
+```yaml
+identity:
+  skillMatching:
+    - role: admin
+      requiredSkills: [admin_access]
+      forbiddenSkills:              # Block these agents
+        - trial_user                # Trial users can't be admin
+        - sandbox_mode              # Sandbox agents can't be admin
+        - deprecated_agent          # Old agents are blocked
+```
+
+**Behavior**:
+- Checked FIRST before `requiredSkills`/`anySkills`
+- Any single forbidden skill blocks the entire rule
+- Agent falls through to next rule or default role
+
+#### Time-Based Access Control (Context Conditions)
+
+Restrict access by day of week, time range, and timezone:
+
+```yaml
+identity:
+  skillMatching:
+    - role: office-worker
+      anySkills: [coding]
+      context:
+        allowedDays: [1, 2, 3, 4, 5]    # Monday-Friday only
+        allowedTime: "09:00-18:00"      # Business hours
+        timezone: "Asia/Tokyo"          # In Tokyo timezone
+```
+
+**Time Range Formats**:
+- Normal range: `"09:00-18:00"` (9 AM to 6 PM)
+- Overnight range: `"22:00-06:00"` (10 PM to 6 AM next day)
+
+**Timezone Support**:
+- Uses IANA timezone names (e.g., `America/New_York`, `Europe/London`)
+- Falls back to system timezone if not specified
+- Invalid timezone falls back to system time (fail-open)
+
+#### Strict Validation Mode
+
+Control error handling for invalid configurations:
+
+```typescript
+const resolver = createIdentityResolver(logger, {
+  version: '1.0.0',
+  defaultRole: 'guest',
+  skillRules: [],
+  strictValidation: true  // Throw on invalid config
+});
+```
+
+| Mode | Behavior |
+|------|----------|
+| `strictValidation: false` (default) | Invalid config logged and skipped (fail-open) |
+| `strictValidation: true` | Invalid config throws error (fail-close) |
+
+Use `strictValidation: true` in production to catch configuration errors early.
 
 #### Benefits of Capability-Based Identity
 
