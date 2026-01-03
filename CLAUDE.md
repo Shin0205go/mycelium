@@ -13,6 +13,12 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 - **Router Proxy**: Routes tool calls from Claude to appropriate backend MCP servers
 - **Dynamic Role Switching**: Agents can switch roles at runtime via `set_role` tool
 
+## AEGIS Architecture Rules
+
+- **Inverted RBAC**: Roles are NOT defined manually. Skills declare `allowedRoles`.
+- **Trust Boundary**: The Router implies the Agent's identity; the Agent does not claim it.
+- **Source of Truth**: The MCP Server (@aegis/skills) is the only source of permission logic.
+
 ## Architecture
 
 ```
