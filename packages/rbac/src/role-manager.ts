@@ -83,24 +83,103 @@ export class RoleManager {
   }
 
   // ============================================================================
+  // Role Inheritance
+  // ============================================================================
+
+  /**
+   * Get the inheritance chain for a role (from child to root)
+   * Detects circular inheritance and returns empty array if found
+   */
+  getInheritanceChain(roleId: string): string[] {
+    const chain: string[] = [];
+    const visited = new Set<string>();
+    let currentId: string | undefined = roleId;
+
+    while (currentId) {
+      if (visited.has(currentId)) {
+        this.logger.warn(`Circular inheritance detected for role: ${roleId}`);
+        return []; // Return empty chain on circular reference
+      }
+
+      visited.add(currentId);
+      chain.push(currentId);
+
+      const role = this.roles.get(currentId);
+      currentId = role?.inherits;
+    }
+
+    return chain;
+  }
+
+  /**
+   * Get effective servers for a role (including inherited)
+   */
+  getEffectiveServers(roleId: string): string[] {
+    const chain = this.getInheritanceChain(roleId);
+    const servers = new Set<string>();
+
+    for (const id of chain) {
+      const role = this.roles.get(id);
+      if (role) {
+        for (const server of role.allowedServers) {
+          servers.add(server);
+        }
+      }
+    }
+
+    return Array.from(servers);
+  }
+
+  /**
+   * Get effective tool permissions for a role (including inherited)
+   * Child permissions take precedence over parent
+   */
+  getEffectiveToolPermissions(roleId: string): import('@aegis/shared').ToolPermissions {
+    const chain = this.getInheritanceChain(roleId);
+
+    // Start with empty permissions and merge from root to child
+    const effective: import('@aegis/shared').ToolPermissions = {
+      allow: [],
+      deny: [],
+      allowPatterns: [],
+      denyPatterns: []
+    };
+
+    // Reverse chain to process from root to child (child overrides parent)
+    for (const id of chain.reverse()) {
+      const role = this.roles.get(id);
+      if (role?.toolPermissions) {
+        const perms = role.toolPermissions;
+
+        // Merge arrays (child additions are appended)
+        if (perms.allow) effective.allow!.push(...perms.allow);
+        if (perms.deny) effective.deny!.push(...perms.deny);
+        if (perms.allowPatterns) effective.allowPatterns!.push(...perms.allowPatterns);
+        if (perms.denyPatterns) effective.denyPatterns!.push(...perms.denyPatterns);
+      }
+    }
+
+    return effective;
+  }
+
+  // ============================================================================
   // Permission Checking
   // ============================================================================
 
   /**
-   * Check if a server is allowed for a role
+   * Check if a server is allowed for a role (including inherited permissions)
    */
   isServerAllowedForRole(roleId: string, serverName: string): boolean {
-    const role = this.roles.get(roleId);
-    if (!role) return false;
+    const effectiveServers = this.getEffectiveServers(roleId);
 
     // Wildcard allows all servers
-    if (role.allowedServers.includes('*')) return true;
+    if (effectiveServers.includes('*')) return true;
 
-    return role.allowedServers.includes(serverName);
+    return effectiveServers.includes(serverName);
   }
 
   /**
-   * Check if a tool is allowed for a role
+   * Check if a tool is allowed for a role (including inherited permissions)
    */
   isToolAllowedForRole(roleId: string, toolName: string, serverName: string): boolean {
     // System tools are always allowed
@@ -112,19 +191,25 @@ export class RoleManager {
     const role = this.roles.get(roleId);
     if (!role) return false;
 
-    // Check server access first
+    // Check server access first (uses inheritance)
     if (!this.isServerAllowedForRole(roleId, serverName)) {
       return false;
     }
 
-    // If no tool permissions defined, allow all tools from allowed servers
-    if (!role.toolPermissions) {
+    // Get effective permissions (merged with inherited roles)
+    const permissions = this.getEffectiveToolPermissions(roleId);
+
+    // If no effective permissions defined, allow all tools from allowed servers
+    const hasPermissions = (permissions.allow?.length ?? 0) > 0 ||
+                          (permissions.deny?.length ?? 0) > 0 ||
+                          (permissions.allowPatterns?.length ?? 0) > 0 ||
+                          (permissions.denyPatterns?.length ?? 0) > 0;
+
+    if (!hasPermissions) {
       return true;
     }
 
-    const permissions = role.toolPermissions;
-
-    // Check explicit deny list
+    // Check explicit deny list (deny takes precedence)
     if (permissions.deny?.includes(toolName)) {
       return false;
     }
@@ -179,7 +264,7 @@ export class RoleManager {
   // ============================================================================
 
   /**
-   * Get memory permission for a role
+   * Get memory permission for a role (direct, without inheritance)
    * Returns 'none' if no memory skill is granted
    */
   getMemoryPermission(roleId: string): RoleMemoryPermission {
@@ -188,6 +273,52 @@ export class RoleManager {
       return { policy: 'none' };
     }
     return permission;
+  }
+
+  /**
+   * Get effective memory permission for a role (including inherited)
+   * Returns the highest privilege from the inheritance chain
+   * Priority: all > team > isolated > none
+   */
+  getEffectiveMemoryPermission(roleId: string): RoleMemoryPermission {
+    const chain = this.getInheritanceChain(roleId);
+
+    if (chain.length === 0) {
+      // Circular inheritance detected, return no access
+      return { policy: 'none' };
+    }
+
+    const policyOrder: MemoryPolicy[] = ['none', 'isolated', 'team', 'all'];
+    let highestPermission: RoleMemoryPermission = { policy: 'none' };
+    let highestIndex = 0;
+    const mergedTeamRoles = new Set<string>();
+
+    for (const id of chain) {
+      const permission = this.memoryPermissions.get(id);
+      if (permission) {
+        const currentIndex = policyOrder.indexOf(permission.policy);
+
+        // Collect team roles from all 'team' policies in chain
+        if (permission.policy === 'team' && permission.teamRoles) {
+          for (const teamRole of permission.teamRoles) {
+            mergedTeamRoles.add(teamRole);
+          }
+        }
+
+        // Higher privilege wins
+        if (currentIndex > highestIndex) {
+          highestIndex = currentIndex;
+          highestPermission = { ...permission };
+        }
+      }
+    }
+
+    // If effective policy is 'team', merge all teamRoles from chain
+    if (highestPermission.policy === 'team') {
+      highestPermission.teamRoles = Array.from(mergedTeamRoles);
+    }
+
+    return highestPermission;
   }
 
   /**

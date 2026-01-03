@@ -233,3 +233,390 @@ describe('RoleManager (Skill-Driven)', () => {
     });
   });
 });
+
+describe('Role Inheritance', () => {
+  let roleManager: RoleManager;
+
+  beforeEach(async () => {
+    roleManager = new RoleManager(testLogger);
+    await roleManager.initialize();
+  });
+
+  describe('Inheritance Chain', () => {
+    it('should build inheritance chain correctly', async () => {
+      // Manually add roles with inheritance
+      const baseManifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          {
+            id: 'base-skill',
+            displayName: 'Base',
+            description: 'Base access',
+            allowedRoles: ['base'],
+            allowedTools: ['filesystem__read_file']
+          },
+          {
+            id: 'developer-skill',
+            displayName: 'Developer',
+            description: 'Developer access',
+            allowedRoles: ['developer'],
+            allowedTools: ['filesystem__write_file']
+          }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(baseManifest);
+
+      // Manually set inheritance (simulating YAML config with inherits)
+      const devRole = roleManager.getRole('developer');
+      if (devRole) {
+        devRole.inherits = 'base';
+      }
+
+      const chain = roleManager.getInheritanceChain('developer');
+      expect(chain).toEqual(['developer', 'base']);
+    });
+
+    it('should detect circular inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'a-skill', displayName: 'A', description: 'A', allowedRoles: ['role-a'], allowedTools: [] },
+          { id: 'b-skill', displayName: 'B', description: 'B', allowedRoles: ['role-b'], allowedTools: [] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      // Create circular inheritance: A -> B -> A
+      const roleA = roleManager.getRole('role-a');
+      const roleB = roleManager.getRole('role-b');
+      if (roleA) roleA.inherits = 'role-b';
+      if (roleB) roleB.inherits = 'role-a';
+
+      const chain = roleManager.getInheritanceChain('role-a');
+      expect(chain).toEqual([]); // Empty chain on circular reference
+    });
+
+    it('should handle role without inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'standalone', displayName: 'Standalone', description: 'No parent', allowedRoles: ['standalone'], allowedTools: ['tool__a'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const chain = roleManager.getInheritanceChain('standalone');
+      expect(chain).toEqual(['standalone']);
+    });
+  });
+
+  describe('Effective Servers', () => {
+    it('should inherit servers from parent role', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-skill', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['filesystem__read_file'] },
+          { id: 'child-skill', displayName: 'Child', description: 'Child', allowedRoles: ['child'], allowedTools: ['git__log'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'base';
+
+      const effectiveServers = roleManager.getEffectiveServers('child');
+      expect(effectiveServers).toContain('filesystem');
+      expect(effectiveServers).toContain('git');
+    });
+
+    it('should merge servers from multiple ancestors', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'grandparent-skill', displayName: 'Grandparent', description: 'GP', allowedRoles: ['grandparent'], allowedTools: ['db__query'] },
+          { id: 'parent-skill', displayName: 'Parent', description: 'P', allowedRoles: ['parent'], allowedTools: ['filesystem__read_file'] },
+          { id: 'child-skill', displayName: 'Child', description: 'C', allowedRoles: ['child'], allowedTools: ['git__log'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const parentRole = roleManager.getRole('parent');
+      const childRole = roleManager.getRole('child');
+      if (parentRole) parentRole.inherits = 'grandparent';
+      if (childRole) childRole.inherits = 'parent';
+
+      const effectiveServers = roleManager.getEffectiveServers('child');
+      expect(effectiveServers).toContain('db');
+      expect(effectiveServers).toContain('filesystem');
+      expect(effectiveServers).toContain('git');
+    });
+  });
+
+  describe('Effective Tool Permissions', () => {
+    it('should merge tool permissions from parent', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-skill', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['filesystem__read_file'] },
+          { id: 'child-skill', displayName: 'Child', description: 'Child', allowedRoles: ['child'], allowedTools: ['filesystem__write_file'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'base';
+
+      const effectivePerms = roleManager.getEffectiveToolPermissions('child');
+      expect(effectivePerms.allowPatterns).toContain('filesystem__read_file');
+      expect(effectivePerms.allowPatterns).toContain('filesystem__write_file');
+    });
+
+    it('should check tool access through inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-skill', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['filesystem__read_file'] },
+          { id: 'senior-skill', displayName: 'Senior', description: 'Senior', allowedRoles: ['senior'], allowedTools: ['filesystem__delete'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const seniorRole = roleManager.getRole('senior');
+      if (seniorRole) seniorRole.inherits = 'base';
+
+      // Senior should have access to both own tool and inherited tool
+      expect(roleManager.isToolAllowedForRole('senior', 'filesystem__read_file', 'filesystem')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('senior', 'filesystem__delete', 'filesystem')).toBe(true);
+
+      // Base should only have read access
+      expect(roleManager.isToolAllowedForRole('base', 'filesystem__read_file', 'filesystem')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('base', 'filesystem__delete', 'filesystem')).toBe(false);
+    });
+
+    it('should check server access through inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-skill', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['filesystem__read_file'] },
+          { id: 'db-skill', displayName: 'DB', description: 'DB', allowedRoles: ['db-user'], allowedTools: ['database__query'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const dbRole = roleManager.getRole('db-user');
+      if (dbRole) dbRole.inherits = 'base';
+
+      // DB user should have access to both database and filesystem servers
+      expect(roleManager.isServerAllowedForRole('db-user', 'database')).toBe(true);
+      expect(roleManager.isServerAllowedForRole('db-user', 'filesystem')).toBe(true);
+
+      // Base should only have filesystem access
+      expect(roleManager.isServerAllowedForRole('base', 'filesystem')).toBe(true);
+      expect(roleManager.isServerAllowedForRole('base', 'database')).toBe(false);
+    });
+  });
+
+  describe('Multi-Level Inheritance', () => {
+    it('should support 3+ levels of inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'l1-skill', displayName: 'L1', description: 'Level 1', allowedRoles: ['level1'], allowedTools: ['tool__a'] },
+          { id: 'l2-skill', displayName: 'L2', description: 'Level 2', allowedRoles: ['level2'], allowedTools: ['tool__b'] },
+          { id: 'l3-skill', displayName: 'L3', description: 'Level 3', allowedRoles: ['level3'], allowedTools: ['tool__c'] },
+          { id: 'l4-skill', displayName: 'L4', description: 'Level 4', allowedRoles: ['level4'], allowedTools: ['tool__d'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const level2 = roleManager.getRole('level2');
+      const level3 = roleManager.getRole('level3');
+      const level4 = roleManager.getRole('level4');
+
+      if (level2) level2.inherits = 'level1';
+      if (level3) level3.inherits = 'level2';
+      if (level4) level4.inherits = 'level3';
+
+      // Level 4 should have access to all tools through inheritance
+      const chain = roleManager.getInheritanceChain('level4');
+      expect(chain).toEqual(['level4', 'level3', 'level2', 'level1']);
+
+      const effectivePerms = roleManager.getEffectiveToolPermissions('level4');
+      expect(effectivePerms.allowPatterns).toContain('tool__a');
+      expect(effectivePerms.allowPatterns).toContain('tool__b');
+      expect(effectivePerms.allowPatterns).toContain('tool__c');
+      expect(effectivePerms.allowPatterns).toContain('tool__d');
+    });
+  });
+
+  describe('Effective Memory Permission', () => {
+    it('should return none policy when no memory permission set', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'basic', displayName: 'Basic', description: 'Basic', allowedRoles: ['basic'], allowedTools: ['tool__a'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const permission = roleManager.getEffectiveMemoryPermission('basic');
+      expect(permission.policy).toBe('none');
+    });
+
+    it('should inherit memory permission from parent role', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'base-mem', displayName: 'Base', description: 'Base', allowedRoles: ['base'], allowedTools: ['tool__a'], grants: { memory: 'isolated' } },
+          { id: 'child-skill', displayName: 'Child', description: 'Child', allowedRoles: ['child'], allowedTools: ['tool__b'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'base';
+
+      // Child inherits 'isolated' from base
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('isolated');
+    });
+
+    it('should use highest privilege from inheritance chain (all > team > isolated)', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'parent-skill', displayName: 'Parent', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'all' } },
+          { id: 'child-skill', displayName: 'Child', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'isolated' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'parent';
+
+      // Child has 'isolated' but parent has 'all' - highest wins
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('all');
+    });
+
+    it('should prefer team over isolated in inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'parent-skill', displayName: 'Parent', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['frontend'] } },
+          { id: 'child-skill', displayName: 'Child', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'isolated' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const childRole = roleManager.getRole('child');
+      if (childRole) childRole.inherits = 'parent';
+
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('frontend');
+    });
+
+    it('should merge teamRoles from multiple team policies in chain', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'gp-skill', displayName: 'GP', description: 'GP', allowedRoles: ['grandparent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['frontend'] } },
+          { id: 'p-skill', displayName: 'P', description: 'P', allowedRoles: ['parent'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['backend'] } },
+          { id: 'c-skill', displayName: 'C', description: 'C', allowedRoles: ['child'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['qa'] } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const parentRole = roleManager.getRole('parent');
+      const childRole = roleManager.getRole('child');
+      if (parentRole) parentRole.inherits = 'grandparent';
+      if (childRole) childRole.inherits = 'parent';
+
+      const permission = roleManager.getEffectiveMemoryPermission('child');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('frontend');
+      expect(permission.teamRoles).toContain('backend');
+      expect(permission.teamRoles).toContain('qa');
+    });
+
+    it('should return none policy on circular inheritance', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'a-skill', displayName: 'A', description: 'A', allowedRoles: ['role-a'], allowedTools: [], grants: { memory: 'all' } },
+          { id: 'b-skill', displayName: 'B', description: 'B', allowedRoles: ['role-b'], allowedTools: [], grants: { memory: 'all' } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const roleA = roleManager.getRole('role-a');
+      const roleB = roleManager.getRole('role-b');
+      if (roleA) roleA.inherits = 'role-b';
+      if (roleB) roleB.inherits = 'role-a';
+
+      // Circular inheritance returns none
+      const permission = roleManager.getEffectiveMemoryPermission('role-a');
+      expect(permission.policy).toBe('none');
+    });
+
+    it('should handle 3+ level inheritance with memory permissions', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 'l1', displayName: 'L1', description: 'L1', allowedRoles: ['level1'], allowedTools: [] },
+          { id: 'l2', displayName: 'L2', description: 'L2', allowedRoles: ['level2'], allowedTools: [], grants: { memory: 'isolated' } },
+          { id: 'l3', displayName: 'L3', description: 'L3', allowedRoles: ['level3'], allowedTools: [] },
+          { id: 'l4', displayName: 'L4', description: 'L4', allowedRoles: ['level4'], allowedTools: [], grants: { memory: 'team', memoryTeamRoles: ['devops'] } }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      const l2 = roleManager.getRole('level2');
+      const l3 = roleManager.getRole('level3');
+      const l4 = roleManager.getRole('level4');
+
+      if (l2) l2.inherits = 'level1';
+      if (l3) l3.inherits = 'level2';
+      if (l4) l4.inherits = 'level3';
+
+      // level4 has 'team', level2 has 'isolated', level1/level3 have none
+      // 'team' > 'isolated' so 'team' wins
+      const permission = roleManager.getEffectiveMemoryPermission('level4');
+      expect(permission.policy).toBe('team');
+      expect(permission.teamRoles).toContain('devops');
+    });
+  });
+});
