@@ -3,12 +3,13 @@
 // Manages connections to upstream MCP servers
 // ============================================================================
 
-// TODO: Migrate StdioRouter from @aegis/router
-// For now, re-export placeholder
-
 export const GATEWAY_VERSION = '1.0.0';
 
-// Will export:
-// - StdioRouter
-// - UpstreamServerInfo
-// - MCPServerConfig
+// Re-export StdioRouter and related types
+export { StdioRouter, type UpstreamServerInfo } from './stdio-router.js';
+
+// Re-export constants
+export { TIMEOUTS, SERVER } from './constants.js';
+
+// Re-export shared types for convenience
+export type { MCPServerConfig, DesktopConfig } from '@aegis/shared';

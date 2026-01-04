@@ -346,3 +346,29 @@ export interface RoleManifest {
   /** When this manifest was generated */
   generatedAt: Date;
 }
+
+// ============================================================================
+// MCP Server Configuration Types
+// ============================================================================
+
+/**
+ * Configuration for an MCP server process
+ * Used for spawning and managing upstream MCP servers
+ */
+export interface MCPServerConfig {
+  /** Command to execute */
+  command: string;
+
+  /** Command line arguments */
+  args?: string[];
+
+  /** Environment variables */
+  env?: Record<string, string>;
+}
+
+/**
+ * Desktop configuration format (claude_desktop_config.json)
+ */
+export interface DesktopConfig {
+  mcpServers: Record<string, MCPServerConfig>;
+}

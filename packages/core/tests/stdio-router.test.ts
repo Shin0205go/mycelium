@@ -1,9 +1,9 @@
 /**
- * Unit tests for mcp/stdio-router.ts
+ * Unit tests for StdioRouter (from @aegis/gateway)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StdioRouter, type UpstreamServerInfo } from '../src/mcp/stdio-router.js';
+import { StdioRouter, type UpstreamServerInfo } from '@aegis/gateway';
 import type { Logger } from '@aegis/shared';
 import { EventEmitter } from 'events';
 
