@@ -7,6 +7,17 @@ import { mkdir, writeFile, readdir, readFile, access } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
+import { existsSync } from 'fs';
+
+// Detect skills directory (monorepo-aware)
+function getDefaultSkillsDir(): string {
+  const cwd = process.cwd();
+  const monorepoPath = join(cwd, 'packages/skills/skills');
+  if (existsSync(monorepoPath)) {
+    return 'packages/skills/skills';
+  }
+  return './skills';
+}
 
 // Skill templates
 const SKILL_TEMPLATES: Record<string, string> = {
@@ -284,11 +295,13 @@ skillCommand
 skillCommand
   .command('list')
   .description('List all skills')
-  .option('-d, --directory <dir>', 'Skills directory', './skills')
-  .action(async (options: { directory: string }) => {
-    const skillsDir = join(process.cwd(), options.directory);
+  .option('-d, --directory <dir>', 'Skills directory')
+  .action(async (options: { directory?: string }) => {
+    const defaultDir = getDefaultSkillsDir();
+    const skillsDir = join(process.cwd(), options.directory || defaultDir);
 
     console.log(chalk.blue('📋 Skills'));
+    console.log(chalk.gray(`Directory: ${skillsDir}`));
     console.log();
 
     try {
@@ -302,20 +315,37 @@ skillCommand
       }
 
       for (const dir of dirs) {
-        const skillFile = join(skillsDir, dir.name, 'SKILL.md');
+        // Try SKILL.yaml first (monorepo), then SKILL.md (user projects)
+        const yamlFile = join(skillsDir, dir.name, 'SKILL.yaml');
+        const mdFile = join(skillsDir, dir.name, 'SKILL.md');
+
         try {
-          const content = await readFile(skillFile, 'utf-8');
-          const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-          if (frontmatterMatch) {
-            const frontmatter = parseYaml(frontmatterMatch[1]);
+          let frontmatter;
+
+          if (existsSync(yamlFile)) {
+            const content = await readFile(yamlFile, 'utf-8');
+            frontmatter = parseYaml(content);
+          } else if (existsSync(mdFile)) {
+            const content = await readFile(mdFile, 'utf-8');
+            const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (frontmatterMatch) {
+              frontmatter = parseYaml(frontmatterMatch[1]);
+            }
+          }
+
+          if (frontmatter) {
             const roles = frontmatter.allowedRoles?.join(', ') || 'none';
+            const tools = frontmatter.allowedTools?.length || 0;
             console.log(chalk.green(`  ${frontmatter.id || dir.name}`));
             console.log(chalk.gray(`    ${frontmatter.description || 'No description'}`));
             console.log(chalk.gray(`    Roles: ${roles}`));
+            console.log(chalk.gray(`    Tools: ${tools} patterns`));
             console.log();
+          } else {
+            console.log(chalk.yellow(`  ${dir.name} (no SKILL.yaml or SKILL.md)`));
           }
         } catch {
-          console.log(chalk.yellow(`  ${dir.name} (invalid SKILL.md)`));
+          console.log(chalk.yellow(`  ${dir.name} (invalid skill file)`));
         }
       }
 
