@@ -24,7 +24,7 @@ describe('Path Resolution', () => {
   describe('PROJECT_ROOT calculation', () => {
     it('should resolve to monorepo root from test file', () => {
       // PROJECT_ROOT should end with the repo name or be a valid monorepo root
-      expect(basename(PROJECT_ROOT)).toBe('Aegis-cli');
+      expect(basename(PROJECT_ROOT)).toBe('aegis-cli');
     });
 
     it('should contain package.json with workspaces', async () => {
