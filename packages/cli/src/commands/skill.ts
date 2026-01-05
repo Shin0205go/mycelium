@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import { mkdir, writeFile, readdir, readFile, access } from 'fs/promises';
-import { join } from 'path';
+import { join, relative } from 'path';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'fs';
@@ -13,11 +13,20 @@ import { stdin as input, stdout as output } from 'process';
 
 // Detect skills directory (monorepo-aware)
 function getDefaultSkillsDir(): string {
-  const cwd = process.cwd();
-  const monorepoPath = join(cwd, 'packages/skills/skills');
-  if (existsSync(monorepoPath)) {
-    return 'packages/skills/skills';
+  let cwd = process.cwd();
+
+  // Walk up the directory tree to find monorepo root
+  while (cwd !== '/') {
+    const monorepoPath = join(cwd, 'packages/skills/skills');
+    if (existsSync(monorepoPath)) {
+      // Return relative path from current working directory
+      return relative(process.cwd(), monorepoPath) || 'packages/skills/skills';
+    }
+    const parent = join(cwd, '..');
+    if (parent === cwd) break; // Reached filesystem root
+    cwd = parent;
   }
+
   return './skills';
 }
 
@@ -429,23 +438,60 @@ grants:
   memory: ${memoryPolicy}
 `;
 
-    // Build Markdown
+    // Build Markdown (following skill-creator best practices)
     const displayName = skillName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     const markdownContent = `# ${displayName}
 
 ${description}
 
+## When to Use This Skill
+
+Use this skill when:
+- [TODO: Describe specific trigger conditions]
+- [TODO: Describe concrete use cases where this skill applies]
+- [TODO: Add any context-specific indicators]
+
 ## Instructions
 
-1. Step-by-step instructions on how to use this skill
-2. Add more guidance as needed
+Follow these steps to [TODO: describe the main workflow]:
+
+1. [TODO: First step in imperative form, e.g., "Read the configuration file"]
+2. [TODO: Second step, e.g., "Validate the settings against schema"]
+3. [TODO: Third step, e.g., "Apply the changes and verify"]
+
+**Important notes:**
+- [TODO: Add any critical warnings or requirements]
+- [TODO: Mention any prerequisites or dependencies]
 
 ## Examples
 
+### Example 1: [TODO: Describe a common scenario]
+
 \`\`\`bash
-# Example command
-echo "Add examples here"
+# TODO: Add concrete example showing typical usage
+# Use actual commands, not placeholders
 \`\`\`
+
+### Example 2: [TODO: Describe another scenario]
+
+\`\`\`bash
+# TODO: Add another concrete example
+\`\`\`
+
+## Advanced Usage
+
+For detailed reference material or complex workflows:
+- \`references/[name].md\` - [TODO: Describe when to read this reference]
+- \`scripts/[name].py\` - [TODO: Describe what this script automates]
+
+## Best Practices
+
+- Keep SKILL.md under 500 lines for context efficiency
+- Move detailed documentation to references/ files
+- Use scripts/ for reusable, deterministic operations
+- Use assets/ for templates and output resources
+- Write instructions in imperative form
+- Prefer concise examples over verbose explanations
 `;
 
     rl.close();
@@ -463,9 +509,10 @@ skillCommand
   .command('add')
   .description('Create a new skill interactively')
   .argument('<name>', 'Skill name')
-  .option('-d, --directory <dir>', 'Skills directory', './skills')
-  .action(async (name: string, options: { directory: string }) => {
-    const skillsDir = join(process.cwd(), options.directory);
+  .option('-d, --directory <dir>', 'Skills directory')
+  .action(async (name: string, options: { directory?: string }) => {
+    const defaultDir = getDefaultSkillsDir();
+    const skillsDir = join(process.cwd(), options.directory || defaultDir);
     const skillDir = join(skillsDir, name);
     const yamlFile = join(skillDir, 'SKILL.yaml');
     const mdFile = join(skillDir, 'SKILL.md');
@@ -490,11 +537,79 @@ skillCommand
       await writeFile(yamlFile, yaml);
       await writeFile(mdFile, markdown);
 
-      console.log(chalk.green(`✓ Created skills/${name}/SKILL.yaml`));
-      console.log(chalk.green(`✓ Created skills/${name}/SKILL.md`));
+      // Create optional resource directories with README guidance
+      const scriptsDir = join(skillDir, 'scripts');
+      const referencesDir = join(skillDir, 'references');
+      const assetsDir = join(skillDir, 'assets');
+
+      await mkdir(scriptsDir, { recursive: true });
+      await mkdir(referencesDir, { recursive: true });
+      await mkdir(assetsDir, { recursive: true });
+
+      await writeFile(join(scriptsDir, 'README.md'),
+`# Scripts
+
+Executable code (Python/Bash/etc.) for deterministic operations.
+
+**When to use:**
+- Tasks that are repeatedly rewritten
+- Operations requiring deterministic reliability
+- Code that can be executed without loading into context
+
+**Examples:**
+- \`rotate_pdf.py\` - PDF rotation automation
+- \`validate_schema.sh\` - Schema validation script
+- \`process_data.py\` - Data processing pipeline
+
+Delete this README when you add your first script.
+`);
+
+      await writeFile(join(referencesDir, 'README.md'),
+`# References
+
+Documentation and reference material loaded into context as needed.
+
+**When to use:**
+- Detailed documentation Claude should reference while working
+- Large files (>10k words) - include grep patterns in SKILL.md
+- Information that doesn't belong in SKILL.md
+
+**Examples:**
+- \`api_docs.md\` - API specifications
+- \`schema.md\` - Database schemas
+- \`policies.md\` - Company policies
+
+Delete this README when you add your first reference.
+`);
+
+      await writeFile(join(assetsDir, 'README.md'),
+`# Assets
+
+Files used in output, not loaded into context.
+
+**When to use:**
+- Templates, boilerplate code
+- Images, icons, fonts
+- Sample documents to copy or modify
+
+**Examples:**
+- \`logo.png\` - Brand assets
+- \`template.html\` - HTML boilerplate
+- \`slides.pptx\` - PowerPoint template
+
+Delete this README when you add your first asset.
+`);
+
+      const relativePath = relative(process.cwd(), skillDir);
+      console.log(chalk.green(`✓ Created ${relativePath}/SKILL.yaml`));
+      console.log(chalk.green(`✓ Created ${relativePath}/SKILL.md`));
+      console.log(chalk.gray(`✓ Created ${relativePath}/scripts/ (optional)`));
+      console.log(chalk.gray(`✓ Created ${relativePath}/references/ (optional)`));
+      console.log(chalk.gray(`✓ Created ${relativePath}/assets/ (optional)`));
       console.log();
-      console.log(chalk.cyan('Files created successfully!'));
-      console.log(chalk.gray('You can now edit the files to add more details.'));
+      console.log(chalk.cyan('Skill structure created successfully!'));
+      console.log(chalk.gray('Edit SKILL.yaml and SKILL.md to complete your skill.'));
+      console.log(chalk.gray('Add scripts/, references/, or assets/ as needed (delete READMEs when adding content).'));
       console.log();
 
     } catch (error) {
