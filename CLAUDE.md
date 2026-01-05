@@ -62,7 +62,7 @@ packages/
 │       ├── index.ts              # CLI entry point (aegis command)
 │       ├── commands/
 │       │   ├── init.ts           # aegis init - project scaffolding
-│       │   ├── skill.ts          # aegis skill add/list/templates
+│       │   ├── skill.ts          # aegis skill add/list/templates (interactive)
 │       │   ├── policy.ts         # aegis policy check/test/roles
 │       │   └── mcp.ts            # aegis mcp start/status
 │       └── lib/
@@ -100,11 +100,15 @@ packages/
 │
 ├── audit/                # @aegis/audit - Audit and Rate Limiting
 │   └── src/
-│       └── index.ts      # AuditLogger, RateLimiter (placeholder)
+│       ├── index.ts          # Re-exports all audit components
+│       ├── audit-logger.ts   # AuditLogger for compliance logging
+│       └── rate-limiter.ts   # RateLimiter for quota management
 │
 ├── gateway/              # @aegis/gateway - MCP Gateway/Proxy
 │   └── src/
-│       └── index.ts      # StdioRouter, MCP connection management
+│       ├── index.ts          # Re-exports gateway components
+│       ├── stdio-router.ts   # StdioRouter for MCP server connections
+│       └── constants.ts      # Gateway constants and timeouts
 │
 ├── core/                 # @aegis/core - Integration Layer
 │   ├── src/
@@ -112,23 +116,37 @@ packages/
 │   │   ├── mcp-server.ts         # MCP server entry point
 │   │   ├── mcp-client.ts         # MCP client implementation
 │   │   ├── agent.ts              # Claude Agent SDK wrapper
+│   │   ├── cli.ts                # CLI utilities
+│   │   ├── cli-entry.ts          # CLI entry point
+│   │   ├── sub-agent.ts          # Sub-agent spawning
 │   │   ├── router/
-│   │   │   ├── aegis-router-core.ts  # Central routing system (司令塔)
-│   │   │   ├── rate-limiter.ts       # Rate limiting
-│   │   │   └── audit-logger.ts       # Audit logging
+│   │   │   ├── aegis-router-core.ts    # Central routing system (司令塔)
+│   │   │   ├── router-adapter.ts       # Router adapter for MCP
+│   │   │   └── remote-prompt-fetcher.ts # Remote prompt handling
 │   │   ├── mcp/
-│   │   │   ├── stdio-router.ts       # Stdio-based MCP routing
-│   │   │   └── tool-discovery.ts     # Tool discovery
+│   │   │   ├── tool-discovery.ts       # Tool discovery
+│   │   │   └── dynamic-tool-discovery.ts # Dynamic tool loading
+│   │   ├── types/
+│   │   │   ├── index.ts          # Type exports
+│   │   │   ├── mcp-types.ts      # MCP protocol types
+│   │   │   └── router-types.ts   # Router-specific types
 │   │   └── utils/
-│   │       └── logger.ts             # Winston logger
-│   └── tests/                        # 18 test files
+│   │       └── logger.ts         # Winston logger
+│   └── tests/                    # 18 test files
 │       ├── aegis-router-core.test.ts
-│       ├── real-e2e.test.ts          # E2E tests with aegis-skills server
+│       ├── real-e2e.test.ts      # E2E tests with aegis-skills server
 │       └── ...
 │
 └── skills/               # @aegis/skills - Skill MCP Server
-    └── src/
-        └── index.ts      # Skill definition loading and serving
+    ├── src/
+    │   └── index.ts      # Skill definition loading and serving
+    └── skills/           # Skill definitions directory
+        └── {skill-name}/
+            ├── SKILL.yaml      # Skill metadata and RBAC config
+            ├── SKILL.md        # Skill instructions (optional)
+            ├── scripts/        # Executable scripts (optional)
+            ├── references/     # Reference documentation (optional)
+            └── assets/         # Asset files (optional)
 ```
 
 ## Packages
@@ -139,10 +157,10 @@ packages/
 | `@aegis/shared` | Common types and interfaces used across all packages |
 | `@aegis/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
 | `@aegis/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
-| `@aegis/audit` | Audit logging and rate limiting (placeholder) |
-| `@aegis/gateway` | MCP gateway/proxy for server connections (placeholder) |
+| `@aegis/audit` | Audit logging (AuditLogger) and rate limiting (RateLimiter) for compliance and quotas |
+| `@aegis/gateway` | MCP gateway/proxy with StdioRouter for managing upstream MCP server connections |
 | `@aegis/core` | Integration layer with MCP server/client and AegisRouterCore implementation |
-| `@aegis/skills` | Skill MCP Server for loading and serving skill definitions |
+| `@aegis/skills` | Skill MCP Server for loading and serving skill definitions (SKILL.yaml/SKILL.md) |
 
 ## Key Components
 
@@ -183,12 +201,22 @@ A2A Zero-Trust identity resolution for agent-to-agent communication:
 
 ### 5. AegisRouterCore (`packages/core/src/router/aegis-router-core.ts`)
 Central routing system (司令塔) that orchestrates all components:
-- Manages connections to multiple sub-MCP servers via StdioRouter
+- Manages connections to multiple sub-MCP servers via StdioRouter (@aegis/gateway)
 - Maintains virtual tool table filtered by current role
 - Handles role switching via `set_role` tool
 - Integrates RoleManager, ToolVisibilityManager, AuditLogger, RateLimiter
 - Supports A2A mode for automatic role assignment
 - Loads roles dynamically from aegis-skills server
+- Provides router-level tools: `aegis-router__list_roles`, `aegis-router__spawn_sub_agent`
+
+### 5a. StdioRouter (`packages/gateway/src/stdio-router.ts`)
+MCP server connection manager:
+- Spawns and manages child processes for upstream MCP servers
+- Handles MCP protocol initialization handshake
+- Routes requests to appropriate servers based on tool prefixes
+- Aggregates `tools/list` and `resources/list` from all connected servers
+- Automatic server restart on exit
+- Supports lazy server loading (start servers on demand)
 
 ### 6. InteractiveCLI (`packages/cli/src/lib/interactive-cli.ts`)
 REPL interface for role-aware conversations:
@@ -204,6 +232,16 @@ Common types used across all packages:
 - `BaseSkillDefinition`, `SkillManifest`, `SkillGrants`
 - `Logger` interface for dependency injection
 - Error classes: `RoleNotFoundError`, `ToolNotAccessibleError`
+
+### 8. Skills Server (`packages/skills/src/index.ts`)
+MCP server that provides skill definitions to AEGIS:
+- Loads skills from `SKILL.yaml` (metadata) and `SKILL.md` (instructions)
+- Provides tools for skill management:
+  - `list_skills` - List all skills, optionally filtered by role
+  - `get_skill` - Get detailed information about a specific skill
+  - `list_resources` - List resources in a skill directory (scripts, references, assets)
+  - `get_resource` - Read a resource file from a skill directory
+  - `reload_skills` - Hot-reload skills from disk
 
 ## Development Commands
 
@@ -292,6 +330,94 @@ aegis-cli --role frontend --json "Create a button"
 
 # Read from stdin
 echo "Explain this" | aegis-cli --role mentor
+```
+
+## Skill File Format
+
+Skills use a two-file structure following Claude Skills best practices with AEGIS RBAC extensions:
+
+### SKILL.yaml - Metadata and RBAC Configuration
+```yaml
+# Official Claude Skills fields
+name: code-reviewer
+description: Code review and best practices suggestions
+
+# AEGIS RBAC extensions
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+allowedTools:
+  - filesystem__read_file
+  - filesystem__list_directory
+  - git__diff
+  - git__log
+grants:
+  memory: team
+  memoryTeamRoles:
+    - developer
+    - frontend
+
+# Optional A2A identity configuration
+identity:
+  skillMatching:
+    - role: reviewer
+      anySkills:
+        - code_review
+        - static_analysis
+      priority: 50
+```
+
+### SKILL.md - Instructions and Documentation
+```markdown
+# Code Reviewer
+
+Professional code review with git history analysis.
+
+## When to Use This Skill
+
+Use this skill when:
+- Reviewing pull requests or code changes
+- Analyzing code quality and best practices
+- Identifying security vulnerabilities
+
+## Instructions
+
+1. Read the code using `filesystem__read_file`
+2. Check history with `git__log` and `git__diff`
+3. Provide actionable feedback
+
+## Examples
+
+### Example 1: Review a Pull Request
+
+\`\`\`bash
+git diff main...feature-branch
+\`\`\`
+```
+
+### Skill Directory Structure
+```
+skills/{skill-name}/
+├── SKILL.yaml      # Required: metadata and RBAC config
+├── SKILL.md        # Optional: detailed instructions
+├── scripts/        # Optional: executable automation scripts
+├── references/     # Optional: reference documentation
+└── assets/         # Optional: templates and resources
+```
+
+### Interactive Skill Creation
+```bash
+# Create a new skill interactively
+aegis skill add my-skill
+
+# This prompts for:
+# - Description
+# - Allowed roles (comma-separated)
+# - Allowed tools (comma-separated, supports wildcards)
+# - Memory policy (none/isolated/team/all)
+
+# Creates the full skill structure with TODO placeholders
 ```
 
 ## Key Type Definitions
@@ -491,6 +617,37 @@ it('MUST deny guest access to delete_database', () => {
 Tools are prefixed with their server name:
 - `filesystem__read_file` (from filesystem server)
 - `aegis-skills__list_skills` (from aegis-skills server)
+- `aegis-router__list_roles` (router-provided tool)
+- `aegis-router__spawn_sub_agent` (router-provided tool)
+
+### Router-Level Tools
+AEGIS Router provides built-in tools that don't require a backend server:
+
+| Tool | Description |
+|------|-------------|
+| `aegis-router__list_roles` | List all available roles with their skills and capabilities |
+| `aegis-router__spawn_sub_agent` | Spawn a sub-agent with a specific role to handle a task |
+
+The `spawn_sub_agent` tool accepts:
+```typescript
+{
+  role: string;        // Role for the sub-agent (required)
+  task: string;        // Task/prompt to send (required)
+  model?: string;      // Model to use (default: claude-3-5-haiku-20241022)
+  interactive?: boolean; // Open new terminal window (macOS only)
+}
+```
+
+### Skills Server Tools
+The aegis-skills MCP server provides tools for skill management:
+
+| Tool | Description |
+|------|-------------|
+| `aegis-skills__list_skills` | List all skills, optionally filtered by role |
+| `aegis-skills__get_skill` | Get detailed information about a specific skill |
+| `aegis-skills__list_resources` | List resources in a skill directory (scripts, references, assets) |
+| `aegis-skills__get_resource` | Read a resource file from a skill directory |
+| `aegis-skills__reload_skills` | Hot-reload skills from disk |
 
 ### Role Switching Flow
 1. Agent calls `set_role` with `role_id`
@@ -518,46 +675,44 @@ Memory is a **skill-granted capability** (default: OFF). Roles must be granted m
 | `all` | Access all roles' memories (admin) |
 
 #### Granting Memory via Skills
-In your skill's `SKILL.md`, add the `grants.memory` field:
+In your skill's `SKILL.yaml`, add the `grants.memory` field:
 
 ```yaml
-# skills/memory-basic/SKILL.md
----
-id: memory-basic
-displayName: Basic Memory
+# skills/memory-basic/SKILL.yaml
+name: memory-basic
 description: Grants isolated memory access
-allowedRoles: [developer, tester]
+allowedRoles:
+  - developer
+  - tester
 allowedTools: []
 grants:
   memory: isolated  # Can only access own memories
----
 ```
 
 ```yaml
-# skills/memory-admin/SKILL.md
----
-id: memory-admin
-displayName: Admin Memory
+# skills/memory-admin/SKILL.yaml
+name: memory-admin
 description: Full memory access for admins
-allowedRoles: [admin]
+allowedRoles:
+  - admin
 allowedTools: []
 grants:
   memory: all  # Can access all roles' memories
----
 ```
 
 ```yaml
-# skills/memory-team/SKILL.md
----
-id: memory-team
-displayName: Team Memory
+# skills/memory-team/SKILL.yaml
+name: memory-team
 description: Team lead can see team members' memories
-allowedRoles: [lead]
+allowedRoles:
+  - lead
 allowedTools: []
 grants:
   memory: team
-  memoryTeamRoles: [frontend, backend, qa]  # Can access these roles' memories
----
+  memoryTeamRoles:
+    - frontend
+    - backend
+    - qa  # Can access these roles' memories
 ```
 
 #### Policy Priority
@@ -923,11 +1078,19 @@ aegis init my-project --minimal
 
 ### Adding a New Skill
 ```bash
-# Add from template
-aegis skill add my-skill --template code-reviewer
+# Add a new skill interactively (recommended)
+aegis skill add my-skill
 
-# Edit the generated skill
-# skills/my-skill/SKILL.md
+# View available templates
+aegis skill templates
+
+# List existing skills
+aegis skill list
+aegis skill list --verbose  # Show details
+
+# Edit the generated files
+# skills/my-skill/SKILL.yaml  - Metadata and RBAC
+# skills/my-skill/SKILL.md    - Instructions
 ```
 
 ### Adding a New Backend Server
@@ -936,11 +1099,25 @@ aegis skill add my-skill --template code-reviewer
 3. Tools will be prefixed with server name
 
 ### Creating a New Role
-Roles are auto-generated from skill definitions. To add a new role:
-1. Create/modify skill with `allowedRoles` including the new role
-2. Use `aegis skill add <name>` or create `skills/<name>/SKILL.md` manually
-3. Restart router to reload skill manifest
-4. Role will be available via `set_role` or in interactive mode
+Roles are auto-generated from skill definitions (inverted RBAC). To add a new role:
+1. Create a new skill or modify an existing skill's `SKILL.yaml`
+2. Add the new role to `allowedRoles` list
+3. Use `aegis skill add <name>` for interactive creation or create files manually
+4. Restart router to reload skill manifest (or use `reload_skills` tool)
+5. Role will be available via `set_role` or in interactive mode
+
+Example: Adding a "qa-tester" role
+```yaml
+# skills/testing/SKILL.yaml
+name: testing
+description: QA testing tools
+allowedRoles:
+  - qa-tester    # New role created automatically
+  - developer
+allowedTools:
+  - testing__run_tests
+  - testing__coverage
+```
 
 ### Verifying Policies
 ```bash
