@@ -17,7 +17,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
-import { AegisRouterCore, createAegisRouterCore } from './router/aegis-router-core.js';
+import { AegisRouterCore, createAegisRouterCore, ROUTER_TOOLS } from './router/aegis-router-core.js';
 
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
@@ -63,7 +63,10 @@ async function spawnSubAgent(
 
     const child = spawn('node', [AEGIS_CLI_PATH, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: {
+        ...process.env,
+        AEGIS_CURRENT_ROLE: role  // Pass role to sub-agent's aegis-router
+      },
     });
 
     let stdout = '';
@@ -174,8 +177,8 @@ ${initialPrompt}`;
 tell application "Terminal"
     activate
 
-    -- Open new window with aegis-cli
-    do script "clear && echo '🤖 AEGIS Sub-Agent [${escapedRole}]' && echo '' && node \\"${escapedCliPath}\\""
+    -- Open new window with aegis-cli (with role env var)
+    do script "clear && echo '🤖 AEGIS Sub-Agent [${escapedRole}]' && echo '' && AEGIS_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
 
     -- Wait for CLI to start
     delay 6
@@ -264,12 +267,30 @@ async function main() {
   await routerCore.loadRolesFromSkillsServer();
   logger.info('Roles loaded');
 
+  // Auto-switch to role if AEGIS_CURRENT_ROLE is set
+  const currentRoleEnv = process.env.AEGIS_CURRENT_ROLE;
+  if (currentRoleEnv) {
+    logger.info(`Auto-switching to role from env: ${currentRoleEnv}`);
+    try {
+      await routerCore.routeRequest({
+        method: 'tools/call',
+        params: {
+          name: 'set_role',
+          arguments: { role_id: currentRoleEnv }
+        }
+      });
+      logger.info(`Successfully switched to role: ${currentRoleEnv}`);
+    } catch (error) {
+      logger.warn(`Failed to switch to role ${currentRoleEnv}:`, error);
+    }
+  }
+
   // List Tools Handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.info('ListTools request received');
 
     // Add the set_role tool (always available)
-    const manifestTool = {
+    const setRoleTool = {
       name: 'set_role',
       description: 'Switch agent role and get the manifest with available tools and system instruction',
       inputSchema: {
@@ -277,38 +298,10 @@ async function main() {
         properties: {
           role_id: {
             type: 'string',
-            description: 'The role ID to switch to. Use "list" to see available roles.',
+            description: 'The role ID to switch to',
           },
         },
         required: ['role_id'],
-      },
-    };
-
-    // Add the spawn_sub_agent tool for orchestrating sub-agents
-    const spawnSubAgentTool = {
-      name: 'spawn_sub_agent',
-      description: 'Spawn a sub-agent with a specific role to handle a task. The sub-agent runs independently with its own tools and capabilities based on the role. Use this to delegate specialized tasks to role-specific agents.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role: {
-            type: 'string',
-            description: 'The role for the sub-agent (e.g., "mentor", "frontend", "guest")',
-          },
-          task: {
-            type: 'string',
-            description: 'The task/prompt to send to the sub-agent',
-          },
-          model: {
-            type: 'string',
-            description: 'Optional: Model to use (default: claude-3-5-haiku-20241022)',
-          },
-          interactive: {
-            type: 'boolean',
-            description: 'If true, opens a new terminal window for interactive session with the sub-agent (macOS only)',
-          },
-        },
-        required: ['role', 'task'],
       },
     };
 
@@ -324,7 +317,19 @@ async function main() {
       logger.warn('Failed to get tools from backend servers:', error);
     }
 
-    const allTools = [manifestTool, spawnSubAgentTool, ...backendTools];
+    // Build tools list: set_role always available, others based on RBAC
+    const allTools = [setRoleTool, ...backendTools];
+
+    // Add router-level tools if current role has access (defined in ROUTER_TOOLS)
+    for (const tool of ROUTER_TOOLS) {
+      try {
+        routerCore.checkToolAccess(tool.name);
+        allTools.push(tool);
+      } catch {
+        // Role doesn't have access to this tool
+      }
+    }
+
     logger.info(`Returning ${allTools.length} total tools`);
 
     return {
@@ -338,8 +343,9 @@ async function main() {
 
     logger.info(`📥 Tool call received: "${name}"`);
 
-    // Check tool access (skip for system tools)
-    if (name !== 'set_role' && name !== 'spawn_sub_agent') {
+    // Check tool access (skip for system tools - only set_role is always available)
+    const SYSTEM_TOOLS = ['set_role'];
+    if (!SYSTEM_TOOLS.includes(name)) {
       try {
         routerCore.checkToolAccess(name);
       } catch (error: any) {
@@ -352,7 +358,7 @@ async function main() {
     }
 
     // Handle spawn_sub_agent
-    if (name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
+    if (name === 'aegis-router__spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
       logger.info(`🚀 Spawning sub-agent`);
       const { role, task, model, interactive } = args as {
         role: string;
@@ -411,24 +417,26 @@ async function main() {
       }
     }
 
+    // Handle list_roles
+    if (name === 'aegis-router__list_roles' || name.endsWith('__list_roles')) {
+      logger.info(`✅ Handling list_roles`);
+      const roles = routerCore.listRoles();
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(roles, null, 2),
+          },
+        ],
+      };
+    }
+
     // Handle set_role (check both exact match and suffix)
     if (name === 'set_role' || name.endsWith('__set_role')) {
       logger.info(`✅ Handling set_role (matched: ${name})`);
       logger.info(`📋 Arguments: ${JSON.stringify(args)}`);
       const roleId = (args as any)?.role_id;
       logger.info(`🎭 Role ID: ${roleId}`);
-
-      if (roleId === 'list') {
-        const roles = routerCore.listRoles();
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(roles, null, 2),
-            },
-          ],
-        };
-      }
 
       try {
         // Start required servers for this role (lazy loading)

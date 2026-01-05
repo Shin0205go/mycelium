@@ -14,6 +14,7 @@ export interface AgentConfig {
   maxTurns?: number;
   includePartialMessages?: boolean;
   useApiKey?: boolean;
+  currentRole?: string;  // Role to auto-switch to in aegis-router
 }
 
 export interface AgentResult {
@@ -47,6 +48,14 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     envToUse = envWithoutApiKey as Record<string, string>;
   }
 
+  // Build aegis-router env with optional role
+  const routerEnv: Record<string, string> = {
+    AEGIS_CONFIG_PATH
+  };
+  if (config.currentRole) {
+    routerEnv.AEGIS_CURRENT_ROLE = config.currentRole;
+  }
+
   return {
     tools: [],
     env: envToUse,
@@ -54,9 +63,7 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
       'aegis-router': {
         command: 'node',
         args: [AEGIS_ROUTER_PATH],
-        env: {
-          AEGIS_CONFIG_PATH
-        }
+        env: routerEnv
       }
     },
     model: config.model || 'claude-sonnet-4-5-20250929',

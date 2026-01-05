@@ -97,14 +97,14 @@ describe('Skill-Driven Role Generation', () => {
       expect(devTools).toHaveLength(3); // No duplicates
     });
 
-    it('should handle wildcard role (*)', () => {
+    it('should ignore wildcard role (*)', () => {
       const manifest: SkillManifest<BaseSkillDefinition> = {
         skills: [
           {
             id: 'public-skill',
             displayName: 'Public Skill',
             description: '',
-            allowedRoles: ['*'],
+            allowedRoles: ['*'],  // Wildcard - should be ignored
             allowedTools: ['public_tool']
           },
           {
@@ -121,13 +121,16 @@ describe('Skill-Driven Role Generation', () => {
 
       const roleManifest = roleManager.generateRoleManifest(manifest);
 
-      // Admin should have both public and private skills
-      expect(roleManifest.roles['admin'].skills).toContain('public-skill');
-      expect(roleManifest.roles['admin'].skills).toContain('private-skill');
+      // Only admin role should be created (wildcard skill is ignored)
+      expect(Object.keys(roleManifest.roles)).toEqual(['admin']);
 
-      // Admin should have both tools
-      expect(roleManifest.roles['admin'].tools).toContain('public_tool');
+      // Admin should only have private skill
+      expect(roleManifest.roles['admin'].skills).toContain('private-skill');
+      expect(roleManifest.roles['admin'].skills).not.toContain('public-skill');
+
+      // Admin should only have private tool
       expect(roleManifest.roles['admin'].tools).toContain('private_tool');
+      expect(roleManifest.roles['admin'].tools).not.toContain('public_tool');
     });
   });
 

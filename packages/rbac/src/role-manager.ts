@@ -434,48 +434,32 @@ export class RoleManager {
 
     for (const skill of manifest.skills) {
       for (const roleId of skill.allowedRoles) {
-        const targetRoleId = roleId === '*' ? '__all__' : roleId;
+        // Skip wildcard - not supported
+        if (roleId === '*') {
+          this.logger.warn(`Wildcard (*) in allowedRoles is not supported, skipping in skill: ${skill.id}`);
+          continue;
+        }
 
-        if (!roles[targetRoleId]) {
-          roles[targetRoleId] = {
-            id: targetRoleId,
+        if (!roles[roleId]) {
+          roles[roleId] = {
+            id: roleId,
             skills: [],
             tools: []
           };
         }
 
         // Add skill to role
-        if (!roles[targetRoleId].skills.includes(skill.id)) {
-          roles[targetRoleId].skills.push(skill.id);
+        if (!roles[roleId].skills.includes(skill.id)) {
+          roles[roleId].skills.push(skill.id);
         }
 
         // Add tools to role (deduplicated)
         for (const tool of skill.allowedTools) {
-          if (!roles[targetRoleId].tools.includes(tool)) {
-            roles[targetRoleId].tools.push(tool);
+          if (!roles[roleId].tools.includes(tool)) {
+            roles[roleId].tools.push(tool);
           }
         }
       }
-    }
-
-    // Merge wildcard role into all other roles
-    const wildcardRole = roles['__all__'];
-    if (wildcardRole) {
-      for (const roleId of Object.keys(roles)) {
-        if (roleId !== '__all__') {
-          for (const skill of wildcardRole.skills) {
-            if (!roles[roleId].skills.includes(skill)) {
-              roles[roleId].skills.push(skill);
-            }
-          }
-          for (const tool of wildcardRole.tools) {
-            if (!roles[roleId].tools.includes(tool)) {
-              roles[roleId].tools.push(tool);
-            }
-          }
-        }
-      }
-      delete roles['__all__'];
     }
 
     this.logger.info(`Generated role manifest from ${manifest.skills.length} skills`, {
@@ -499,12 +483,12 @@ export class RoleManager {
     this.roles.clear();
     this.memoryPermissions.clear();
 
-    // First pass: Extract memory grants from skills
+    // Extract memory grants from skills
     for (const skill of manifest.skills) {
       if (skill.grants?.memory && skill.grants.memory !== 'none') {
         for (const roleId of skill.allowedRoles) {
           if (roleId === '*') {
-            // Wildcard grants will be applied to all roles after they're created
+            // Wildcard not supported
             continue;
           }
           this.setMemoryPermission(roleId, {
@@ -514,11 +498,6 @@ export class RoleManager {
         }
       }
     }
-
-    // Check for wildcard memory grants
-    const wildcardSkills = manifest.skills.filter(
-      s => s.allowedRoles.includes('*') && s.grants?.memory && s.grants.memory !== 'none'
-    );
 
     for (const [roleId, dynamicRole] of Object.entries(roleManifest.roles)) {
       const role: Role = {
@@ -538,14 +517,6 @@ export class RoleManager {
       };
 
       this.roles.set(roleId, role);
-
-      // Apply wildcard memory grants to this role
-      for (const wildcardSkill of wildcardSkills) {
-        this.setMemoryPermission(roleId, {
-          policy: wildcardSkill.grants!.memory!,
-          teamRoles: wildcardSkill.grants!.memoryTeamRoles
-        });
-      }
 
       const memPerm = this.getMemoryPermission(roleId);
       this.logger.debug(`Created dynamic role: ${roleId}`, {
@@ -619,6 +590,26 @@ Available tools are filtered based on your role.`;
       return [];
     }
     return role.toolPermissions?.allowPatterns || [];
+  }
+
+  /**
+   * Check if a tool is defined in any skill's allowedTools
+   * Used to validate that router-level tools are skill-driven
+   */
+  isToolDefinedInAnySkill(toolName: string): boolean {
+    for (const role of this.roles.values()) {
+      const allowPatterns = role.toolPermissions?.allowPatterns || [];
+      if (allowPatterns.includes(toolName)) {
+        return true;
+      }
+      // Also check pattern matching
+      for (const pattern of allowPatterns) {
+        if (this.matchPattern(toolName, pattern)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }
 

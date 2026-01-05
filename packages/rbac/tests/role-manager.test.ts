@@ -619,4 +619,83 @@ describe('Role Inheritance', () => {
       expect(permission.teamRoles).toContain('devops');
     });
   });
+
+  describe('isToolDefinedInAnySkill', () => {
+    it('should return true for tool defined in skill allowedTools', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['aegis-router__list_roles', 'filesystem__read'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('filesystem__read')).toBe(true);
+    });
+
+    it('should return false for tool not defined in any skill', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['filesystem__read'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      expect(roleManager.isToolDefinedInAnySkill('aegis-router__spawn_sub_agent')).toBe(false);
+      expect(roleManager.isToolDefinedInAnySkill('unknown__tool')).toBe(false);
+    });
+
+    it('should match tools using wildcard pattern', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['admin'], allowedTools: ['*'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      expect(roleManager.isToolDefinedInAnySkill('any_tool')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+    });
+
+    it('should match tools with server wildcard pattern', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['filesystem__*'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      expect(roleManager.isToolDefinedInAnySkill('filesystem__read')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('filesystem__write')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('database__query')).toBe(false);
+    });
+
+    it('should find tool across multiple roles', async () => {
+      const manifest: SkillManifest<BaseSkillDefinition> = {
+        skills: [
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['filesystem__read'] },
+          { id: 's2', displayName: 'S2', description: 'S2', allowedRoles: ['role2'], allowedTools: ['aegis-router__list_roles'] }
+        ],
+        version: '1.0.0',
+        generatedAt: new Date()
+      };
+
+      await roleManager.loadFromSkillManifest(manifest);
+
+      expect(roleManager.isToolDefinedInAnySkill('filesystem__read')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+    });
+  });
 });

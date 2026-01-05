@@ -374,13 +374,13 @@ describe('Memory Permission - Skill Grants', () => {
   });
 
   describe('Wildcard Role Memory Grants', () => {
-    it('should apply wildcard memory grants to all roles', async () => {
+    it('should ignore wildcard memory grants', async () => {
       const manifest: SkillManifest<BaseSkillDefinition> = {
         skills: [
           {
             id: 'global-memory',
             displayName: 'Global Memory',
-            description: 'Everyone gets isolated memory',
+            description: 'Wildcard - should be ignored',
             allowedRoles: ['*'],
             allowedTools: [],
             grants: { memory: 'isolated' },
@@ -399,11 +399,11 @@ describe('Memory Permission - Skill Grants', () => {
 
       await roleManager.loadFromSkillManifest(manifest);
 
-      // All roles should have isolated memory
-      expect(roleManager.hasMemoryAccess('user')).toBe(true);
-      expect(roleManager.hasMemoryAccess('editor')).toBe(true);
-      expect(roleManager.getMemoryPermission('user').policy).toBe('isolated');
-      expect(roleManager.getMemoryPermission('editor').policy).toBe('isolated');
+      // Roles should NOT have memory (wildcard grant is ignored)
+      expect(roleManager.hasMemoryAccess('user')).toBe(false);
+      expect(roleManager.hasMemoryAccess('editor')).toBe(false);
+      expect(roleManager.getMemoryPermission('user').policy).toBe('none');
+      expect(roleManager.getMemoryPermission('editor').policy).toBe('none');
     });
   });
 
