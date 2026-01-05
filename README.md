@@ -166,7 +166,7 @@ id: data-analyst
 displayName: Data Analyst
 allowedRoles:
   - analyst
-  - admin
+
 allowedTools:
   - postgres__select
   - postgres__explain

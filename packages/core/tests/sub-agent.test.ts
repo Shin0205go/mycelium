@@ -3,31 +3,15 @@
  *
  * Tests the SubAgent class for non-interactive CLI mode,
  * including query execution, stdin reading, and output formatting.
+ *
+ * SDK-only version: SubAgent no longer uses MCPClient, uses createQuery directly
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SubAgent, type SubAgentResult } from '../src/sub-agent.js';
 import type { CliArgs } from '../src/args.js';
 
-// Mock dependencies
-vi.mock('../src/mcp-client.js', () => {
-  return {
-    MCPClient: vi.fn().mockImplementation(function() {
-      return {
-        connect: vi.fn().mockResolvedValue(undefined),
-        disconnect: vi.fn(),
-        switchRole: vi.fn().mockResolvedValue({
-          role: { id: 'test', name: 'Test', description: 'Test role' },
-          systemInstruction: 'You are a test agent',
-          availableTools: [],
-          availableServers: [],
-          metadata: { generatedAt: new Date().toISOString(), toolsChanged: false, toolCount: 0, serverCount: 0 }
-        })
-      };
-    })
-  };
-});
-
+// Mock the agent module
 vi.mock('../src/agent.js', () => ({
   createQuery: vi.fn(),
   extractTextFromMessage: vi.fn(),
@@ -35,10 +19,8 @@ vi.mock('../src/agent.js', () => ({
   getToolUseInfo: vi.fn()
 }));
 
-import { MCPClient } from '../src/mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo } from '../src/agent.js';
 
-const mockMCPClient = vi.mocked(MCPClient);
 const mockCreateQuery = vi.mocked(createQuery);
 const mockExtractText = vi.mocked(extractTextFromMessage);
 const mockIsToolUse = vi.mocked(isToolUseMessage);
@@ -55,7 +37,6 @@ describe('SubAgent', () => {
     mockError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     // Reset mocks
-    mockMCPClient.mockClear();
     mockCreateQuery.mockReset();
     mockExtractText.mockReset();
     mockIsToolUse.mockReset();
@@ -88,25 +69,6 @@ describe('SubAgent', () => {
 
       expect(agent).toBeInstanceOf(SubAgent);
     });
-
-    it('should initialize MCP client', () => {
-      const args: CliArgs = {
-        interactive: false,
-        json: false,
-        useApiKey: false,
-        help: false,
-        version: false,
-        prompt: 'test'
-      };
-
-      new SubAgent(args);
-
-      expect(mockMCPClient).toHaveBeenCalledWith(
-        'node',
-        expect.arrayContaining([expect.stringContaining('mcp-server.js')]),
-        expect.any(Object)
-      );
-    });
   });
 
   describe('run', () => {
@@ -132,7 +94,7 @@ describe('SubAgent', () => {
       Object.defineProperty(process.stdin, 'isTTY', { value: originalIsTTY, configurable: true });
     });
 
-    it('should connect to MCP and switch role', async () => {
+    it('should pass role to createQuery via currentRole option', async () => {
       const args: CliArgs = {
         interactive: false,
         json: false,
@@ -160,12 +122,13 @@ describe('SubAgent', () => {
       const agent = new SubAgent(args);
       await agent.run();
 
-      // Verify MCP client was instantiated
-      expect(mockMCPClient).toHaveBeenCalled();
-      // Verify connect and switchRole were called on the instance
-      const mockInstance = mockMCPClient.mock.results[0]?.value;
-      expect(mockInstance.connect).toHaveBeenCalled();
-      expect(mockInstance.switchRole).toHaveBeenCalledWith('developer');
+      // Verify createQuery was called with currentRole
+      expect(mockCreateQuery).toHaveBeenCalledWith(
+        'test prompt',
+        expect.objectContaining({
+          currentRole: 'developer'
+        })
+      );
     });
 
     it('should use orchestrator as default role', async () => {
@@ -194,8 +157,58 @@ describe('SubAgent', () => {
       const agent = new SubAgent(args);
       await agent.run();
 
-      const mockInstance = mockMCPClient.mock.results[0]?.value;
-      expect(mockInstance.switchRole).toHaveBeenCalledWith('orchestrator');
+      expect(mockCreateQuery).toHaveBeenCalledWith(
+        'test prompt',
+        expect.objectContaining({
+          currentRole: 'orchestrator'
+        })
+      );
+    });
+
+    it('should prefer AEGIS_CURRENT_ROLE env var over args.role', async () => {
+      const args: CliArgs = {
+        interactive: false,
+        json: false,
+        useApiKey: false,
+        help: false,
+        version: false,
+        prompt: 'test prompt',
+        role: 'developer'  // This should be overridden by env var
+      };
+
+      // Set env var
+      const originalEnv = process.env.AEGIS_CURRENT_ROLE;
+      process.env.AEGIS_CURRENT_ROLE = 'meta-developer';
+
+      const mockQueryResult = {
+        [Symbol.asyncIterator]: async function* () {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            result: 'Done',
+            usage: { input_tokens: 10, output_tokens: 5 },
+            total_cost_usd: 0.001
+          };
+        }
+      };
+      mockCreateQuery.mockReturnValue(mockQueryResult as any);
+
+      const agent = new SubAgent(args);
+      await agent.run();
+
+      expect(mockCreateQuery).toHaveBeenCalledWith(
+        'test prompt',
+        expect.objectContaining({
+          currentRole: 'meta-developer'
+        })
+      );
+
+      // Restore env var
+      if (originalEnv === undefined) {
+        delete process.env.AEGIS_CURRENT_ROLE;
+      } else {
+        process.env.AEGIS_CURRENT_ROLE = originalEnv;
+      }
     });
 
     it('should pass custom model to createQuery', async () => {
@@ -229,6 +242,41 @@ describe('SubAgent', () => {
         'test prompt',
         expect.objectContaining({
           model: 'claude-3-opus'
+        })
+      );
+    });
+
+    it('should enable session persistence for sub-agents', async () => {
+      const args: CliArgs = {
+        interactive: false,
+        json: false,
+        useApiKey: false,
+        help: false,
+        version: false,
+        prompt: 'test prompt'
+      };
+
+      const mockQueryResult = {
+        [Symbol.asyncIterator]: async function* () {
+          yield {
+            type: 'result',
+            subtype: 'success',
+            result: 'Done',
+            usage: { input_tokens: 10, output_tokens: 5 },
+            total_cost_usd: 0.001
+          };
+        }
+      };
+      mockCreateQuery.mockReturnValue(mockQueryResult as any);
+
+      const agent = new SubAgent(args);
+      await agent.run();
+
+      expect(mockCreateQuery).toHaveBeenCalledWith(
+        'test prompt',
+        expect.objectContaining({
+          persistSession: true,
+          continueSession: true
         })
       );
     });
@@ -287,36 +335,6 @@ describe('SubAgent', () => {
       await agent.run();
 
       expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it('should disconnect on completion', async () => {
-      const args: CliArgs = {
-        interactive: false,
-        json: false,
-        useApiKey: false,
-        help: false,
-        version: false,
-        prompt: 'test prompt'
-      };
-
-      const mockQueryResult = {
-        [Symbol.asyncIterator]: async function* () {
-          yield {
-            type: 'result',
-            subtype: 'success',
-            result: 'Done',
-            usage: { input_tokens: 10, output_tokens: 5 },
-            total_cost_usd: 0.001
-          };
-        }
-      };
-      mockCreateQuery.mockReturnValue(mockQueryResult as any);
-
-      const agent = new SubAgent(args);
-      await agent.run();
-
-      const mockInstance = mockMCPClient.mock.results[0]?.value;
-      expect(mockInstance.disconnect).toHaveBeenCalled();
     });
   });
 
@@ -491,59 +509,7 @@ describe('SubAgent', () => {
   });
 
   describe('error handling', () => {
-    it('should handle MCP connection error', async () => {
-      const args: CliArgs = {
-        interactive: false,
-        json: false,
-        useApiKey: false,
-        help: false,
-        version: false,
-        prompt: 'test prompt'
-      };
-
-      // Override mock to reject on connect
-      mockMCPClient.mockImplementationOnce(function() {
-        return {
-          connect: vi.fn().mockRejectedValue(new Error('Connection refused')),
-          disconnect: vi.fn(),
-          switchRole: vi.fn()
-        };
-      });
-
-      const agent = new SubAgent(args);
-      await agent.run();
-
-      expect(mockError).toHaveBeenCalledWith('Error: Connection refused');
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it('should handle role switch error', async () => {
-      const args: CliArgs = {
-        interactive: false,
-        json: false,
-        useApiKey: false,
-        help: false,
-        version: false,
-        prompt: 'test prompt'
-      };
-
-      // Override mock to reject on switchRole
-      mockMCPClient.mockImplementationOnce(function() {
-        return {
-          connect: vi.fn().mockResolvedValue(undefined),
-          disconnect: vi.fn(),
-          switchRole: vi.fn().mockRejectedValue(new Error('Role not found'))
-        };
-      });
-
-      const agent = new SubAgent(args);
-      await agent.run();
-
-      expect(mockError).toHaveBeenCalledWith('Error: Role not found');
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it('should handle query execution error', async () => {
+    it('should handle createQuery throwing error', async () => {
       const args: CliArgs = {
         interactive: false,
         json: false,
@@ -556,6 +522,30 @@ describe('SubAgent', () => {
       mockCreateQuery.mockImplementation(() => {
         throw new Error('Query failed');
       });
+
+      const agent = new SubAgent(args);
+      await agent.run();
+
+      expect(mockError).toHaveBeenCalledWith('Error: Query failed');
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it('should handle async iterator error', async () => {
+      const args: CliArgs = {
+        interactive: false,
+        json: false,
+        useApiKey: false,
+        help: false,
+        version: false,
+        prompt: 'test prompt'
+      };
+
+      const mockQueryResult = {
+        [Symbol.asyncIterator]: async function* () {
+          throw new Error('Iterator failed');
+        }
+      };
+      mockCreateQuery.mockReturnValue(mockQueryResult as any);
 
       const agent = new SubAgent(args);
       await agent.run();

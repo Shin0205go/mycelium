@@ -167,9 +167,16 @@ export class AegisCLI {
       process.exit(1);
     }
 
-
-    // Load orchestrator role
-    await this.switchRole('orchestrator');
+    // Check if role is pre-set via env var (sub-agent mode)
+    const roleFromEnv = process.env.AEGIS_CURRENT_ROLE;
+    if (roleFromEnv) {
+      // Role already set by router, just update local state
+      this.currentRole = roleFromEnv;
+      console.log(chalk.green(`✓ Role: ${chalk.bold(roleFromEnv)} (pre-configured)\n`));
+    } else {
+      // Load orchestrator role via set_role
+      await this.switchRole('orchestrator');
+    }
 
     // Start REPL
     this.startREPL();

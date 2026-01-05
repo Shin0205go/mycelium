@@ -6,7 +6,6 @@ description: データ分析と可視化を行うスキル。CSV/JSONデータ�
 allowedRoles:
   - analyst
   - data-scientist
-  - admin
 allowedTools:
   - filesystem__read_file
   - filesystem__read_text_file

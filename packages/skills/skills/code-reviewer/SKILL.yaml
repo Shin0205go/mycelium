@@ -6,7 +6,7 @@ description: コードレビューとベストプラクティスの提案を行�
 allowedRoles:
   - developer
   - senior-developer
-  - admin
+
 allowedTools:
   - filesystem__read_file
   - filesystem__read_text_file

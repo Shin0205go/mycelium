@@ -1,7 +1,6 @@
 # AEGIS RBAC extensions for Anthropic skill
 allowedRoles:
   - manager
-  - admin
   - hr
 allowedTools:
   - filesystem__read_file

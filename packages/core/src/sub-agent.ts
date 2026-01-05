@@ -1,26 +1,12 @@
 /**
  * SubAgent - Non-interactive mode for aegis-cli
  * Used when spawned as a child process by an orchestrator agent
+ *
+ * SDK-only version: Uses Claude Agent SDK directly, no MCPClient
  */
 
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { MCPClient } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo } from './agent.js';
 import type { CliArgs } from './args.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Resolve paths relative to monorepo root
-// When running from dist/, __dirname is packages/core/dist
-// When running from src/ (tsx), __dirname is packages/core/src
-// Either way, go up to packages/core, then to packages/, then to monorepo root
-const projectRoot = join(__dirname, '..', '..', '..');
-const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-  join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
-  join(projectRoot, 'config.json');
 
 export interface SubAgentResult {
   success: boolean;
@@ -36,14 +22,10 @@ export interface SubAgentResult {
 }
 
 export class SubAgent {
-  private mcp: MCPClient;
   private args: CliArgs;
 
   constructor(args: CliArgs) {
     this.args = args;
-    this.mcp = new MCPClient('node', [AEGIS_ROUTER_PATH], {
-      AEGIS_CONFIG_PATH
-    });
   }
 
   async run(): Promise<void> {
@@ -60,21 +42,17 @@ export class SubAgent {
     }
 
     try {
-      // Connect to AEGIS Router
-      await this.mcp.connect();
+      // Determine role - prefer env var (set by parent orchestrator) over args
+      const roleFromEnv = process.env.AEGIS_CURRENT_ROLE;
+      const roleId = roleFromEnv || this.args.role || 'orchestrator';
 
-      // Switch to specified role
-      const roleId = this.args.role || 'orchestrator';
-      const manifest = await this.mcp.switchRole(roleId);
-
-      // Run the query
-      const result = await this.executeQuery(prompt, manifest.systemInstruction, roleId);
+      // Run the query using SDK directly
+      // Role is passed via currentRole option to createQuery
+      // Session is persisted per role for continuity
+      const result = await this.executeQuery(prompt, roleId);
 
       // Output result
       this.outputResult(result);
-
-      // Disconnect
-      this.mcp.disconnect();
 
       process.exit(result.success ? 0 : 1);
     } catch (error: any) {
@@ -109,7 +87,6 @@ export class SubAgent {
 
   private async executeQuery(
     prompt: string,
-    systemPrompt: string | undefined,
     roleId: string
   ): Promise<SubAgentResult> {
     const toolsUsed: string[] = [];
@@ -120,9 +97,11 @@ export class SubAgent {
     try {
       const queryResult = createQuery(prompt, {
         model: this.args.model || 'claude-3-5-haiku-20241022',
-        systemPrompt,
         includePartialMessages: true,
-        useApiKey: this.args.useApiKey
+        useApiKey: this.args.useApiKey,
+        currentRole: roleId,
+        persistSession: true,   // Enable per-role session persistence
+        continueSession: true   // Continue from previous session of same role
       });
 
       for await (const msg of queryResult) {

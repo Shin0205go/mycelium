@@ -3,7 +3,7 @@ allowedRoles:
   - tester
   - developer
   - senior-developer
-  - admin
+
 allowedTools:
   - playwright__browser_navigate
   - playwright__browser_click

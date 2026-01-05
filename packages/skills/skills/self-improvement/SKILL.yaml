@@ -4,7 +4,7 @@ description: Analyze and improve the Aegis-CLI codebase itself through recursive
 # AEGIS RBAC
 allowedRoles:
   - meta-developer
-  - admin
+
 allowedTools:
   - filesystem__read_file
   - filesystem__write_file

@@ -6,7 +6,7 @@ description: 全ロール共通で使用できる基本ツール。スキル情�
 # Note: Add specific roles that need these tools
 allowedRoles:
   - orchestrator
-  - admin
+
   - developer
   - analyst
 allowedTools:

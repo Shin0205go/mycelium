@@ -620,7 +620,7 @@ displayName: Admin Access
 description: Full administrative access
 
 allowedRoles:
-  - admin
+
 
 allowedTools:
   - "*"

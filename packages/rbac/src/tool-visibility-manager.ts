@@ -375,8 +375,11 @@ export class ToolVisibilityManager {
    * Check if a tool is accessible (throws if not)
    */
   checkAccess(toolName: string): void {
+    // Normalize tool name to handle Claude Agent SDK's mcp__ prefix
+    const normalizedName = this.normalizeToolName(toolName);
+
     // set_role: accessible only when not in A2A mode
-    if (toolName === 'set_role') {
+    if (normalizedName === 'set_role') {
       if (this.hideSetRoleTool) {
         throw new Error(
           `Tool 'set_role' is disabled in A2A mode. ` +
@@ -387,11 +390,11 @@ export class ToolVisibilityManager {
     }
 
     // Memory tools require memory permission
-    if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
+    if (ToolVisibilityManager.MEMORY_TOOLS.includes(normalizedName)) {
       const roleId = this.currentRole?.id;
       if (!roleId || !this.roleManager.hasMemoryAccess(roleId)) {
         throw new Error(
-          `Tool '${toolName}' requires memory access. ` +
+          `Tool '${normalizedName}' requires memory access. ` +
           `Role '${roleId || 'none'}' does not have memory permission. ` +
           `Memory access must be granted via a skill.`
         );
@@ -399,13 +402,13 @@ export class ToolVisibilityManager {
       return;
     }
 
-    if (!this.visibleTools.has(toolName)) {
+    if (!this.visibleTools.has(normalizedName)) {
       const roleId = this.currentRole?.id || 'none';
       const hint = this.hideSetRoleTool
         ? 'Check available tools for your assigned role.'
         : 'Use set_role to switch roles or check available tools.';
       throw new Error(
-        `Tool '${toolName}' is not accessible for role '${roleId}'. ${hint}`
+        `Tool '${normalizedName}' is not accessible for role '${roleId}'. ${hint}`
       );
     }
   }
@@ -414,18 +417,21 @@ export class ToolVisibilityManager {
    * Check if a tool is visible (returns boolean)
    */
   isVisible(toolName: string): boolean {
+    // Normalize tool name to handle Claude Agent SDK's mcp__ prefix
+    const normalizedName = this.normalizeToolName(toolName);
+
     // set_role: visible only when not in A2A mode
-    if (toolName === 'set_role') {
+    if (normalizedName === 'set_role') {
       return !this.hideSetRoleTool;
     }
 
     // Memory tools are visible only if role has memory permission
-    if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
+    if (ToolVisibilityManager.MEMORY_TOOLS.includes(normalizedName)) {
       const roleId = this.currentRole?.id;
       return roleId ? this.roleManager.hasMemoryAccess(roleId) : false;
     }
 
-    return this.visibleTools.has(toolName);
+    return this.visibleTools.has(normalizedName);
   }
 
   // ============================================================================
@@ -461,10 +467,27 @@ export class ToolVisibilityManager {
   }
 
   /**
+   * Get all registered tool names (for validation)
+   */
+  getAllRegisteredToolNames(): string[] {
+    return Array.from(this.allTools.keys());
+  }
+
+  /**
+   * Check if a tool is registered (exists in backend servers)
+   */
+  isToolRegistered(toolName: string): boolean {
+    const normalized = this.normalizeToolName(toolName);
+    return this.allTools.has(normalized);
+  }
+
+  /**
    * Get tool info by name
    */
   getToolInfo(toolName: string): ToolInfo | undefined {
-    return this.visibleTools.get(toolName) || this.allTools.get(toolName);
+    // Normalize tool name to handle Claude Agent SDK's mcp__ prefix
+    const normalizedName = this.normalizeToolName(toolName);
+    return this.visibleTools.get(normalizedName) || this.allTools.get(normalizedName);
   }
 
   // ============================================================================
@@ -472,10 +495,40 @@ export class ToolVisibilityManager {
   // ============================================================================
 
   /**
+   * Normalize a tool name by stripping Claude Agent SDK's mcp__<server>__ prefix.
+   *
+   * Claude Agent SDK prefixes all MCP tools with `mcp__<server_name>__`.
+   * For example:
+   * - `mcp__aegis-router__filesystem__read_file` → `filesystem__read_file`
+   * - `mcp__aegis-router__set_role` → `set_role`
+   * - `filesystem__read_file` → `filesystem__read_file` (unchanged)
+   *
+   * This allows skill definitions to use simple names like `filesystem__read_file`
+   * while still working with Claude Agent SDK's prefixed names.
+   */
+  normalizeToolName(toolName: string): string {
+    // Pattern: mcp__<server>__<actual_tool_name>
+    // We want to strip the first two segments if it starts with 'mcp__'
+    if (toolName.startsWith('mcp__')) {
+      const parts = toolName.split('__');
+      // mcp__aegis-router__filesystem__read_file
+      // parts = ['mcp', 'aegis-router', 'filesystem', 'read_file']
+      // We want: filesystem__read_file
+      if (parts.length >= 3) {
+        return parts.slice(2).join('__');
+      }
+    }
+    return toolName;
+  }
+
+  /**
    * Parse a prefixed tool name into server and original name
    */
   parseToolName(prefixedName: string): { serverName: string; originalName: string } {
-    const parts = prefixedName.split('__');
+    // First normalize to strip mcp__ prefix if present
+    const normalized = this.normalizeToolName(prefixedName);
+
+    const parts = normalized.split('__');
     if (parts.length >= 2) {
       return {
         serverName: parts[0],
@@ -484,7 +537,7 @@ export class ToolVisibilityManager {
     }
     return {
       serverName: 'unknown',
-      originalName: prefixedName
+      originalName: normalized
     };
   }
 }

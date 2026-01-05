@@ -6,7 +6,7 @@ description: ブラウザ自動化とE2Eテストを行うスキル。Playwright
 allowedRoles:
   - developer
   - senior-developer
-  - admin
+
   - tester
 allowedTools:
   - playwright__browser_navigate

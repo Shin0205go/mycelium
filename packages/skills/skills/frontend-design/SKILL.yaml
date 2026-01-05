@@ -3,7 +3,6 @@ allowedRoles:
   - developer
   - senior-developer
   - designer
-  - admin
 allowedTools:
   - filesystem__read_file
   - filesystem__write_file

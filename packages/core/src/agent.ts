@@ -29,6 +29,9 @@ export interface AgentConfig {
   maxTurns?: number;
   includePartialMessages?: boolean;
   useApiKey?: boolean; // true = use ANTHROPIC_API_KEY, false = use Claude Code auth
+  currentRole?: string; // Role to set on MCP server startup
+  persistSession?: boolean; // Whether to persist session to disk
+  continueSession?: boolean; // Whether to continue from previous session
 }
 
 export interface AgentResult {
@@ -71,7 +74,8 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
         command: 'node',
         args: [AEGIS_ROUTER_PATH],
         env: {
-          AEGIS_CONFIG_PATH
+          AEGIS_CONFIG_PATH,
+          ...(config.currentRole ? { AEGIS_CURRENT_ROLE: config.currentRole } : {})
         }
       }
     },
@@ -86,8 +90,9 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     maxTurns: config.maxTurns || 50,
     includePartialMessages: config.includePartialMessages ?? true,
 
-    // Don't persist sessions for CLI usage
-    persistSession: false
+    // Session persistence
+    persistSession: config.persistSession ?? false,
+    continue: config.continueSession ?? false
   };
 }
 

@@ -64,7 +64,7 @@ export const ROUTER_TOOLS: Tool[] = [
         },
         interactive: {
           type: 'boolean',
-          description: 'If true, opens a new terminal window for interactive session with the sub-agent (macOS only)',
+          description: 'Opens a new terminal window for interactive session (default: true, macOS only). Set to false for background execution.',
         },
       },
       required: ['role', 'task'],
@@ -393,6 +393,16 @@ export class AegisRouterCore extends EventEmitter {
       // Load roles from skill manifest
       await this.roleManager.loadFromSkillManifest(skillManifest);
 
+      // Register ROUTER_TOOLS now that skills are loaded
+      // This must happen AFTER loadFromSkillManifest so isToolDefinedInAnySkill works correctly
+      const skillDefinedRouterTools = ROUTER_TOOLS.filter(
+        tool => this.roleManager.isToolDefinedInAnySkill(tool.name)
+      );
+      if (skillDefinedRouterTools.length > 0) {
+        this.toolVisibility.registerTools(skillDefinedRouterTools, 'aegis-router');
+        this.logger.info(`Registered ${skillDefinedRouterTools.length} router tools after skill loading`);
+      }
+
       // Load identity rules from skills (A2A skill-based matching)
       this.identityResolver.clearRules();
       this.identityResolver.loadFromSkills(skillManifest.skills);
@@ -429,6 +439,7 @@ export class AegisRouterCore extends EventEmitter {
 
   /**
    * Transform skills data from aegis-skills to SkillDefinition format
+   * Filters allowedTools to only include tools that actually exist in backend servers
    */
   private transformSkillsToDefinitions(skillsData: any[]): SkillDefinition[] {
     const definitions: SkillDefinition[] = [];
@@ -440,12 +451,30 @@ export class AegisRouterCore extends EventEmitter {
         continue;
       }
 
+      // Filter allowedTools to only include tools that exist in discovered backend tools
+      const requestedTools: string[] = skill.allowedTools || [];
+      const validatedTools: string[] = [];
+      const invalidTools: string[] = [];
+
+      for (const toolName of requestedTools) {
+        // Check if tool exists in discovered tools (supports wildcard patterns)
+        if (this.isToolAvailable(toolName)) {
+          validatedTools.push(toolName);
+        } else {
+          invalidTools.push(toolName);
+        }
+      }
+
+      if (invalidTools.length > 0) {
+        this.logger.warn(`Skill '${skill.id}' references unavailable tools: ${invalidTools.join(', ')}`);
+      }
+
       definitions.push({
         id: skill.id,
         displayName: skill.displayName || skill.id,
         description: skill.description || '',
         allowedRoles: skill.allowedRoles,
-        allowedTools: skill.allowedTools || [],
+        allowedTools: validatedTools,
         grants: skill.grants ? {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
@@ -464,6 +493,24 @@ export class AegisRouterCore extends EventEmitter {
     }
 
     return definitions;
+  }
+
+  /**
+   * Check if a tool is available (exists in discovered tools or matches a pattern)
+   */
+  private isToolAvailable(toolName: string): boolean {
+    // Wildcard pattern - always allow (will be resolved at runtime)
+    if (toolName.includes('*')) {
+      return true;
+    }
+
+    // ROUTER_TOOLS are always available (they're registered after skill loading)
+    if (ROUTER_TOOLS.some(t => t.name === toolName)) {
+      return true;
+    }
+
+    // Check if tool exists in registered tools
+    return this.toolVisibility.isToolRegistered(toolName);
   }
 
   /**

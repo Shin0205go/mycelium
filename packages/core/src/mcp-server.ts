@@ -143,7 +143,8 @@ async function spawnSubAgent(
 
 /**
  * Spawn an interactive sub-agent in a new terminal window (macOS)
- * Uses AppleScript to open Terminal, start aegis-cli, switch role, and send initial prompt
+ * Reuses existing terminal window for the same role if available.
+ * Terminal windows are identified by custom title: "AEGIS: <role>"
  */
 async function spawnInteractiveSubAgent(
   role: string,
@@ -155,56 +156,99 @@ async function spawnInteractiveSubAgent(
   const os = await import('os');
   const path = await import('path');
 
-  // Create AppleScript file (easier to handle escaping)
+  // Create a temporary script file to run in the terminal
   const tmpDir = os.tmpdir();
-  const scriptPath = path.join(tmpDir, `aegis-subagent-${Date.now()}.scpt`);
+  const scriptPath = path.join(tmpDir, `aegis-subagent-${role}-${Date.now()}.sh`);
 
-  // Escape strings for AppleScript
-  const escapeForAppleScript = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const escapedRole = escapeForAppleScript(role);
-  const escapedPrompt = escapeForAppleScript(initialPrompt);
-  const escapedCliPath = escapeForAppleScript(AEGIS_CLI_PATH);
+  // Escape for shell
+  const escapeForShell = (s: string) => s.replace(/'/g, "'\\''");
+  const escapedPrompt = escapeForShell(initialPrompt);
+  const modelArg = model ? `--model '${escapeForShell(model)}'` : '';
 
-  // Build a prompt that instructs Claude to first switch roles, then execute the task
-  const fullPrompt = `まず set_role を使って "${role}" ロールに切り替えてください。その後、以下のタスクを実行してください：
+  // Window title for this role - used to identify and reuse windows
+  const windowTitle = `AEGIS: ${role}`;
 
-${initialPrompt}`;
+  // Create a shell script that runs the prompt
+  // Note: Uses printf to set window title
+  const shellScript = `#!/bin/bash
+# Set terminal window title
+printf '\\033]0;${windowTitle}\\007'
 
-  // Escape for keystroke (different escaping)
-  const keystrokePrompt = fullPrompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+clear
+echo '🤖 AEGIS Sub-Agent [${role}]'
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo ''
+echo 'Task: ${escapedPrompt.substring(0, 100)}${escapedPrompt.length > 100 ? '...' : ''}'
+echo ''
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo ''
 
+# Run the one-shot query first
+AEGIS_CONFIG_PATH="${process.env.AEGIS_CONFIG_PATH || 'config.json'}" \\
+AEGIS_CURRENT_ROLE='${role}' \\
+node "${AEGIS_CLI_PATH}" ${modelArg} '${escapedPrompt}'
+
+echo ''
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo 'Task completed. Starting interactive session...'
+echo '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+echo ''
+
+# Then start interactive mode for follow-up
+AEGIS_CONFIG_PATH="${process.env.AEGIS_CONFIG_PATH || 'config.json'}" \\
+AEGIS_CURRENT_ROLE='${role}' \\
+node "${AEGIS_CLI_PATH}" ${modelArg}
+`;
+
+  await fs.writeFile(scriptPath, shellScript, { mode: 0o755 });
+
+  // AppleScript to find existing window or create new one
+  // Searches for window with matching custom title
   const appleScript = `
 tell application "Terminal"
     activate
 
-    -- Open new window with aegis-cli (with role env var)
-    do script "clear && echo '🤖 AEGIS Sub-Agent [${escapedRole}]' && echo '' && AEGIS_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
+    -- Try to find existing window for this role by custom title
+    set foundWindow to missing value
+    repeat with w in windows
+        try
+            if name of w contains "${windowTitle}" then
+                set foundWindow to w
+                exit repeat
+            end if
+        end try
+    end repeat
 
-    -- Wait for CLI to start
-    delay 6
+    if foundWindow is not missing value then
+        -- Reuse existing window
+        set frontmost of foundWindow to true
 
-    -- Send the prompt as keystrokes
-    tell application "System Events"
-        tell process "Terminal"
-            keystroke "${keystrokePrompt}"
-            keystroke return
+        -- Send Ctrl+C to interrupt any running process
+        tell application "System Events"
+            keystroke "c" using control down
         end tell
-    end tell
+        delay 0.3
+
+        -- Run new task in same window
+        do script "bash '${scriptPath}'" in foundWindow
+    else
+        -- Create new window with the script
+        do script "bash '${scriptPath}'"
+    end if
 end tell
 `;
 
-  await fs.writeFile(scriptPath, appleScript);
-
   return new Promise((resolve, reject) => {
-    exec(`osascript "${scriptPath}"`, (error, stdout, stderr) => {
-      // Clean up
-      fs.unlink(scriptPath).catch(() => {});
-
+    exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (error, stdout, stderr) => {
       if (error) {
+        // Clean up on error
+        fs.unlink(scriptPath).catch(() => {});
         logger.error('Failed to open Terminal window:', error);
         reject(error);
       } else {
-        logger.info(`Opened interactive sub-agent window for role: ${role}`);
+        logger.info(`Interactive sub-agent window for role: ${role} (reusing if exists)`);
+        // Don't delete the script immediately - Terminal needs it
+        setTimeout(() => fs.unlink(scriptPath).catch(() => {}), 30000);
         resolve();
       }
     });
@@ -268,17 +312,13 @@ async function main() {
   logger.info('Roles loaded');
 
   // Auto-switch to role if AEGIS_CURRENT_ROLE is set
+  // Use routerCore.setRole() directly (not via tools/call) since set_role may be disabled
   const currentRoleEnv = process.env.AEGIS_CURRENT_ROLE;
   if (currentRoleEnv) {
     logger.info(`Auto-switching to role from env: ${currentRoleEnv}`);
     try {
-      await routerCore.routeRequest({
-        method: 'tools/call',
-        params: {
-          name: 'set_role',
-          arguments: { role_id: currentRoleEnv }
-        }
-      });
+      await routerCore.startServersForRole(currentRoleEnv);
+      await routerCore.setRole({ role: currentRoleEnv });
       logger.info(`Successfully switched to role: ${currentRoleEnv}`);
     } catch (error) {
       logger.warn(`Failed to switch to role ${currentRoleEnv}:`, error);
@@ -289,7 +329,10 @@ async function main() {
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.info('ListTools request received');
 
-    // Add the set_role tool (always available)
+    // set_role is hidden by default (sub-agent based design)
+    // Enable with AEGIS_EXPOSE_SET_ROLE=true for legacy/testing
+    const exposeSetRole = process.env.AEGIS_EXPOSE_SET_ROLE === 'true';
+
     const setRoleTool = {
       name: 'set_role',
       description: 'Switch agent role and get the manifest with available tools and system instruction',
@@ -317,11 +360,14 @@ async function main() {
       logger.warn('Failed to get tools from backend servers:', error);
     }
 
-    // Build tools list: set_role always available, others based on RBAC
-    const allTools = [setRoleTool, ...backendTools];
+    // Build tools list: set_role only if explicitly enabled, others based on RBAC
+    const allTools = exposeSetRole ? [setRoleTool, ...backendTools] : [...backendTools];
 
     // Add router-level tools if current role has access (defined in ROUTER_TOOLS)
+    // Only add if not already in backendTools (avoid duplicates)
+    const existingToolNames = new Set(allTools.map(t => t.name));
     for (const tool of ROUTER_TOOLS) {
+      if (existingToolNames.has(tool.name)) continue;
       try {
         routerCore.checkToolAccess(tool.name);
         allTools.push(tool);
@@ -360,7 +406,7 @@ async function main() {
     // Handle spawn_sub_agent
     if (name === 'aegis-router__spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
       logger.info(`🚀 Spawning sub-agent`);
-      const { role, task, model, interactive } = args as {
+      const { role, task, model, interactive = true } = args as {
         role: string;
         task: string;
         model?: string;
@@ -433,6 +479,19 @@ async function main() {
 
     // Handle set_role (check both exact match and suffix)
     if (name === 'set_role' || name.endsWith('__set_role')) {
+      // Reject if set_role is not exposed (sub-agent design default)
+      const exposeSetRole = process.env.AEGIS_EXPOSE_SET_ROLE === 'true';
+      if (!exposeSetRole) {
+        logger.warn(`set_role called but not exposed (use AEGIS_EXPOSE_SET_ROLE=true to enable)`);
+        return {
+          content: [{
+            type: 'text',
+            text: 'Error: set_role is disabled. Use spawn_sub_agent to delegate tasks to specific roles.',
+          }],
+          isError: true,
+        };
+      }
+
       logger.info(`✅ Handling set_role (matched: ${name})`);
       logger.info(`📋 Arguments: ${JSON.stringify(args)}`);
       const roleId = (args as any)?.role_id;

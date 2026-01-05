@@ -50,7 +50,7 @@ description: Standard development tools for developers
 allowedRoles:
   - developer
   - senior
-  - admin
+
 allowedTools:
   - filesystem__read_file
   - filesystem__write_file

@@ -5,7 +5,6 @@ description: Word文書の読み取り、編集、作成を行うスキル。文
 # AEGIS RBAC extensions
 allowedRoles:
   - editor
-  - admin
 allowedTools:
   - filesystem__read_file
   - filesystem__read_text_file

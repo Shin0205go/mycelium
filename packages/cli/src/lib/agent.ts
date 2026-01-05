@@ -15,6 +15,8 @@ export interface AgentConfig {
   includePartialMessages?: boolean;
   useApiKey?: boolean;
   currentRole?: string;  // Role to auto-switch to in aegis-router
+  continueSession?: boolean;  // Continue from previous session
+  persistSession?: boolean;   // Save session to disk
 }
 
 export interface AgentResult {
@@ -73,7 +75,8 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     allowDangerouslySkipPermissions: true,
     maxTurns: config.maxTurns || 50,
     includePartialMessages: config.includePartialMessages ?? true,
-    persistSession: false
+    persistSession: config.persistSession ?? true,  // Default: save sessions
+    continue: config.continueSession ?? false,       // Continue previous session
   };
 }
 
