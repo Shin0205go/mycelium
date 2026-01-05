@@ -8,6 +8,8 @@ import { join } from 'path';
 import chalk from 'chalk';
 import { parse as parseYaml } from 'yaml';
 import { existsSync } from 'fs';
+import * as readline from 'readline/promises';
+import { stdin as input, stdout as output } from 'process';
 
 // Detect skills directory (monorepo-aware)
 function getDefaultSkillsDir(): string {
@@ -380,51 +382,108 @@ function splitTemplate(template: string): { yaml: string; markdown: string } {
   return { yaml, markdown };
 }
 
+/**
+ * Interactive skill creation
+ */
+async function createSkillInteractive(skillName: string): Promise<{ yaml: string; markdown: string }> {
+  const rl = readline.createInterface({ input, output });
+
+  console.log(chalk.cyan('\n📝 Creating new skill interactively\n'));
+
+  try {
+    // Name (pre-filled)
+    console.log(chalk.gray(`Skill name: ${chalk.white(skillName)}`));
+
+    // Description
+    const description = await rl.question(chalk.cyan('Description: '));
+
+    // Allowed Roles
+    console.log(chalk.gray('\nEnter allowed roles (comma-separated, e.g., developer,admin):'));
+    const rolesInput = await rl.question(chalk.cyan('Allowed roles: '));
+    const allowedRoles = rolesInput.split(',').map(r => r.trim()).filter(r => r);
+
+    // Allowed Tools
+    console.log(chalk.gray('\nEnter allowed tools (comma-separated, e.g., filesystem__read_file,git__log):'));
+    console.log(chalk.gray('Use * for all tools, server__* for all tools from a server'));
+    const toolsInput = await rl.question(chalk.cyan('Allowed tools: '));
+    const allowedTools = toolsInput.split(',').map(t => t.trim()).filter(t => t);
+
+    // Memory policy
+    console.log(chalk.gray('\nMemory access policy:'));
+    console.log(chalk.gray('  none     - No memory access'));
+    console.log(chalk.gray('  isolated - Own role memory only'));
+    console.log(chalk.gray('  team     - Access team roles\' memories'));
+    console.log(chalk.gray('  all      - Access all memories (admin)'));
+    const memoryPolicy = await rl.question(chalk.cyan('Memory policy [none]: ')) || 'none';
+
+    // Build YAML
+    const yamlContent = `name: ${skillName}
+description: ${description}
+
+# AEGIS RBAC
+allowedRoles:
+${allowedRoles.map(r => `  - ${r}`).join('\n')}
+allowedTools:
+${allowedTools.map(t => `  - ${t}`).join('\n')}
+grants:
+  memory: ${memoryPolicy}
+`;
+
+    // Build Markdown
+    const displayName = skillName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const markdownContent = `# ${displayName}
+
+${description}
+
+## Instructions
+
+1. Step-by-step instructions on how to use this skill
+2. Add more guidance as needed
+
+## Examples
+
+\`\`\`bash
+# Example command
+echo "Add examples here"
+\`\`\`
+`;
+
+    rl.close();
+    console.log();
+
+    return { yaml: yamlContent, markdown: markdownContent };
+  } catch (error) {
+    rl.close();
+    throw error;
+  }
+}
+
 // aegis skill add <name>
 skillCommand
   .command('add')
-  .description('Add a new skill from template')
+  .description('Create a new skill interactively')
   .argument('<name>', 'Skill name')
-  .option('-t, --template <template>', 'Template to use', 'basic')
   .option('-d, --directory <dir>', 'Skills directory', './skills')
-  .action(async (name: string, options: { template: string; directory: string }) => {
+  .action(async (name: string, options: { directory: string }) => {
     const skillsDir = join(process.cwd(), options.directory);
     const skillDir = join(skillsDir, name);
     const yamlFile = join(skillDir, 'SKILL.yaml');
     const mdFile = join(skillDir, 'SKILL.md');
 
-    console.log(chalk.blue(`📦 Adding skill: ${name}`));
-    console.log();
+    console.log(chalk.blue(`📦 Creating skill: ${name}`));
 
     try {
       // Check if skill already exists
       try {
         await access(skillDir);
-        console.error(chalk.red(`❌ Skill "${name}" already exists at ${skillDir}`));
+        console.error(chalk.red(`\n❌ Skill "${name}" already exists at ${skillDir}`));
         process.exit(1);
       } catch {
         // Good, doesn't exist
       }
 
-      // Get template
-      let template = SKILL_TEMPLATES[options.template];
-      if (!template) {
-        console.log(chalk.yellow(`⚠️  Template "${options.template}" not found, using "basic"`));
-        template = SKILL_TEMPLATES['basic'];
-      }
-
-      // Replace placeholders
-      const displayName = name
-        .split('-')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-
-      const processedTemplate = template
-        .replace(/\{\{name\}\}/g, name)
-        .replace(/\{\{displayName\}\}/g, displayName);
-
-      // Split into YAML and Markdown
-      const { yaml, markdown } = splitTemplate(processedTemplate);
+      // Interactive mode (always)
+      const { yaml, markdown } = await createSkillInteractive(name);
 
       // Create skill directory and files
       await mkdir(skillDir, { recursive: true });
@@ -434,14 +493,12 @@ skillCommand
       console.log(chalk.green(`✓ Created skills/${name}/SKILL.yaml`));
       console.log(chalk.green(`✓ Created skills/${name}/SKILL.md`));
       console.log();
-      console.log(chalk.cyan('Template used: ') + chalk.white(options.template));
-      console.log(chalk.cyan('Next steps:'));
-      console.log(chalk.white(`  1. Edit skills/${name}/SKILL.yaml for metadata and RBAC`));
-      console.log(chalk.white(`  2. Edit skills/${name}/SKILL.md for instructions and examples`));
+      console.log(chalk.cyan('Files created successfully!'));
+      console.log(chalk.gray('You can now edit the files to add more details.'));
       console.log();
 
     } catch (error) {
-      console.error(chalk.red('❌ Failed to add skill:'), error);
+      console.error(chalk.red('\n❌ Failed to create skill:'), error);
       process.exit(1);
     }
   });
