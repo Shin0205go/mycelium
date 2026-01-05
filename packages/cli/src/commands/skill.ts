@@ -231,7 +231,7 @@ This skill provides calendar and email access for personal assistance tasks.
 };
 
 export const skillCommand = new Command('skill')
-  .description('Manage skills');
+  .description('Manage skills (create, list, and view templates)');
 
 // aegis skill add <name>
 skillCommand
@@ -360,23 +360,31 @@ skillCommand
   .command('templates')
   .description('List available skill templates')
   .action(() => {
-    console.log(chalk.blue('📄 Available Templates'));
+    console.log(chalk.blue('📄 Skill Templates'));
+    console.log();
+    console.log('Templates are pre-configured skill definitions that you can use as starting points');
+    console.log('when creating new skills. Each template includes common role/tool configurations.');
     console.log();
 
     const templates = [
-      { name: 'basic', desc: 'Minimal skill template' },
-      { name: 'browser-limited', desc: 'Read-only browser access' },
-      { name: 'code-reviewer', desc: 'Code review with git tools' },
-      { name: 'data-analyst', desc: 'Read-only database access' },
-      { name: 'flight-booking', desc: 'Travel booking (time-restricted)' },
-      { name: 'personal-assistant', desc: 'Calendar and email access' }
+      { name: 'basic', desc: 'Minimal skill template', tools: 'filesystem read' },
+      { name: 'browser-limited', desc: 'Read-only browser access', tools: 'navigate, screenshot' },
+      { name: 'code-reviewer', desc: 'Code review with git tools', tools: 'git, filesystem, team memory' },
+      { name: 'data-analyst', desc: 'Read-only database access', tools: 'database read' },
+      { name: 'flight-booking', desc: 'Travel booking (time-restricted)', tools: 'booking API, time rules' },
+      { name: 'personal-assistant', desc: 'Calendar and email access', tools: 'calendar, email, memory' }
     ];
 
     for (const t of templates) {
       console.log(chalk.green(`  ${t.name}`));
       console.log(chalk.gray(`    ${t.desc}`));
+      console.log(chalk.gray(`    Tools: ${t.tools}`));
       console.log();
     }
 
-    console.log(chalk.cyan('Usage: ') + chalk.white('aegis skill add <name> --template <template>'));
+    console.log(chalk.cyan('Create a new skill from template:'));
+    console.log(chalk.white('  aegis skill add my-skill --template basic'));
+    console.log();
+    console.log(chalk.gray('This will create: skills/my-skill/SKILL.md'));
+    console.log(chalk.gray('Then edit the file to customize roles, tools, and permissions.'));
   });
