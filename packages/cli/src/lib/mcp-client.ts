@@ -43,6 +43,22 @@ export interface ListRolesResult {
   defaultRole: string;
 }
 
+export interface SkillInfo {
+  id: string;
+  displayName: string;
+  description: string;
+  allowedRoles: string[];
+  allowedTools: string[];
+  grants?: {
+    memory?: 'none' | 'isolated' | 'team' | 'all';
+    memoryTeamRoles?: string[];
+  };
+}
+
+export interface ListSkillsResult {
+  skills: SkillInfo[];
+}
+
 export class MCPClient extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer: string = '';
@@ -191,8 +207,8 @@ export class MCPClient extends EventEmitter {
 
   async listRoles(): Promise<ListRolesResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'set_role',
-      arguments: { role_id: 'list' }
+      name: 'aegis-router__list_roles',
+      arguments: {}
     }) as { content?: Array<{ text?: string }> };
 
     const text = result?.content?.[0]?.text;
@@ -226,6 +242,29 @@ export class MCPClient extends EventEmitter {
       arguments: args
     });
     return result;
+  }
+
+  async listSkills(role?: string): Promise<ListSkillsResult> {
+    const result = await this.sendRequest('tools/call', {
+      name: 'aegis-skills__list_skills',
+      arguments: role ? { role } : {}
+    }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
+
+    // Check for error response
+    if (result?.isError) {
+      const errorText = result?.content?.[0]?.text || 'Unknown error';
+      throw new Error(errorText);
+    }
+
+    const text = result?.content?.[0]?.text;
+    if (text) {
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Failed to parse response: ${text.substring(0, 100)}`);
+      }
+    }
+    throw new Error('Empty response from list_skills');
   }
 
   disconnect(): void {

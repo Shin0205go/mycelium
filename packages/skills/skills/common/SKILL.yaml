@@ -3,8 +3,12 @@ name: common
 description: 全ロール共通で使用できる基本ツール。スキル情報の取得やリソースへのアクセスを提供。
 
 # AEGIS RBAC extensions
+# Note: Add specific roles that need these tools
 allowedRoles:
-  - "*"
+  - orchestrator
+  - admin
+  - developer
+  - analyst
 allowedTools:
   - aegis-skills__get_skill
   - aegis-skills__get_resource

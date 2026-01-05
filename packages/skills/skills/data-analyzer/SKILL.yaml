@@ -7,7 +7,6 @@ allowedRoles:
   - analyst
   - data-scientist
   - admin
-  - "*"
 allowedTools:
   - filesystem__read_file
   - filesystem__read_text_file

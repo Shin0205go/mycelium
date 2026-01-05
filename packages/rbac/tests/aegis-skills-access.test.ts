@@ -37,8 +37,8 @@ const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
     {
       id: 'common',
       displayName: 'Common Tools',
-      description: 'Tools available to all roles',
-      allowedRoles: ['*'],
+      description: 'Tools available to specified roles',
+      allowedRoles: ['orchestrator', 'developer', 'senior-developer', 'admin', 'analyst', 'data-scientist'],
       allowedTools: [
         'aegis-skills__get_skill',
         'aegis-skills__get_resource',
@@ -59,7 +59,7 @@ const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
       id: 'data-analyzer',
       displayName: 'Data Analyzer',
       description: 'Data analysis and visualization',
-      allowedRoles: ['analyst', 'data-scientist', 'admin', '*'],
+      allowedRoles: ['analyst', 'data-scientist', 'admin'],
       allowedTools: [
         'filesystem__read_file',
         'filesystem__write_file',
@@ -218,11 +218,9 @@ describe('Aegis-Skills Tool Access Control', () => {
     });
 
     it('should deny developer access to data-analyzer specific tools', () => {
-      // developer has code-reviewer but not the write permission from data-analyzer
-      // Note: developer gets data-analyzer via wildcard, so this might pass
-      const role = roleManager.getRole('developer');
-      // filesystem__write_file is in data-analyzer which has '*' so developer should have it
-      expect(roleManager.isToolAllowedForRole('developer', 'filesystem__write_file', 'filesystem')).toBe(true);
+      // developer has code-reviewer but NOT data-analyzer
+      // filesystem__write_file is in data-analyzer which doesn't include developer
+      expect(roleManager.isToolAllowedForRole('developer', 'filesystem__write_file', 'filesystem')).toBe(false);
     });
 
     it('should allow analyst to access data-analyzer tools', () => {
@@ -248,12 +246,19 @@ describe('Aegis-Skills Tool Access Control', () => {
       }
     });
 
-    it('should give all roles access to data-analyzer tools (has * in allowedRoles)', () => {
-      const allRoleIds = roleManager.getRoleIds();
+    it('should give data-analyzer roles access to its tools', () => {
+      // Only analyst, data-scientist, and admin have data-analyzer skill
+      const dataAnalyzerRoles = ['analyst', 'data-scientist', 'admin'];
 
-      for (const roleId of allRoleIds) {
+      for (const roleId of dataAnalyzerRoles) {
         expect(roleManager.isToolAllowedForRole(roleId, 'filesystem__read_file', 'filesystem')).toBe(true);
       }
+
+      // developer should NOT have data-analyzer tools (except via code-reviewer which has read_file)
+      // Note: developer has code-reviewer which also has filesystem__read_file
+      expect(roleManager.isToolAllowedForRole('developer', 'filesystem__read_file', 'filesystem')).toBe(true);
+      // But developer should NOT have database__query
+      expect(roleManager.isToolAllowedForRole('developer', 'database__query', 'database')).toBe(false);
     });
   });
 

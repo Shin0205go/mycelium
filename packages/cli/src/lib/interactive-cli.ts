@@ -26,6 +26,7 @@ export class InteractiveCLI {
 
   private readonly commands = [
     '/roles',
+    '/skills',
     '/tools',
     '/status',
     '/model',
@@ -136,8 +137,20 @@ export class InteractiveCLI {
     });
   }
 
+  private showBanner(): void {
+    const banner = `
+    ${chalk.cyan('    ___    _______________  _____')}
+    ${chalk.cyan('   /   |  / ____/ ____/  _// ___/')}
+    ${chalk.cyan('  / /| | / __/ / / __ / /  \\__ \\ ')}
+    ${chalk.cyan(' / ___ |/ /___/ /_/ // /  ___/ / ')}
+    ${chalk.cyan('/_/  |_/_____/\\____/___/ /____/  ')}
+    ${chalk.gray('Role-Based Access Control Router')}
+`;
+    console.log(banner);
+  }
+
   async run(): Promise<void> {
-    console.log(chalk.cyan.bold('\n🛡️  AEGIS CLI - Interactive Mode\n'));
+    this.showBanner();
 
     console.log(chalk.gray('Checking authentication...'));
     const authOk = await this.checkAuth();
@@ -294,33 +307,143 @@ export class InteractiveCLI {
       return;
     }
 
-    console.log(chalk.cyan(`\nTools for ${chalk.bold(this.manifest.role.name)}:\n`));
-
-    const bySource: Record<string, typeof this.manifest.availableTools> = {};
-    for (const tool of this.manifest.availableTools) {
-      if (!bySource[tool.source]) {
-        bySource[tool.source] = [];
-      }
-      bySource[tool.source].push(tool);
+    const tools = this.manifest.availableTools;
+    if (tools.length === 0) {
+      console.log(chalk.yellow('\nNo tools available for this role.\n'));
+      return;
     }
 
-    for (const [source, tools] of Object.entries(bySource)) {
-      console.log(chalk.yellow(`  [${source}]`));
-      for (const tool of tools) {
-        const shortName = tool.name.replace(`${source}__`, '');
-        console.log(`    • ${chalk.bold(shortName)}`);
-        if (tool.description) {
-          const desc = tool.description.substring(0, 60);
-          console.log(chalk.gray(`      ${desc}${tool.description.length > 60 ? '...' : ''}`));
+    await this.interactiveToolSelector(tools);
+  }
+
+  private async interactiveToolSelector(tools: AgentManifest['availableTools']): Promise<void> {
+    return new Promise((resolve) => {
+      let selectedIndex = 0;
+
+      const render = () => {
+        process.stdout.write('\x1B[?25l');
+        console.log(chalk.cyan('\nTools:') + chalk.gray(' (↑↓: move, Enter: view details, q: back)\n'));
+
+        for (let i = 0; i < tools.length; i++) {
+          const tool = tools[i];
+          const isSelected = i === selectedIndex;
+          const shortName = tool.name.replace(`${tool.source}__`, '');
+
+          const marker = isSelected ? chalk.cyan('▶') : ' ';
+          const name = isSelected ? chalk.cyan.bold(shortName) : shortName;
+          const source = chalk.gray(`[${tool.source}]`);
+
+          console.log(`  ${marker} ${name} ${source}`);
         }
+      };
+
+      const clearScreen = () => {
+        const totalLines = tools.length + 3;
+        process.stdout.write(`\x1B[${totalLines}A`);
+        for (let i = 0; i < totalLines; i++) {
+          process.stdout.write('\x1B[2K\n');
+        }
+        process.stdout.write(`\x1B[${totalLines}A`);
+      };
+
+      const showDetail = (tool: typeof tools[0]) => {
+        clearScreen();
+        const shortName = tool.name.replace(`${tool.source}__`, '');
+        console.log(chalk.cyan(`\n${chalk.bold(shortName)}`));
+        console.log(chalk.gray(`Source: ${tool.source}`));
+        console.log(chalk.gray(`Full name: ${tool.name}\n`));
+        if (tool.description) {
+          console.log(tool.description);
+        } else {
+          console.log(chalk.gray('No description available.'));
+        }
+        console.log(chalk.gray('\nPress any key to go back...'));
+      };
+
+      render();
+
+      const wasRaw = process.stdin.isRaw;
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+
+      const cleanup = () => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(wasRaw || false);
+        }
+        process.stdin.removeListener('data', onKeyPress);
+        process.stdout.write('\x1B[?25h');
+      };
+
+      let viewingDetail = false;
+
+      const onKeyPress = (key: Buffer) => {
+        const keyStr = key.toString();
+
+        if (viewingDetail) {
+          // Any key goes back to list
+          viewingDetail = false;
+          clearScreen();
+          render();
+          return;
+        }
+
+        if (keyStr === '\x1B[A' || keyStr === 'k') {
+          clearScreen();
+          selectedIndex = (selectedIndex - 1 + tools.length) % tools.length;
+          render();
+        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
+          clearScreen();
+          selectedIndex = (selectedIndex + 1) % tools.length;
+          render();
+        } else if (keyStr === '\r' || keyStr === '\n') {
+          viewingDetail = true;
+          showDetail(tools[selectedIndex]);
+        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
+          clearScreen();
+          cleanup();
+          resolve();
+        }
+      };
+
+      process.stdin.on('data', onKeyPress);
+    });
+  }
+
+  private async listSkills(): Promise<void> {
+    try {
+      const result = await this.mcp.listRoles();
+      const currentRoleInfo = result.roles.find(r => r.id === this.currentRole);
+
+      if (!currentRoleInfo) {
+        console.log(chalk.yellow(`\nRole not found: ${this.currentRole}\n`));
+        return;
+      }
+
+      const skills = currentRoleInfo.skills || [];
+
+      if (skills.length === 0) {
+        console.log(chalk.yellow(`\nNo skills for role: ${this.currentRole}\n`));
+        return;
+      }
+
+      console.log(chalk.cyan(`\nSkills for ${chalk.bold(this.currentRole)} (${skills.length}):\n`));
+
+      for (const skill of skills) {
+        console.log(`  • ${chalk.bold(skill)}`);
       }
       console.log();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(chalk.red(`Failed to list skills: ${err.message}`));
     }
   }
 
   private showHelp(): void {
     console.log(chalk.cyan('\nCommands:\n'));
     console.log('  ' + chalk.bold('/roles') + '         Select and switch roles');
+    console.log('  ' + chalk.bold('/skills') + '        List available skills');
     console.log('  ' + chalk.bold('/tools') + '         List available tools');
     console.log('  ' + chalk.bold('/model <name>') + '  Change model');
     console.log('  ' + chalk.bold('/status') + '        Show current status');
@@ -329,7 +452,7 @@ export class InteractiveCLI {
     console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
   }
 
-  private showStatus(): void {
+  private async showStatus(): Promise<void> {
     if (!this.manifest) {
       console.log(chalk.yellow('No role selected'));
       return;
@@ -337,12 +460,25 @@ export class InteractiveCLI {
 
     const authDisplay = this.formatAuthSource(this.authSource);
 
+    // Get skills for current role
+    let skills: string[] = [];
+    try {
+      const result = await this.mcp.listRoles();
+      const roleInfo = result.roles.find(r => r.id === this.currentRole);
+      skills = roleInfo?.skills || [];
+    } catch {
+      // Ignore errors
+    }
+
     console.log(chalk.cyan('\nCurrent Status:\n'));
     console.log(`  Role:    ${chalk.bold(this.manifest.role.name)} (${this.currentRole})`);
     console.log(`  Model:   ${chalk.bold(this.currentModel)}`);
     console.log(`  Auth:    ${authDisplay}`);
+    console.log(`  Skills:  ${skills.length > 0 ? skills.join(', ') : chalk.gray('none')}`);
     console.log(`  Tools:   ${this.manifest.metadata.toolCount}`);
-    console.log(`  Servers: ${this.manifest.availableServers.join(', ')}`);
+    // Get servers from available tools (same as /tools command)
+    const servers = [...new Set(this.manifest.availableTools.map(t => t.source))];
+    console.log(`  Servers: ${servers.join(', ')}`);
     console.log();
   }
 
@@ -400,7 +536,8 @@ export class InteractiveCLI {
         model: this.currentModel,
         systemPrompt,
         includePartialMessages: true,
-        useApiKey: this.useApiKey
+        useApiKey: this.useApiKey,
+        currentRole: this.currentRole
       });
 
       let hasStartedOutput = false;
@@ -536,8 +673,12 @@ export class InteractiveCLI {
             await this.listTools();
             break;
 
+          case 'skills':
+            await this.listSkills();
+            break;
+
           case 'status':
-            this.showStatus();
+            await this.showStatus();
             break;
 
           case 'model':
