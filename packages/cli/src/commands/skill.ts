@@ -296,23 +296,24 @@ skillCommand
   .command('list')
   .description('List all skills')
   .option('-d, --directory <dir>', 'Skills directory')
-  .action(async (options: { directory?: string }) => {
+  .option('-v, --verbose', 'Show detailed information')
+  .action(async (options: { directory?: string; verbose?: boolean }) => {
     const defaultDir = getDefaultSkillsDir();
     const skillsDir = join(process.cwd(), options.directory || defaultDir);
-
-    console.log(chalk.blue('📋 Skills'));
-    console.log(chalk.gray(`Directory: ${skillsDir}`));
-    console.log();
 
     try {
       const entries = await readdir(skillsDir, { withFileTypes: true });
       const dirs = entries.filter(e => e.isDirectory());
 
       if (dirs.length === 0) {
-        console.log(chalk.yellow('No skills found.'));
+        console.log(chalk.yellow('\nNo skills found.\n'));
         console.log(chalk.cyan('Add a skill: ') + chalk.white('aegis skill add <name>'));
         return;
       }
+
+      console.log(chalk.cyan(`\nSkills (${dirs.length}):\n`));
+
+      const skills: Array<{ id: string; description?: string; roles: string[]; tools: number }> = [];
 
       for (const dir of dirs) {
         // Try SKILL.yaml first (monorepo), then SKILL.md (user projects)
@@ -334,20 +335,40 @@ skillCommand
           }
 
           if (frontmatter) {
-            const roles = frontmatter.allowedRoles?.join(', ') || 'none';
-            const tools = frontmatter.allowedTools?.length || 0;
-            console.log(chalk.green(`  ${frontmatter.id || dir.name}`));
-            console.log(chalk.gray(`    ${frontmatter.description || 'No description'}`));
-            console.log(chalk.gray(`    Roles: ${roles}`));
-            console.log(chalk.gray(`    Tools: ${tools} patterns`));
-            console.log();
-          } else {
-            console.log(chalk.yellow(`  ${dir.name} (no SKILL.yaml or SKILL.md)`));
+            skills.push({
+              id: frontmatter.id || dir.name,
+              description: frontmatter.description,
+              roles: frontmatter.allowedRoles || [],
+              tools: frontmatter.allowedTools?.length || 0
+            });
           }
         } catch {
-          console.log(chalk.yellow(`  ${dir.name} (invalid skill file)`));
+          // Skip invalid skills
         }
       }
+
+      // Sort by ID
+      skills.sort((a, b) => a.id.localeCompare(b.id));
+
+      for (const skill of skills) {
+        if (options.verbose) {
+          console.log(`  • ${chalk.bold(skill.id)}`);
+          if (skill.description) {
+            console.log(chalk.gray(`    ${skill.description}`));
+          }
+          console.log(chalk.gray(`    Roles: ${skill.roles.join(', ') || 'none'}`));
+          console.log(chalk.gray(`    Tools: ${skill.tools} patterns`));
+          console.log();
+        } else {
+          console.log(`  • ${chalk.bold(skill.id)}`);
+        }
+      }
+
+      if (!options.verbose) {
+        console.log();
+        console.log(chalk.gray('Use --verbose for detailed information'));
+      }
+      console.log();
 
     } catch (error) {
       console.error(chalk.red('❌ Failed to list skills:'), error);
