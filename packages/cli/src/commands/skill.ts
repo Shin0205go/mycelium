@@ -507,17 +507,18 @@ For detailed reference material or complex workflows:
 // aegis skill add <name>
 skillCommand
   .command('add')
-  .description('Create a new skill interactively')
+  .description('Create a new skill (interactive by default, or use --template for non-interactive)')
   .argument('<name>', 'Skill name')
   .option('-d, --directory <dir>', 'Skills directory')
-  .action(async (name: string, options: { directory?: string }) => {
+  .option('-t, --template <name>', 'Use template for non-interactive mode (basic, rbac, full)')
+  .action(async (name: string, options: { directory?: string; template?: string }) => {
     const defaultDir = getDefaultSkillsDir();
     const skillsDir = join(process.cwd(), options.directory || defaultDir);
     const skillDir = join(skillsDir, name);
     const yamlFile = join(skillDir, 'SKILL.yaml');
     const mdFile = join(skillDir, 'SKILL.md');
 
-    console.log(chalk.blue(`📦 Creating skill: ${name}`));
+    console.log(chalk.blue(`📦 Adding skill: ${name}`));
 
     try {
       // Check if skill already exists
@@ -529,8 +530,40 @@ skillCommand
         // Good, doesn't exist
       }
 
-      // Interactive mode (always)
-      const { yaml, markdown } = await createSkillInteractive(name);
+      let yaml: string;
+      let markdown: string;
+
+      if (options.template) {
+        // Non-interactive mode with template
+        const template = SKILL_TEMPLATES[options.template];
+        if (!template) {
+          console.error(chalk.red(`\n❌ Unknown template: ${options.template}`));
+          console.log(chalk.gray('Available templates: ' + Object.keys(SKILL_TEMPLATES).join(', ')));
+          process.exit(1);
+        }
+
+        // Process template (old combined format)
+        const displayName = name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const processedContent = template
+          .replace(/\{\{name\}\}/g, name)
+          .replace(/\{\{displayName\}\}/g, displayName);
+
+        // Split YAML frontmatter from markdown content
+        const frontmatterMatch = processedContent.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+        if (frontmatterMatch) {
+          yaml = frontmatterMatch[1].trim() + '\n';
+          markdown = frontmatterMatch[2].trim() + '\n';
+        } else {
+          // Fallback: use as markdown with minimal yaml
+          yaml = `name: ${name}\ndescription: Skill created from ${options.template} template\n`;
+          markdown = processedContent;
+        }
+      } else {
+        // Interactive mode
+        const result = await createSkillInteractive(name);
+        yaml = result.yaml;
+        markdown = result.markdown;
+      }
 
       // Create skill directory and files
       await mkdir(skillDir, { recursive: true });

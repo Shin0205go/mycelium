@@ -127,10 +127,13 @@ describe('AEGIS CLI', () => {
     it('should add a skill from template', () => {
       const output = runCli('skill add test-skill --template basic', testDir);
       expect(output).toContain('Adding skill: test-skill');
-      expect(output).toContain('Created skills/test-skill/SKILL.md');
+      expect(output).toContain('SKILL.yaml');
+      expect(output).toContain('SKILL.md');
 
       const skillPath = join(testDir, 'skills', 'test-skill', 'SKILL.md');
+      const yamlPath = join(testDir, 'skills', 'test-skill', 'SKILL.yaml');
       expect(existsSync(skillPath)).toBe(true);
+      expect(existsSync(yamlPath)).toBe(true);
     });
   });
 

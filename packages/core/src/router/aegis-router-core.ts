@@ -659,9 +659,14 @@ export class AegisRouterCore extends EventEmitter {
     const role = this.state.availableRoles.get(roleId);
     if (!role) {
       const availableRoles = Array.from(this.state.availableRoles.keys());
-      throw new Error(
-        `Role '${roleId}' not found. Available roles: ${availableRoles.join(', ')}`
-      );
+      const commonCommands = ['help', 'exit', 'quit', 'status'];
+      const isLikelyCommand = commonCommands.includes(roleId.toLowerCase());
+
+      let errorMsg = `Role '${roleId}' not found. Available roles: ${availableRoles.join(', ')}`;
+      if (isLikelyCommand) {
+        errorMsg += `. Hint: Did you mean to type "/${roleId}"? Type /help for available commands.`;
+      }
+      throw new Error(errorMsg);
     }
 
     // Track previous role for notifications

@@ -661,8 +661,18 @@ export class InteractiveCLI {
         return;
       }
 
-      if (input.startsWith('/')) {
-        const [cmd, ...args] = input.slice(1).split(/\s+/);
+      // Handle both /command and common commands without slash
+      const isSlashCommand = input.startsWith('/');
+      const normalizedInput = input.toLowerCase().trim();
+
+      // Common commands that work with or without /
+      const commonCommands = ['help', 'exit', 'quit', 'q', 'roles', 'tools', 'skills', 'status'];
+      const isCommonCommand = commonCommands.includes(normalizedInput);
+
+      if (isSlashCommand || isCommonCommand) {
+        const [cmd, ...args] = isSlashCommand
+          ? input.slice(1).split(/\s+/)
+          : input.split(/\s+/);
 
         switch (cmd.toLowerCase()) {
           case 'roles':
@@ -704,7 +714,6 @@ export class InteractiveCLI {
             console.log(chalk.gray('\nGoodbye!\n'));
             this.mcp.disconnect();
             process.exit(0);
-            break;
 
           default:
             console.log(chalk.yellow(`Unknown command: /${cmd}`));

@@ -1,0 +1,19 @@
+name: self-improvement
+description: Analyze and improve the Aegis-CLI codebase itself through recursive self-modification. Use when you need to refactor, optimize, review, or add features to Aegis-CLI's own code.
+
+# AEGIS RBAC
+allowedRoles:
+  - meta-developer
+  - admin
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+  - filesystem__edit_file
+  - filesystem__list_directory
+  - filesystem__directory_tree
+  - filesystem__search_files
+  - filesystem__get_file_info
+  - aegis-skills__list_skills
+  - aegis-skills__get_skill
+grants:
+  memory: isolated
