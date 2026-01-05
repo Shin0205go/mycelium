@@ -1,0 +1,172 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://aegis-cli.com/schemas/skill.json",
+  "title": "AEGIS Skill Definition",
+  "description": "Schema for AEGIS skill YAML files with Claude Skills and RBAC extensions",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Skill identifier (lowercase, hyphens only)",
+      "pattern": "^[a-z0-9-]+$",
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of what this skill does and when to use it",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "version": {
+      "type": "string",
+      "description": "Skill version (semver)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
+    "allowedRoles": {
+      "type": "array",
+      "description": "AEGIS RBAC: Roles that can use this skill",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "allowedTools": {
+      "type": "array",
+      "description": "AEGIS RBAC: MCP tools this skill requires (server__tool format)",
+      "items": {
+        "type": "string",
+        "pattern": "^([a-z0-9-]+__[a-z0-9_]+|\\*)$"
+      },
+      "uniqueItems": true
+    },
+    "grants": {
+      "type": "object",
+      "description": "AEGIS RBAC: Capability grants",
+      "properties": {
+        "memory": {
+          "type": "string",
+          "description": "Memory access policy",
+          "enum": ["none", "isolated", "team", "all"],
+          "default": "none"
+        },
+        "memoryTeamRoles": {
+          "type": "array",
+          "description": "Team roles for 'team' memory policy",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "description": "AEGIS A2A: Agent-to-Agent identity resolution",
+      "properties": {
+        "skillMatching": {
+          "type": "array",
+          "description": "Skill-based role matching rules",
+          "items": {
+            "type": "object",
+            "required": ["role"],
+            "properties": {
+              "role": {
+                "type": "string",
+                "description": "Role to assign when matched"
+              },
+              "requiredSkills": {
+                "type": "array",
+                "description": "ALL must be present (AND logic)",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "anySkills": {
+                "type": "array",
+                "description": "At least minSkillMatch must be present (OR logic)",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "minSkillMatch": {
+                "type": "integer",
+                "description": "Minimum anySkills matches required",
+                "minimum": 1,
+                "default": 1
+              },
+              "forbiddenSkills": {
+                "type": "array",
+                "description": "Skills that MUST NOT be present",
+                "items": {
+                  "type": "string"
+                },
+                "uniqueItems": true
+              },
+              "context": {
+                "type": "object",
+                "description": "Time-based access control conditions",
+                "properties": {
+                  "allowedTime": {
+                    "type": "string",
+                    "description": "Time range (HH:MM-HH:MM)",
+                    "pattern": "^\\d{2}:\\d{2}-\\d{2}:\\d{2}$"
+                  },
+                  "allowedDays": {
+                    "type": "array",
+                    "description": "Days of week (0=Sunday, 6=Saturday)",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 6
+                    },
+                    "minItems": 1,
+                    "maxItems": 7,
+                    "uniqueItems": true
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "description": "IANA timezone (e.g., Asia/Tokyo)",
+                    "default": "UTC"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "priority": {
+                "type": "integer",
+                "description": "Rule priority (higher = checked first)",
+                "minimum": 0,
+                "default": 0
+              },
+              "description": {
+                "type": "string",
+                "description": "Optional rule description"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "trustedPrefixes": {
+          "type": "array",
+          "description": "Trusted agent name prefixes",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

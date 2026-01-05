@@ -19,65 +19,98 @@ function getDefaultSkillsDir(): string {
   return './skills';
 }
 
-// Skill templates
+// Skill templates (Official Claude Skills format with AEGIS RBAC extensions)
 const SKILL_TEMPLATES: Record<string, string> = {
   'basic': `---
-id: {{name}}
-displayName: {{displayName}}
-description: Basic skill template
+name: {{name}}
+description: Basic skill template for filesystem operations
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - developer
 allowedTools:
   - filesystem__read_file
+  - filesystem__list_directory
 grants:
   memory: none
 ---
 
 # {{displayName}}
 
-Description of what this skill provides.
+Basic skill for reading and exploring files.
 
-## Capabilities
-- List capabilities here
+## Instructions
 
-## Use Cases
-- Describe use cases
+When using this skill:
+1. Use \`filesystem__read_file\` to read file contents
+2. Use \`filesystem__list_directory\` to explore directory structure
+3. Always verify file paths before reading
+
+## Examples
+
+Reading a configuration file:
+\`\`\`bash
+cat config.json
+\`\`\`
+
+Listing directory contents:
+\`\`\`bash
+ls -la ./src
+\`\`\`
 `,
 
   'browser-limited': `---
-id: browser-limited
-displayName: Limited Browser Access
-description: Read-only browser access for web research
+name: browser-limited
+description: Read-only browser access for web research. Use when analyzing web content or gathering information from websites.
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - researcher
   - analyst
 allowedTools:
-  - browser__navigate
-  - browser__screenshot
-  - browser__get_text
+  - playwright__browser_navigate
+  - playwright__browser_snapshot
+  - playwright__browser_take_screenshot
 grants:
   memory: isolated
 ---
 
 # Limited Browser Access
 
-This skill provides read-only browser access for web research.
+Read-only browser capabilities for web research and content analysis.
 
-## Capabilities
-- Navigate to URLs
-- Take screenshots
-- Extract text content
+## Instructions
+
+1. Navigate to URLs using \`playwright__browser_navigate\`
+2. Take snapshots for accessibility tree analysis
+3. Capture screenshots for visual verification
+4. Extract text content from pages
 
 ## Restrictions
-- No form submission
-- No JavaScript execution
+
+- No form submission or interaction
 - No cookie manipulation
+- Read-only operations only
+
+## Examples
+
+\`\`\`bash
+# Navigate to a page
+playwright__browser_navigate --url "https://example.com"
+
+# Take accessibility snapshot
+playwright__browser_snapshot
+
+# Capture screenshot
+playwright__browser_take_screenshot
+\`\`\`
 `,
 
   'code-reviewer': `---
-id: code-reviewer
-displayName: Code Reviewer
-description: Code review and analysis tools
+name: code-reviewer
+description: Code review and analysis tools with git integration and team memory access. Use for pull requests, code audits, and knowledge sharing.
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - reviewer
   - senior
@@ -105,23 +138,44 @@ identity:
 
 # Code Reviewer
 
-This skill provides tools for code review and analysis.
+Professional code review with git history analysis and team collaboration.
 
-## Capabilities
-- Read source files
-- View git history and diffs
-- Access team members' memories
+## Instructions
 
-## Use Cases
-- Pull request reviews
-- Code audits
-- Knowledge sharing
+### Code Review Workflow
+
+1. **Read the code**: Use \`filesystem__read_file\` to examine source files
+2. **Check history**: Use \`git__log\` and \`git__blame\` to understand changes
+3. **View diffs**: Use \`git__diff\` to see what changed
+4. **Access context**: Use team memory to recall related discussions
+
+### Review Checklist
+
+- Code quality and readability
+- Security vulnerabilities
+- Performance implications
+- Test coverage
+- Documentation
+
+## Examples
+
+\`\`\`bash
+# View recent changes
+git diff main...feature-branch
+
+# Check file history
+git log -p --follow src/main.ts
+
+# Find who changed a line
+git blame src/auth.ts
+\`\`\`
 `,
 
   'data-analyst': `---
-id: data-analyst
-displayName: Data Analyst
-description: Read-only database access for analytics
+name: data-analyst
+description: Read-only database access for data analysis. Execute SELECT queries, explore schemas, and analyze patterns.
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - analyst
   - data-scientist
@@ -144,30 +198,60 @@ identity:
 
 # Data Analyst
 
-This skill provides read-only database access for data analysis.
+Read-only database access for analytics and reporting.
 
-## Capabilities
-- Execute SELECT queries
-- List and describe tables
-- Analyze data patterns
+## Instructions
+
+### Data Analysis Workflow
+
+1. **Explore schema**: List tables and describe their structure
+2. **Write queries**: Use SELECT statements to extract data
+3. **Analyze results**: Look for patterns and insights
+4. **Document findings**: Save insights to memory
+
+### Query Guidelines
+
+- Use \`LIMIT\` to avoid large result sets
+- Optimize queries with appropriate indexes
+- Respect query timeout (30 seconds)
 
 ## Restrictions
-- No INSERT/UPDATE/DELETE
-- No schema modifications
-- Query timeout: 30 seconds
+
+- **Read-only**: No INSERT, UPDATE, DELETE, or DDL
+- **Query timeout**: 30 seconds maximum
+- **Result limit**: 1000 rows per query
+
+## Examples
+
+\`\`\`sql
+-- List all tables
+SELECT table_name FROM information_schema.tables;
+
+-- Analyze sales data
+SELECT
+  DATE(created_at) as date,
+  COUNT(*) as orders,
+  SUM(total) as revenue
+FROM orders
+WHERE created_at >= '2024-01-01'
+GROUP BY DATE(created_at)
+ORDER BY date DESC
+LIMIT 30;
+\`\`\`
 `,
 
   'flight-booking': `---
-id: flight-booking
-displayName: Flight Booking
-description: Flight search and booking capabilities
+name: flight-booking
+description: Flight search and booking capabilities with time-based access control. Use for travel planning and reservations.
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - travel-agent
   - assistant
 allowedTools:
-  - browser__navigate
-  - browser__fill_form
-  - browser__click
+  - playwright__browser_navigate
+  - playwright__browser_type
+  - playwright__browser_click
   - calendar__create_event
   - calendar__read_events
 grants:
@@ -186,22 +270,43 @@ identity:
 
 # Flight Booking
 
-This skill enables flight search and booking during business hours.
+Automated flight search and booking with business hours enforcement.
 
-## Capabilities
-- Search flights on major airline websites
-- Fill booking forms
-- Create calendar events for trips
+## Instructions
 
-## Security
-- Only available on weekdays 9 AM - 6 PM ET
-- Requires travel_booking skill
+### Booking Workflow
+
+1. **Search flights**: Navigate to airline websites
+2. **Fill forms**: Enter passenger and travel details
+3. **Review options**: Compare prices and schedules
+4. **Create calendar event**: Add trip to calendar
+
+### Security
+
+- **Time restriction**: Weekdays 9 AM - 6 PM ET only
+- **Required skill**: \`travel_booking\` capability needed
+- **Verification**: Always confirm details before booking
+
+## Examples
+
+\`\`\`bash
+# Search for flights
+playwright__browser_navigate --url "https://airline.example.com"
+
+# Fill search form
+playwright__browser_type --element "departure" --text "JFK"
+playwright__browser_type --element "arrival" --text "LAX"
+
+# Create calendar event
+calendar__create_event --title "Flight to LAX" --date "2024-06-15"
+\`\`\`
 `,
 
   'personal-assistant': `---
-id: personal-assistant
-displayName: Personal Assistant
-description: Calendar and email access for personal assistance
+name: personal-assistant
+description: Calendar and email management for personal assistance tasks. Schedule meetings, read emails, and coordinate events.
+
+# AEGIS RBAC Extensions
 allowedRoles:
   - assistant
   - secretary
@@ -217,21 +322,63 @@ grants:
 
 # Personal Assistant
 
-This skill provides calendar and email access for personal assistance tasks.
+Calendar and email management for scheduling and coordination.
 
-## Capabilities
-- Read and manage calendar
-- Read emails (no sending)
+## Instructions
 
-## Use Cases
-- Schedule management
-- Email triage
-- Meeting coordination
+### Daily Workflow
+
+1. **Check calendar**: Review today's events and upcoming meetings
+2. **Process emails**: Read and categorize incoming messages
+3. **Schedule meetings**: Create and update calendar events
+4. **Coordinate**: Find available time slots and send summaries
+
+### Best Practices
+
+- Always check for conflicts before creating events
+- Respect working hours when scheduling
+- Summarize important emails
+- Keep calendar descriptions clear and concise
+
+## Examples
+
+\`\`\`bash
+# Read today's calendar
+calendar__read_events --date "today"
+
+# Create a meeting
+calendar__create_event \\
+  --title "Team Sync" \\
+  --date "2024-06-15" \\
+  --time "14:00" \\
+  --duration "60"
+
+# Check recent emails
+email__list --folder "inbox" --limit 10
+\`\`\`
 `
 };
 
 export const skillCommand = new Command('skill')
   .description('Manage skills (create, list, and view templates)');
+
+/**
+ * Split template into SKILL.yaml and SKILL.md
+ */
+function splitTemplate(template: string): { yaml: string; markdown: string } {
+  const frontmatterMatch = template.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!frontmatterMatch) {
+    return { yaml: '', markdown: template };
+  }
+
+  let yaml = frontmatterMatch[1];
+  const markdown = frontmatterMatch[2].trim();
+
+  // Remove "# AEGIS RBAC Extensions" comment from YAML (it's documentation)
+  yaml = yaml.replace(/^# AEGIS RBAC Extensions\n/m, '');
+
+  return { yaml, markdown };
+}
 
 // aegis skill add <name>
 skillCommand
@@ -243,7 +390,8 @@ skillCommand
   .action(async (name: string, options: { template: string; directory: string }) => {
     const skillsDir = join(process.cwd(), options.directory);
     const skillDir = join(skillsDir, name);
-    const skillFile = join(skillDir, 'SKILL.md');
+    const yamlFile = join(skillDir, 'SKILL.yaml');
+    const mdFile = join(skillDir, 'SKILL.md');
 
     console.log(chalk.blue(`📦 Adding skill: ${name}`));
     console.log();
@@ -271,18 +419,25 @@ skillCommand
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
-      const content = template
+      const processedTemplate = template
         .replace(/\{\{name\}\}/g, name)
         .replace(/\{\{displayName\}\}/g, displayName);
 
-      // Create skill directory and file
-      await mkdir(skillDir, { recursive: true });
-      await writeFile(skillFile, content);
+      // Split into YAML and Markdown
+      const { yaml, markdown } = splitTemplate(processedTemplate);
 
+      // Create skill directory and files
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(yamlFile, yaml);
+      await writeFile(mdFile, markdown);
+
+      console.log(chalk.green(`✓ Created skills/${name}/SKILL.yaml`));
       console.log(chalk.green(`✓ Created skills/${name}/SKILL.md`));
       console.log();
       console.log(chalk.cyan('Template used: ') + chalk.white(options.template));
-      console.log(chalk.cyan('Next: ') + chalk.white(`Edit skills/${name}/SKILL.md to customize`));
+      console.log(chalk.cyan('Next steps:'));
+      console.log(chalk.white(`  1. Edit skills/${name}/SKILL.yaml for metadata and RBAC`));
+      console.log(chalk.white(`  2. Edit skills/${name}/SKILL.md for instructions and examples`));
       console.log();
 
     } catch (error) {
