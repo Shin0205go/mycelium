@@ -2,14 +2,16 @@
 /**
  * AEGIS CLI - Agent router client with dynamic role switching
  *
- * Supports two modes:
+ * Supports three modes:
  * 1. Interactive mode (default) - REPL with role switching
  * 2. Sub-agent mode - Non-interactive, for orchestrator integration
+ * 3. HTTP server mode - REST API for Apple Watch and other clients
  */
 
 import { parseArgs, showHelp, showVersion } from './args.js';
 import { AegisCLI } from './cli.js';
 import { SubAgent } from './sub-agent.js';
+import { startHttpServer } from './http-server.js';
 
 async function main() {
   const args = parseArgs();
@@ -26,7 +28,15 @@ async function main() {
   }
 
   // Choose mode
-  if (args.interactive) {
+  if (args.serve) {
+    // HTTP server mode
+    await startHttpServer({
+      port: args.port,
+      host: args.host,
+      useApiKey: args.useApiKey,
+      model: args.model,
+    });
+  } else if (args.interactive) {
     // Interactive REPL mode
     const cli = new AegisCLI();
     await cli.run();

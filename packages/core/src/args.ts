@@ -5,6 +5,11 @@
 export interface CliArgs {
   // Mode
   interactive: boolean;
+  serve: boolean;
+
+  // Server options
+  port: number;
+  host?: string;
 
   // Sub-agent options
   role?: string;
@@ -21,6 +26,8 @@ export interface CliArgs {
 export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
   const args: CliArgs = {
     interactive: true,
+    serve: false,
+    port: 3000,
     json: false,
     useApiKey: false,
     help: false,
@@ -37,6 +44,15 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
       args.help = true;
     } else if (arg === '--version' || arg === '-v') {
       args.version = true;
+    } else if (arg === 'serve') {
+      args.serve = true;
+      args.interactive = false;
+    } else if (arg === '--port' || arg === '-P') {
+      i++;
+      args.port = parseInt(argv[i], 10) || 3000;
+    } else if (arg === '--host' || arg === '-H') {
+      i++;
+      args.host = argv[i];
     } else if (arg === '--json' || arg === '-j') {
       args.json = true;
     } else if (arg === '--api-key') {
@@ -80,16 +96,20 @@ AEGIS CLI - Agent Router Client
 Usage:
   aegis-cli [options]                    # Interactive mode
   aegis-cli [options] <prompt>           # Sub-agent mode
-  aegis-cli [options] --prompt <prompt>  # Sub-agent mode
+  aegis-cli serve [options]              # HTTP server mode
 
 Options:
-  -r, --role <role>     Specify role (default, mentor, frontend, guest, etc.)
+  -r, --role <role>     Specify role (orchestrator, mentor, frontend, etc.)
   -p, --prompt <text>   Prompt to send (enables non-interactive mode)
   -j, --json            Output result as JSON (for sub-agent mode)
   -m, --model <model>   Model to use (claude-3-5-haiku-20241022, etc.)
   --api-key             Use ANTHROPIC_API_KEY instead of Claude Code auth
   -h, --help            Show this help message
   -v, --version         Show version
+
+Server Options (for serve command):
+  -P, --port <port>     HTTP server port (default: 3000)
+  -H, --host <host>     HTTP server host (default: 0.0.0.0)
 
 Examples:
   # Interactive mode
@@ -104,8 +124,11 @@ Examples:
   # Sub-agent mode - JSON output for orchestration
   aegis-cli --role frontend --json "Create a button component"
 
-  # Read prompt from stdin
-  echo "Explain this" | aegis-cli --role mentor
+  # HTTP server mode (for Apple Watch, etc.)
+  aegis-cli serve --port 3000
+
+  # HTTP server with API key auth
+  aegis-cli serve --port 3000 --api-key
 `);
 }
 
