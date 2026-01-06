@@ -35,6 +35,7 @@ async function main() {
       host: args.host,
       useApiKey: args.useApiKey,
       model: args.model,
+      authToken: args.token,
     });
   } else if (args.interactive) {
     // Interactive REPL mode

@@ -17,6 +17,7 @@ export interface HttpServerConfig {
   useApiKey?: boolean;
   model?: string;
   allowedOrigins?: string[];
+  authToken?: string; // Bearer token for authentication
 }
 
 interface ChatRequest {
@@ -72,6 +73,44 @@ export function createHttpApp(config: HttpServerConfig) {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
     next();
   });
+
+  // Bearer Token authentication middleware
+  const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    // Skip auth if no token configured
+    if (!config.authToken) {
+      next();
+      return;
+    }
+
+    // Allow health check without auth
+    if (req.path === '/health') {
+      next();
+      return;
+    }
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.status(401).json({
+        success: false,
+        error: 'Missing or invalid Authorization header. Use: Bearer <token>',
+      });
+      return;
+    }
+
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    if (token !== config.authToken) {
+      console.log(`[Auth] Invalid token attempt`);
+      res.status(403).json({
+        success: false,
+        error: 'Invalid token',
+      });
+      return;
+    }
+
+    next();
+  };
+
+  app.use(authMiddleware);
 
   // Health check
   app.get('/health', (_req: Request, res: Response) => {
@@ -166,6 +205,9 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
     const host = config.host || '0.0.0.0';
 
     const server = app.listen(config.port, host, () => {
+      const tokenStatus = config.authToken
+        ? `Required (${config.authToken.substring(0, 4)}...)`
+        : 'None (open access)';
       console.log(`
 ╔════════════════════════════════════════════════════════╗
 ║           AEGIS HTTP Server                            ║
@@ -173,9 +215,10 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
 ║  URL:    http://${host}:${config.port}
 ║  Model:  ${config.model || 'claude-3-5-haiku-20241022'}
 ║  Auth:   ${config.useApiKey ? 'API Key' : 'Claude Code'}
+║  Token:  ${tokenStatus}
 ╠════════════════════════════════════════════════════════╣
 ║  Endpoints:                                            ║
-║    GET  /health      - Health check                    ║
+║    GET  /health      - Health check (no auth)          ║
 ║    GET  /api/roles   - List available roles            ║
 ║    POST /api/chat    - Send message                    ║
 ╚════════════════════════════════════════════════════════╝

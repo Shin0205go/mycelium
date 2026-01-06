@@ -10,6 +10,7 @@ export interface CliArgs {
   // Server options
   port: number;
   host?: string;
+  token?: string; // Bearer token for authentication
 
   // Sub-agent options
   role?: string;
@@ -53,6 +54,9 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
     } else if (arg === '--host' || arg === '-H') {
       i++;
       args.host = argv[i];
+    } else if (arg === '--token' || arg === '-t') {
+      i++;
+      args.token = argv[i];
     } else if (arg === '--json' || arg === '-j') {
       args.json = true;
     } else if (arg === '--api-key') {
@@ -110,6 +114,7 @@ Options:
 Server Options (for serve command):
   -P, --port <port>     HTTP server port (default: 3000)
   -H, --host <host>     HTTP server host (default: 0.0.0.0)
+  -t, --token <token>   Bearer token for authentication (optional)
 
 Examples:
   # Interactive mode
@@ -127,8 +132,11 @@ Examples:
   # HTTP server mode (for Apple Watch, etc.)
   aegis-cli serve --port 3000
 
-  # HTTP server with API key auth
-  aegis-cli serve --port 3000 --api-key
+  # HTTP server with Bearer token auth
+  aegis-cli serve --port 3000 --token mysecrettoken
+
+  # HTTP server with API key and token
+  aegis-cli serve --port 3000 --api-key --token mysecrettoken
 `);
 }
 
