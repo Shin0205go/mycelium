@@ -1,0 +1,10 @@
+[package]
+name = "aegis-usecase"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AEGIS Use Case Layer - Application-specific business rules"
+
+[dependencies]
+aegis-domain.workspace = true

@@ -1,0 +1,24 @@
+[package]
+name = "aegis-domain"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AEGIS Domain Layer - Pure business logic with zero external dependencies"
+
+# ============================================================================
+# IMPORTANT: This crate MUST have ZERO external dependencies
+# ============================================================================
+# The domain layer is the heart of AEGIS. It contains:
+# - Entities (Mission, Agent)
+# - Value Objects (Skill, Role, Artifact)
+# - Repository Traits (not implementations)
+# - Domain Services (GameLoop)
+#
+# If you feel the need to add a dependency here, STOP and ask:
+# "Is this truly domain logic, or should it be in adapter layer?"
+# ============================================================================
+
+[dependencies]
+# None. This is intentional.
+# Domain logic must be pure and portable.
