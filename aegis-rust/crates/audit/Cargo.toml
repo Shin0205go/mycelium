@@ -1,0 +1,13 @@
+[package]
+name = "audit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AEGIS Audit - Audit logging and rate limiting"
+
+[dependencies]
+shared.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true

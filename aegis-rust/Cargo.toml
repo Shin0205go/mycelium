@@ -1,10 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/aegis-domain",
-    "crates/aegis-usecase",
-    "crates/aegis-adapter",
-    "crates/aegis-app",
+    "crates/shared",
+    "crates/rbac",
+    "crates/a2a",
+    "crates/audit",
+    "crates/gateway",
+    "crates/core",
+    "crates/skills",
+    "crates/cli",
 ]
 
 [workspace.package]
@@ -15,21 +19,40 @@ license = "MIT"
 repository = "https://github.com/Shin0205go/Aegis-cli"
 
 [workspace.dependencies]
-# Domain layer - zero external dependencies
-# Usecase layer
-aegis-domain = { path = "crates/aegis-domain" }
+# Internal crates
+shared = { path = "crates/shared" }
+rbac = { path = "crates/rbac" }
+a2a = { path = "crates/a2a" }
+audit = { path = "crates/audit" }
+gateway = { path = "crates/gateway" }
+core = { path = "crates/core" }
+skills = { path = "crates/skills" }
 
-# Adapter layer
-aegis-usecase = { path = "crates/aegis-usecase" }
+# Async runtime
 tokio = { version = "1.43", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "2.0"
-uuid = { version = "1.11", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 
-# App layer
-aegis-adapter = { path = "crates/aegis-adapter" }
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1.11"
+glob = "0.3"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+dialoguer = "0.11"
+console = "0.15"
+indicatif = "0.17"
+
+# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

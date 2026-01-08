@@ -1,0 +1,29 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AEGIS CLI - Command-line interface"
+
+[[bin]]
+name = "aegis"
+path = "src/main.rs"
+
+[dependencies]
+shared.workspace = true
+rbac.workspace = true
+a2a.workspace = true
+core.workspace = true
+skills.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+clap.workspace = true
+dialoguer.workspace = true
+console.workspace = true
+indicatif.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
