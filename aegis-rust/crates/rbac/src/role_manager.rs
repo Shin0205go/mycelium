@@ -230,6 +230,53 @@ impl Default for RoleManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::{SkillGrants};
+
+    fn create_test_manifest() -> SkillManifest {
+        SkillManifest {
+            skills: vec![
+                SkillDefinition {
+                    id: "docx-handler".to_string(),
+                    display_name: "DOCX Handler".to_string(),
+                    description: "Handle DOCX files".to_string(),
+                    allowed_roles: vec!["formatter".to_string(), "admin".to_string()],
+                    allowed_tools: vec![
+                        "filesystem__read_file".to_string(),
+                        "filesystem__write_file".to_string(),
+                        "docx__parse".to_string(),
+                    ],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "code-review".to_string(),
+                    display_name: "Code Review".to_string(),
+                    description: "Review code".to_string(),
+                    allowed_roles: vec!["reviewer".to_string(), "admin".to_string()],
+                    allowed_tools: vec![
+                        "filesystem__read_file".to_string(),
+                        "git__diff".to_string(),
+                    ],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "guest-access".to_string(),
+                    display_name: "Guest Access".to_string(),
+                    description: "Minimal read-only".to_string(),
+                    allowed_roles: vec!["guest".to_string()],
+                    allowed_tools: vec!["filesystem__read_file".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                },
+            ],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        }
+    }
 
     #[test]
     fn test_role_registration() {
@@ -261,5 +308,225 @@ mod tests {
         let servers = manager.get_effective_servers("child");
         assert!(servers.contains(&"filesystem".to_string()));
         assert!(servers.contains(&"git".to_string()));
+    }
+
+    #[test]
+    fn test_load_from_skill_manifest() {
+        let mut manager = RoleManager::new();
+        let manifest = create_test_manifest();
+        manager.load_from_skill_manifest(&manifest);
+
+        assert!(manager.get_role("formatter").is_some());
+        assert!(manager.get_role("admin").is_some());
+        assert!(manager.get_role("reviewer").is_some());
+        assert!(manager.get_role("guest").is_some());
+    }
+
+    #[test]
+    fn test_circular_inheritance_protection() {
+        let mut manager = RoleManager::new();
+
+        let role_a = Role::new("role-a", "Role A")
+            .with_servers(vec!["server-a".to_string()])
+            .inherits_from("role-b");
+
+        let role_b = Role::new("role-b", "Role B")
+            .with_servers(vec!["server-b".to_string()])
+            .inherits_from("role-a");
+
+        manager.register_role(role_a);
+        manager.register_role(role_b);
+
+        // Should not infinite loop
+        let chain = manager.get_inheritance_chain("role-a");
+        assert!(chain.len() <= 2);
+    }
+
+    #[test]
+    fn test_multi_level_inheritance() {
+        let mut manager = RoleManager::new();
+
+        let level1 = Role::new("level1", "Level 1")
+            .with_servers(vec!["server1".to_string()]);
+
+        let level2 = Role::new("level2", "Level 2")
+            .with_servers(vec!["server2".to_string()])
+            .inherits_from("level1");
+
+        let level3 = Role::new("level3", "Level 3")
+            .with_servers(vec!["server3".to_string()])
+            .inherits_from("level2");
+
+        manager.register_role(level1);
+        manager.register_role(level2);
+        manager.register_role(level3);
+
+        let chain = manager.get_inheritance_chain("level3");
+        assert_eq!(chain, vec!["level3", "level2", "level1"]);
+
+        let servers = manager.get_effective_servers("level3");
+        assert!(servers.contains(&"server1".to_string()));
+        assert!(servers.contains(&"server2".to_string()));
+        assert!(servers.contains(&"server3".to_string()));
+    }
+
+    #[test]
+    fn test_effective_tool_permissions_inherited() {
+        let mut manager = RoleManager::new();
+
+        let base = Role {
+            id: "base".to_string(),
+            name: "Base".to_string(),
+            description: String::new(),
+            inherits: None,
+            allowed_servers: vec!["*".to_string()],
+            system_instruction: String::new(),
+            remote_instruction: None,
+            tool_permissions: Some(ToolPermissions {
+                allow: vec!["read_file".to_string()],
+                deny: vec![],
+                allow_patterns: vec![],
+                deny_patterns: vec![],
+            }),
+            metadata: None,
+        };
+
+        let child = Role {
+            id: "child".to_string(),
+            name: "Child".to_string(),
+            description: String::new(),
+            inherits: Some("base".to_string()),
+            allowed_servers: vec!["*".to_string()],
+            system_instruction: String::new(),
+            remote_instruction: None,
+            tool_permissions: Some(ToolPermissions {
+                allow: vec!["write_file".to_string()],
+                deny: vec![],
+                allow_patterns: vec![],
+                deny_patterns: vec![],
+            }),
+            metadata: None,
+        };
+
+        manager.register_role(base);
+        manager.register_role(child);
+
+        let perms = manager.get_effective_tool_permissions("child");
+        assert!(perms.allow.contains(&"read_file".to_string()));
+        assert!(perms.allow.contains(&"write_file".to_string()));
+    }
+
+    #[test]
+    fn test_memory_permission_from_skills() {
+        let mut manager = RoleManager::new();
+
+        let manifest = SkillManifest {
+            skills: vec![
+                SkillDefinition {
+                    id: "memory-skill".to_string(),
+                    display_name: "Memory Skill".to_string(),
+                    description: "Has memory access".to_string(),
+                    allowed_roles: vec!["developer".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Isolated,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "admin-memory".to_string(),
+                    display_name: "Admin Memory".to_string(),
+                    description: "Full memory access".to_string(),
+                    allowed_roles: vec!["admin".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::All,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+            ],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+
+        manager.load_from_skill_manifest(&manifest);
+
+        let (dev_policy, _) = manager.get_effective_memory_permission("developer");
+        assert_eq!(dev_policy, MemoryPolicy::Isolated);
+
+        let (admin_policy, _) = manager.get_effective_memory_permission("admin");
+        assert_eq!(admin_policy, MemoryPolicy::All);
+
+        let (guest_policy, _) = manager.get_effective_memory_permission("guest");
+        assert_eq!(guest_policy, MemoryPolicy::None);
+    }
+
+    #[test]
+    fn test_team_memory_roles_merged() {
+        let mut manager = RoleManager::new();
+
+        let manifest = SkillManifest {
+            skills: vec![
+                SkillDefinition {
+                    id: "team-skill-1".to_string(),
+                    display_name: "Team 1".to_string(),
+                    description: "Team access".to_string(),
+                    allowed_roles: vec!["lead".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Team,
+                        memory_team_roles: vec!["frontend".to_string()],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "team-skill-2".to_string(),
+                    display_name: "Team 2".to_string(),
+                    description: "More team access".to_string(),
+                    allowed_roles: vec!["lead".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Team,
+                        memory_team_roles: vec!["backend".to_string()],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+            ],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+
+        manager.load_from_skill_manifest(&manifest);
+
+        let (policy, team_roles) = manager.get_effective_memory_permission("lead");
+        assert_eq!(policy, MemoryPolicy::Team);
+        assert!(team_roles.contains(&"frontend".to_string()));
+        assert!(team_roles.contains(&"backend".to_string()));
+    }
+
+    #[test]
+    fn test_default_role() {
+        let mut manager = RoleManager::new();
+        assert_eq!(manager.default_role(), "guest");
+
+        manager.set_default_role("admin");
+        assert_eq!(manager.default_role(), "admin");
+    }
+
+    #[test]
+    fn test_get_role_ids() {
+        let mut manager = RoleManager::new();
+        manager.register_role(Role::new("admin", "Admin"));
+        manager.register_role(Role::new("user", "User"));
+
+        let ids = manager.get_role_ids();
+        assert!(ids.contains(&"admin"));
+        assert!(ids.contains(&"user"));
     }
 }

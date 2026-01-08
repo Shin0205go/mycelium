@@ -66,6 +66,72 @@ pub struct SkillMetadata {
     pub tags: Vec<String>,
 }
 
+/// A2A skill-based identity configuration
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillIdentityConfig {
+    /// Skill matching rules for role assignment
+    #[serde(default)]
+    pub skill_matching: Vec<SkillMatchRule>,
+
+    /// Trusted agent name prefixes
+    #[serde(default)]
+    pub trusted_prefixes: Vec<String>,
+}
+
+/// Rule for matching agent skills to roles
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillMatchRule {
+    /// Role to assign when rule matches
+    pub role: String,
+
+    /// All these skills must be present (AND logic)
+    #[serde(default)]
+    pub required_skills: Vec<String>,
+
+    /// At least minSkillMatch of these must be present (OR logic)
+    #[serde(default)]
+    pub any_skills: Vec<String>,
+
+    /// Minimum number of any_skills required (default: 1)
+    #[serde(default = "default_min_skill_match")]
+    pub min_skill_match: usize,
+
+    /// Skills that block this rule if present
+    #[serde(default)]
+    pub forbidden_skills: Vec<String>,
+
+    /// Time-based access control
+    pub context: Option<RuleContext>,
+
+    /// Optional description
+    pub description: Option<String>,
+
+    /// Priority (higher = checked first)
+    #[serde(default)]
+    pub priority: i32,
+}
+
+fn default_min_skill_match() -> usize {
+    1
+}
+
+/// Time-based access control conditions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleContext {
+    /// Time range (e.g., "09:00-18:00")
+    pub allowed_time: Option<String>,
+
+    /// Days of week (0=Sunday, 6=Saturday)
+    #[serde(default)]
+    pub allowed_days: Vec<u8>,
+
+    /// IANA timezone (e.g., "Asia/Tokyo")
+    pub timezone: Option<String>,
+}
+
 /// Base skill definition from Skill MCP Server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,6 +155,9 @@ pub struct SkillDefinition {
 
     /// Capability grants (memory, etc.)
     pub grants: Option<SkillGrants>,
+
+    /// A2A identity configuration
+    pub identity: Option<SkillIdentityConfig>,
 
     /// Skill metadata
     pub metadata: Option<SkillMetadata>,
@@ -212,6 +281,7 @@ mod tests {
             allowed_roles: vec!["admin".to_string(), "developer".to_string()],
             allowed_tools: vec![],
             grants: None,
+            identity: None,
             metadata: None,
         };
 
@@ -229,10 +299,42 @@ mod tests {
             allowed_roles: vec!["*".to_string()],
             allowed_tools: vec![],
             grants: None,
+            identity: None,
             metadata: None,
         };
 
         assert!(skill.is_universal());
         assert!(skill.allows_role("any-role"));
+    }
+
+    #[test]
+    fn test_skill_with_identity() {
+        let skill = SkillDefinition {
+            id: "admin-skill".to_string(),
+            display_name: "Admin Skill".to_string(),
+            description: "Admin tools".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec!["*".to_string()],
+            grants: None,
+            identity: Some(SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "admin".to_string(),
+                    required_skills: vec!["admin_access".to_string()],
+                    any_skills: vec![],
+                    min_skill_match: 1,
+                    forbidden_skills: vec![],
+                    context: None,
+                    description: None,
+                    priority: 100,
+                }],
+                trusted_prefixes: vec!["claude-".to_string()],
+            }),
+            metadata: None,
+        };
+
+        assert!(skill.identity.is_some());
+        let identity = skill.identity.unwrap();
+        assert_eq!(identity.skill_matching.len(), 1);
+        assert_eq!(identity.trusted_prefixes, vec!["claude-"]);
     }
 }
