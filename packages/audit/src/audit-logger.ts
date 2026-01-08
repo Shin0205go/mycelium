@@ -3,7 +3,7 @@
 // Records all tool access attempts for compliance and debugging
 // ============================================================================
 
-import { Logger } from '@aegis/shared';
+import { Logger, ThinkingSignature } from '@aegis/shared';
 import { EventEmitter } from 'events';
 
 /**
@@ -40,6 +40,13 @@ export interface AuditLogEntry {
   /** Execution duration in ms (for allowed calls) */
   durationMs?: number;
 
+  /**
+   * Thinking signature from the model's reasoning process.
+   * Captures "why" the tool was called for transparency and compliance.
+   * Available when Claude Opus 4.5 or other models with extended thinking are used.
+   */
+  thinking?: ThinkingSignature;
+
   /** Additional metadata */
   metadata?: Record<string, unknown>;
 }
@@ -68,6 +75,12 @@ export interface AuditQueryOptions {
 
   /** Offset for pagination */
   offset?: number;
+
+  /** Filter by thinking presence */
+  hasThinking?: boolean;
+
+  /** Filter by thinking type */
+  thinkingType?: 'extended_thinking' | 'chain_of_thought' | 'reasoning';
 }
 
 /**
@@ -95,6 +108,28 @@ export interface AuditStats {
 
   /** Average execution time for allowed calls */
   avgExecutionTimeMs: number;
+
+  /** Thinking signature statistics */
+  thinkingStats: {
+    /** Entries with thinking signature */
+    entriesWithThinking: number;
+
+    /** Percentage of entries with thinking */
+    thinkingCoverageRate: number;
+
+    /** Total thinking tokens used */
+    totalThinkingTokens: number;
+
+    /** Average thinking tokens per entry */
+    avgThinkingTokens: number;
+
+    /** Breakdown by thinking type */
+    byType: {
+      extended_thinking: number;
+      chain_of_thought: number;
+      reasoning: number;
+    };
+  };
 }
 
 /**
@@ -179,23 +214,28 @@ export class AuditLogger extends EventEmitter {
     this.emit('logged', fullEntry);
 
     // Log to console based on result
+    const hasThinking = !!fullEntry.thinking;
     if (fullEntry.result === 'denied') {
       this.logger.warn('🚫 Access denied', {
         role: fullEntry.role,
         tool: fullEntry.tool,
         reason: fullEntry.reason,
+        hasThinking,
       });
     } else if (fullEntry.result === 'error') {
       this.logger.error('❌ Tool error', {
         role: fullEntry.role,
         tool: fullEntry.tool,
         reason: fullEntry.reason,
+        hasThinking,
       });
     } else {
       this.logger.debug('✅ Access allowed', {
         role: fullEntry.role,
         tool: fullEntry.tool,
         durationMs: fullEntry.durationMs,
+        hasThinking,
+        thinkingTokens: fullEntry.thinking?.thinkingTokens,
       });
     }
 
@@ -212,7 +252,8 @@ export class AuditLogger extends EventEmitter {
     sourceServer: string,
     args: Record<string, unknown>,
     durationMs?: number,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    thinking?: ThinkingSignature
   ): AuditLogEntry {
     return this.log({
       sessionId,
@@ -222,6 +263,7 @@ export class AuditLogger extends EventEmitter {
       args,
       result: 'allowed',
       durationMs,
+      thinking,
       metadata,
     });
   }
@@ -236,7 +278,8 @@ export class AuditLogger extends EventEmitter {
     sourceServer: string,
     args: Record<string, unknown>,
     reason: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    thinking?: ThinkingSignature
   ): AuditLogEntry {
     return this.log({
       sessionId,
@@ -246,6 +289,7 @@ export class AuditLogger extends EventEmitter {
       args,
       result: 'denied',
       reason,
+      thinking,
       metadata,
     });
   }
@@ -260,7 +304,8 @@ export class AuditLogger extends EventEmitter {
     sourceServer: string,
     args: Record<string, unknown>,
     error: string,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
+    thinking?: ThinkingSignature
   ): AuditLogEntry {
     return this.log({
       sessionId,
@@ -270,6 +315,7 @@ export class AuditLogger extends EventEmitter {
       args,
       result: 'error',
       reason: error,
+      thinking,
       metadata,
     });
   }
@@ -295,6 +341,14 @@ export class AuditLogger extends EventEmitter {
     }
     if (options.endTime) {
       results = results.filter((e) => e.timestamp <= options.endTime!);
+    }
+    // Filter by thinking presence
+    if (options.hasThinking !== undefined) {
+      results = results.filter((e) => (!!e.thinking) === options.hasThinking);
+    }
+    // Filter by thinking type
+    if (options.thinkingType) {
+      results = results.filter((e) => e.thinking?.type === options.thinkingType);
     }
 
     // Sort by timestamp descending (most recent first)
@@ -323,6 +377,15 @@ export class AuditLogger extends EventEmitter {
     let totalExecutionTime = 0;
     let executionCount = 0;
 
+    // Thinking statistics
+    let entriesWithThinking = 0;
+    let totalThinkingTokens = 0;
+    const thinkingByType = {
+      extended_thinking: 0,
+      chain_of_thought: 0,
+      reasoning: 0,
+    };
+
     for (const entry of this.logs) {
       // Count by result
       byResult[entry.result]++;
@@ -337,6 +400,15 @@ export class AuditLogger extends EventEmitter {
       if (entry.durationMs !== undefined) {
         totalExecutionTime += entry.durationMs;
         executionCount++;
+      }
+
+      // Thinking statistics
+      if (entry.thinking) {
+        entriesWithThinking++;
+        totalThinkingTokens += entry.thinking.thinkingTokens ?? 0;
+        if (entry.thinking.type) {
+          thinkingByType[entry.thinking.type]++;
+        }
       }
     }
 
@@ -363,6 +435,13 @@ export class AuditLogger extends EventEmitter {
       topRoles,
       denialRate,
       avgExecutionTimeMs,
+      thinkingStats: {
+        entriesWithThinking,
+        thinkingCoverageRate: totalEntries > 0 ? entriesWithThinking / totalEntries : 0,
+        totalThinkingTokens,
+        avgThinkingTokens: entriesWithThinking > 0 ? totalThinkingTokens / entriesWithThinking : 0,
+        byType: thinkingByType,
+      },
     };
   }
 
@@ -371,6 +450,13 @@ export class AuditLogger extends EventEmitter {
    */
   getRecentDenials(limit: number = 10): AuditLogEntry[] {
     return this.query({ result: 'denied', limit });
+  }
+
+  /**
+   * Get entries with thinking signatures (useful for transparency analysis)
+   */
+  getEntriesWithThinking(limit: number = 50): AuditLogEntry[] {
+    return this.query({ hasThinking: true, limit });
   }
 
   /**
@@ -394,6 +480,9 @@ export class AuditLogger extends EventEmitter {
       'result',
       'reason',
       'durationMs',
+      'hasThinking',
+      'thinkingType',
+      'thinkingTokens',
     ];
     const lines = [headers.join(',')];
 
@@ -408,11 +497,47 @@ export class AuditLogger extends EventEmitter {
         entry.result,
         entry.reason ?? '',
         entry.durationMs?.toString() ?? '',
+        entry.thinking ? 'true' : 'false',
+        entry.thinking?.type ?? '',
+        entry.thinking?.thinkingTokens?.toString() ?? '',
       ];
       lines.push(row.map((v) => `"${v}"`).join(','));
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Export thinking signatures as a separate report (for transparency audits)
+   */
+  exportThinkingReport(): string {
+    const entriesWithThinking = this.logs.filter((e) => e.thinking);
+
+    const report = {
+      generatedAt: new Date().toISOString(),
+      totalEntries: this.logs.length,
+      entriesWithThinking: entriesWithThinking.length,
+      thinkingCoverageRate:
+        this.logs.length > 0 ? entriesWithThinking.length / this.logs.length : 0,
+      entries: entriesWithThinking.map((entry) => ({
+        id: entry.id,
+        timestamp: entry.timestamp.toISOString(),
+        role: entry.role,
+        tool: entry.tool,
+        result: entry.result,
+        thinking: {
+          type: entry.thinking!.type,
+          modelId: entry.thinking!.modelId,
+          thinkingTokens: entry.thinking!.thinkingTokens,
+          summary: entry.thinking!.summary,
+          // Include first 500 characters of thinking for review
+          thinkingPreview: entry.thinking!.thinking.slice(0, 500),
+          fullThinkingLength: entry.thinking!.thinking.length,
+        },
+      })),
+    };
+
+    return JSON.stringify(report, null, 2);
   }
 
   /**

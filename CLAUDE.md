@@ -400,14 +400,14 @@ Tests use Vitest and are distributed across packages (34 test files):
 
 | Package | Test Files | Description |
 |---------|------------|-------------|
-| `@aegis/core` | 18 | Router, MCP client, tool discovery, rate limiting, audit logging, agent |
+| `@aegis/core` | 18 | Router, MCP client, tool discovery, rate limiting, audit logging, agent, **thinking extraction** |
 | `@aegis/rbac` | 9 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
 | `@aegis/a2a` | 2 | IdentityResolver, types for A2A capability-based matching |
 | `@aegis/cli` | 1 | CLI command tests |
 | `@aegis/shared` | 1 | Error classes, type exports |
 | `@aegis/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
 | `@aegis/gateway` | 1 | Gateway constants |
-| `@aegis/audit` | 1 | Audit constants |
+| `@aegis/audit` | 2 | Audit constants, **thinking signature capture** |
 
 ```bash
 # Run all tests (from root)
@@ -984,6 +984,131 @@ const denials = router.getRecentDenials(10);
 // Export for compliance
 const csv = router.exportAuditLogsCsv();
 const json = router.exportAuditLogs();
+```
+
+### Thinking Signature (Extended Thinking Transparency)
+
+AEGIS supports capturing the "thinking" process from Claude Opus 4.5 and other models with extended thinking. This provides complete transparency about "why" an operation was performed.
+
+#### What is Thinking Signature?
+
+When Claude Opus 4.5 uses extended thinking, the model's reasoning process is captured and stored in the audit log alongside each tool call. This enables:
+
+- **Transparency**: Complete visibility into the model's decision-making
+- **Compliance**: Auditable records of why operations were performed
+- **Debugging**: Understanding unexpected behavior through reasoning analysis
+- **Security**: Detecting suspicious reasoning patterns
+
+#### ThinkingSignature Interface
+
+```typescript
+interface ThinkingSignature {
+  /** The full thinking content from the model */
+  thinking: string;
+
+  /** Model that produced this thinking (e.g., 'claude-opus-4-5-20251101') */
+  modelId?: string;
+
+  /** Number of thinking tokens used */
+  thinkingTokens?: number;
+
+  /** Timestamp when thinking was captured */
+  capturedAt: Date;
+
+  /** Optional summarized version */
+  summary?: string;
+
+  /** Type: 'extended_thinking', 'chain_of_thought', or 'reasoning' */
+  type: 'extended_thinking' | 'chain_of_thought' | 'reasoning';
+
+  /** Cache metrics from the API call */
+  cacheMetrics?: {
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+  };
+}
+```
+
+#### Capturing Thinking in Tool Calls
+
+```typescript
+// Method 1: Set thinking context before tool call
+router.setThinkingContext({
+  thinking: "I need to read the file to understand the code structure...",
+  type: 'extended_thinking',
+  modelId: 'claude-opus-4-5-20251101',
+  capturedAt: new Date(),
+});
+await router.executeToolCall('filesystem__read_file', { path: '/src/index.ts' });
+
+// Method 2: Pass thinking directly to executeToolCall
+await router.executeToolCall(
+  'filesystem__write_file',
+  { path: '/src/config.ts', content: '...' },
+  {
+    thinking: "The user wants to update the configuration...",
+    type: 'extended_thinking',
+    capturedAt: new Date(),
+  }
+);
+```
+
+#### Extracting Thinking from Agent SDK Messages
+
+```typescript
+import {
+  extractThinkingFromMessage,
+  createThinkingSignature,
+  hasThinkingContent
+} from '@aegis/core';
+
+for await (const message of queryResult) {
+  // Check if message has thinking blocks
+  if (hasThinkingContent(message)) {
+    const extracted = extractThinkingFromMessage(message, 'claude-opus-4-5-20251101');
+
+    if (extracted && extracted.hasToolUse) {
+      // Capture thinking before tool call is executed
+      router.setThinkingContext(createThinkingSignature(extracted, thinkingTokens));
+    }
+  }
+}
+```
+
+#### Accessing Thinking in Audit Logs
+
+```typescript
+// Get entries with thinking signatures
+const entriesWithThinking = router.getEntriesWithThinking(50);
+
+// Get thinking statistics
+const thinkingStats = router.getThinkingStats();
+// Returns: {
+//   entriesWithThinking: 42,
+//   thinkingCoverageRate: 0.75,
+//   totalThinkingTokens: 15000,
+//   avgThinkingTokens: 357,
+//   byType: { extended_thinking: 40, chain_of_thought: 2, reasoning: 0 }
+// }
+
+// Export detailed thinking report for audits
+const report = router.exportThinkingReport();
+```
+
+#### Query Audit Logs by Thinking
+
+```typescript
+// Query entries with thinking
+const withThinking = auditLogger.query({
+  hasThinking: true,
+  result: 'allowed',
+  limit: 100
+});
+
+// Query by thinking type
+const extendedThinking = auditLogger.query({
+  thinkingType: 'extended_thinking'
+});
 ```
 
 ### Using Role Memory

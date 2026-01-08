@@ -348,6 +348,63 @@ export interface RoleManifest {
 }
 
 // ============================================================================
+// Thinking Signature Types (Extended Thinking / Chain-of-Thought)
+// ============================================================================
+
+/**
+ * Thinking signature captured from Claude's extended thinking process.
+ * Provides transparency about "why" an operation was performed.
+ *
+ * When Claude Opus 4.5 or other models with extended thinking are used,
+ * the thinking process is captured and included in audit logs.
+ */
+export interface ThinkingSignature {
+  /** The full thinking content from the model */
+  thinking: string;
+
+  /** Model that produced this thinking */
+  modelId?: string;
+
+  /** Number of thinking tokens used (if available) */
+  thinkingTokens?: number;
+
+  /** Timestamp when thinking was captured */
+  capturedAt: Date;
+
+  /** Optional summarized version of the thinking */
+  summary?: string;
+
+  /** Signature type: 'extended_thinking' for Opus 4.5, 'chain_of_thought' for explicit CoT */
+  type: 'extended_thinking' | 'chain_of_thought' | 'reasoning';
+
+  /** Cache metrics from the API call (if available) */
+  cacheMetrics?: {
+    /** Tokens read from cache */
+    cacheReadTokens?: number;
+    /** Tokens written to cache */
+    cacheCreationTokens?: number;
+  };
+}
+
+/**
+ * Tool call context with optional thinking signature.
+ * Used when routing tool calls through AEGIS.
+ */
+export interface ToolCallContext {
+  /** Thinking signature from the model, if available */
+  thinking?: ThinkingSignature;
+
+  /** Agent name that initiated the tool call */
+  agentName?: string;
+
+  /** Request ID for correlation */
+  requestId?: string;
+
+  /** Additional context metadata */
+  metadata?: Record<string, unknown>;
+}
+
+// ============================================================================
 // MCP Server Configuration Types
 // ============================================================================
 
