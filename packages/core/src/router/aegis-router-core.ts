@@ -27,6 +27,7 @@ import type {
   IdentityResolution,
   IdentityConfig
 } from '../types/router-types.js';
+import type { ThinkingSignature, ToolCallContext } from '@aegis/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -105,6 +106,10 @@ export class AegisRouterCore extends EventEmitter {
 
   // A2A mode: when true, set_role tool is disabled
   private a2aMode: boolean = false;
+
+  // Current thinking context for the next tool call
+  // Set this before executeToolCall to capture "why" in audit logs
+  private pendingThinkingContext: ThinkingSignature | null = null;
 
   constructor(
     logger: Logger,
@@ -1230,15 +1235,27 @@ export class AegisRouterCore extends EventEmitter {
 
   /**
    * Execute a tool call with audit logging and rate limiting
+   * @param toolName - The tool to execute
+   * @param args - Tool arguments
+   * @param thinking - Optional thinking signature to capture in audit log
    */
   async executeToolCall(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    thinking?: ThinkingSignature
   ): Promise<any> {
     const roleId = this.state.currentRole?.id || 'none';
     const sessionId = this.state.metadata.sessionId;
     const toolInfo = this.toolVisibility.getToolInfo(toolName);
     const sourceServer = toolInfo?.sourceServer || 'unknown';
+
+    // Use provided thinking or pending context
+    const thinkingSignature = thinking || this.pendingThinkingContext;
+
+    // Clear pending context after use
+    if (this.pendingThinkingContext) {
+      this.pendingThinkingContext = null;
+    }
 
     // Check access (throws if denied)
     this.checkToolAccess(toolName);
@@ -1252,7 +1269,7 @@ export class AegisRouterCore extends EventEmitter {
       // Route the call
       const result = await this.routeToolCall(toolName, args);
 
-      // Log success
+      // Log success with thinking signature
       const durationMs = Date.now() - startTime;
       this.auditLogger.logAllowed(
         sessionId,
@@ -1260,19 +1277,23 @@ export class AegisRouterCore extends EventEmitter {
         toolName,
         sourceServer,
         args,
-        durationMs
+        durationMs,
+        undefined, // metadata
+        thinkingSignature ?? undefined
       );
 
       return result;
     } catch (error) {
-      // Log error
+      // Log error with thinking signature
       this.auditLogger.logError(
         sessionId,
         roleId,
         toolName,
         sourceServer,
         args,
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error ? error.message : String(error),
+        undefined, // metadata
+        thinkingSignature ?? undefined
       );
       throw error;
     } finally {
@@ -1460,6 +1481,77 @@ export class AegisRouterCore extends EventEmitter {
    */
   exportAuditLogsCsv(): string {
     return this.auditLogger.exportCsv();
+  }
+
+  // ============================================================================
+  // Thinking Signature Management
+  // ============================================================================
+
+  /**
+   * Set thinking context for the next tool call.
+   * This captures "why" the operation is being performed.
+   *
+   * @param thinking - The thinking signature from the model
+   *
+   * @example
+   * ```typescript
+   * router.setThinkingContext({
+   *   thinking: "I need to read the file to understand the code structure...",
+   *   type: 'extended_thinking',
+   *   modelId: 'claude-opus-4-5-20251101',
+   *   capturedAt: new Date(),
+   * });
+   * await router.executeToolCall('filesystem__read_file', { path: '/src/index.ts' });
+   * ```
+   */
+  setThinkingContext(thinking: ThinkingSignature): void {
+    this.pendingThinkingContext = thinking;
+    this.logger.debug('Thinking context set', {
+      type: thinking.type,
+      modelId: thinking.modelId,
+      thinkingTokens: thinking.thinkingTokens,
+      thinkingLength: thinking.thinking.length,
+    });
+  }
+
+  /**
+   * Clear any pending thinking context without using it.
+   */
+  clearThinkingContext(): void {
+    if (this.pendingThinkingContext) {
+      this.logger.debug('Thinking context cleared without use');
+      this.pendingThinkingContext = null;
+    }
+  }
+
+  /**
+   * Check if there is a pending thinking context.
+   */
+  hasThinkingContext(): boolean {
+    return this.pendingThinkingContext !== null;
+  }
+
+  /**
+   * Get audit entries that have thinking signatures (for transparency analysis).
+   */
+  getEntriesWithThinking(limit: number = 50) {
+    return this.auditLogger.getEntriesWithThinking(limit);
+  }
+
+  /**
+   * Export a detailed thinking report for transparency audits.
+   * This includes all entries with thinking signatures and their reasoning.
+   */
+  exportThinkingReport(): string {
+    return this.auditLogger.exportThinkingReport();
+  }
+
+  /**
+   * Get thinking statistics from audit logs.
+   */
+  getThinkingStats() {
+    const stats = this.auditLogger.getStats();
+    return stats.thinkingStats;
   }
 }
 

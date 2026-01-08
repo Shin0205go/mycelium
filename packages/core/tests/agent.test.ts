@@ -13,7 +13,12 @@ import {
   extractTextFromMessage,
   isToolUseMessage,
   getToolUseInfo,
-  type AgentConfig
+  hasThinkingContent,
+  extractThinkingFromMessage,
+  createThinkingSignature,
+  combineThinkingFromMessages,
+  type AgentConfig,
+  type ExtractedThinking
 } from '../src/agent.js';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 
@@ -548,5 +553,332 @@ describe('getToolUseInfo', () => {
     const result = getToolUseInfo(message);
 
     expect(result).toEqual([]);
+  });
+});
+
+// ============================================================================
+// Thinking Signature Extraction Tests (Extended Thinking Support)
+// ============================================================================
+
+describe('hasThinkingContent', () => {
+  it('should return true for message with thinking block', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'I need to analyze this...' }
+        ]
+      }
+    } as SDKMessage;
+
+    expect(hasThinkingContent(message)).toBe(true);
+  });
+
+  it('should return true for message with thinking and text blocks', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'Let me think...' },
+          { type: 'text', text: 'Here is my response' }
+        ]
+      }
+    } as SDKMessage;
+
+    expect(hasThinkingContent(message)).toBe(true);
+  });
+
+  it('should return false for message without thinking block', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'Just text' }
+        ]
+      }
+    } as SDKMessage;
+
+    expect(hasThinkingContent(message)).toBe(false);
+  });
+
+  it('should return false for non-assistant messages', () => {
+    const message = {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'thinking' }
+        ]
+      }
+    } as SDKMessage;
+
+    expect(hasThinkingContent(message)).toBe(false);
+  });
+
+  it('should return false when message has no content', () => {
+    const message = {
+      type: 'assistant',
+      message: {}
+    } as SDKMessage;
+
+    expect(hasThinkingContent(message)).toBe(false);
+  });
+});
+
+describe('extractThinkingFromMessage', () => {
+  it('should extract thinking content from assistant message', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'I need to read the file first' }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result).not.toBeNull();
+    expect(result?.thinking).toBe('I need to read the file first');
+    expect(result?.hasToolUse).toBe(false);
+  });
+
+  it('should combine multiple thinking blocks', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'First, analyze the problem' },
+          { type: 'thinking', thinking: 'Then, consider the solution' }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result?.thinking).toBe('First, analyze the problem\n\nThen, consider the solution');
+  });
+
+  it('should detect tool_use alongside thinking', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'I should read this file' },
+          { type: 'tool_use', id: '123', name: 'read_file', input: { path: '/test.ts' } }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result?.hasToolUse).toBe(true);
+  });
+
+  it('should include provided modelId', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'thinking' }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message, 'claude-opus-4-5-20251101');
+
+    expect(result?.modelId).toBe('claude-opus-4-5-20251101');
+  });
+
+  it('should extract modelId from message if not provided', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'thinking' }
+        ],
+        model: 'claude-3-opus'
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result?.modelId).toBe('claude-3-opus');
+  });
+
+  it('should return null for non-assistant messages', () => {
+    const message = {
+      type: 'user',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'thinking' }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result).toBeNull();
+  });
+
+  it('should return null when no thinking blocks', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'text', text: 'Just text' }
+        ]
+      }
+    } as SDKMessage;
+
+    const result = extractThinkingFromMessage(message);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('createThinkingSignature', () => {
+  it('should create a valid thinking signature', () => {
+    const extracted: ExtractedThinking = {
+      thinking: 'I analyzed the code and found a bug',
+      hasToolUse: true,
+      modelId: 'claude-opus-4-5-20251101'
+    };
+
+    const signature = createThinkingSignature(extracted, 150);
+
+    expect(signature.thinking).toBe('I analyzed the code and found a bug');
+    expect(signature.type).toBe('extended_thinking');
+    expect(signature.modelId).toBe('claude-opus-4-5-20251101');
+    expect(signature.thinkingTokens).toBe(150);
+    expect(signature.capturedAt).toBeInstanceOf(Date);
+  });
+
+  it('should work without thinking tokens', () => {
+    const extracted: ExtractedThinking = {
+      thinking: 'Simple thinking',
+      hasToolUse: false
+    };
+
+    const signature = createThinkingSignature(extracted);
+
+    expect(signature.thinking).toBe('Simple thinking');
+    expect(signature.thinkingTokens).toBeUndefined();
+  });
+});
+
+describe('combineThinkingFromMessages', () => {
+  it('should combine thinking from multiple messages', () => {
+    const messages: SDKMessage[] = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'First thought' }
+          ]
+        }
+      } as SDKMessage,
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'Some text' }
+          ]
+        }
+      } as SDKMessage,
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'Second thought' },
+            { type: 'tool_use', id: '1', name: 'test', input: {} }
+          ]
+        }
+      } as SDKMessage
+    ];
+
+    const result = combineThinkingFromMessages(messages);
+
+    expect(result).not.toBeNull();
+    expect(result?.thinking).toBe('First thought\n\n---\n\nSecond thought');
+    expect(result?.hasToolUse).toBe(true);
+  });
+
+  it('should return null when no messages have thinking', () => {
+    const messages: SDKMessage[] = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'Just text' }
+          ]
+        }
+      } as SDKMessage
+    ];
+
+    const result = combineThinkingFromMessages(messages);
+
+    expect(result).toBeNull();
+  });
+
+  it('should capture modelId from messages', () => {
+    const messages: SDKMessage[] = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'thinking' }
+          ],
+          model: 'claude-3-opus'
+        }
+      } as SDKMessage
+    ];
+
+    const result = combineThinkingFromMessages(messages);
+
+    expect(result?.modelId).toBe('claude-3-opus');
+  });
+
+  it('should use provided modelId over message modelId', () => {
+    const messages: SDKMessage[] = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'thinking' }
+          ],
+          model: 'claude-3-opus'
+        }
+      } as SDKMessage
+    ];
+
+    const result = combineThinkingFromMessages(messages, 'override-model');
+
+    expect(result?.modelId).toBe('override-model');
+  });
+
+  it('should detect tool use across any message', () => {
+    const messages: SDKMessage[] = [
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'thinking only' }
+          ]
+        }
+      } as SDKMessage,
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: 'thinking with tool' },
+            { type: 'tool_use', id: '1', name: 'test', input: {} }
+          ]
+        }
+      } as SDKMessage
+    ];
+
+    const result = combineThinkingFromMessages(messages);
+
+    expect(result?.hasToolUse).toBe(true);
   });
 });
