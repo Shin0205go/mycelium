@@ -456,4 +456,234 @@ mod tests {
         let tool = Tool::new("test").with_description("");
         assert_eq!(tool.description, Some("".to_string()));
     }
+
+    // ============== Additional Tests ==============
+
+    mod additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_tool_with_complex_schema() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "options": {
+                        "type": "object",
+                        "properties": {
+                            "encoding": {"type": "string", "enum": ["utf8", "binary"]},
+                            "overwrite": {"type": "boolean"}
+                        }
+                    }
+                },
+                "required": ["path"]
+            });
+
+            let tool = Tool::new("write_file").with_schema(schema.clone());
+            assert_eq!(tool.input_schema, schema);
+        }
+
+        #[test]
+        fn test_toolinfo_extract_parts() {
+            let tool = Tool::new("read_file");
+            let info = ToolInfo::new(tool, "filesystem");
+
+            // Verify we can extract parts from prefixed name
+            let parts: Vec<&str> = info.prefixed_name.split("__").collect();
+            assert_eq!(parts.len(), 2);
+            assert_eq!(parts[0], "filesystem");
+            assert_eq!(parts[1], "read_file");
+        }
+
+        #[test]
+        fn test_tool_eq() {
+            let tool1 = Tool::new("test").with_description("desc");
+            let tool2 = Tool::new("test").with_description("desc");
+            let tool3 = Tool::new("other");
+
+            assert_eq!(tool1.name, tool2.name);
+            assert_ne!(tool1.name, tool3.name);
+        }
+
+        #[test]
+        fn test_tool_debug_format() {
+            let tool = Tool::new("debug_test").with_description("A test");
+            let debug = format!("{:?}", tool);
+
+            assert!(debug.contains("Tool"));
+            assert!(debug.contains("debug_test"));
+        }
+
+        #[test]
+        fn test_toolinfo_debug_format() {
+            let tool = Tool::new("test");
+            let info = ToolInfo::new(tool, "server");
+            let debug = format!("{:?}", info);
+
+            assert!(debug.contains("ToolInfo"));
+            assert!(debug.contains("server__test"));
+        }
+
+        #[test]
+        fn test_tool_clone() {
+            let original = Tool::new("clone_test")
+                .with_description("To be cloned")
+                .with_schema(serde_json::json!({"type": "object"}));
+
+            let cloned = original.clone();
+
+            assert_eq!(cloned.name, original.name);
+            assert_eq!(cloned.description, original.description);
+            assert_eq!(cloned.input_schema, original.input_schema);
+        }
+
+        #[test]
+        fn test_toolinfo_clone() {
+            let tool = Tool::new("test");
+            let info = ToolInfo::new(tool, "server");
+            let cloned = info.clone();
+
+            assert_eq!(cloned.prefixed_name, info.prefixed_name);
+            assert_eq!(cloned.source_server, info.source_server);
+        }
+
+        #[test]
+        fn test_tool_empty_name() {
+            let tool = Tool::new("");
+            assert!(tool.name.is_empty());
+            assert!(tool.description.is_none());
+        }
+
+        #[test]
+        fn test_toolinfo_empty_server_and_tool() {
+            let tool = Tool::new("");
+            let info = ToolInfo::new(tool, "");
+            assert_eq!(info.prefixed_name, "__");
+            assert!(info.source_server.is_empty());
+        }
+
+        #[test]
+        fn test_tool_serialize_deserialize() {
+            let tool = Tool::new("serializable")
+                .with_description("Can be serialized")
+                .with_schema(serde_json::json!({"type": "string"}));
+
+            let json = serde_json::to_string(&tool).unwrap();
+            let restored: Tool = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(restored.name, tool.name);
+            assert_eq!(restored.description, tool.description);
+        }
+
+        #[test]
+        fn test_toolinfo_serialize_deserialize() {
+            let tool = Tool::new("test");
+            let info = ToolInfo::new(tool, "server");
+
+            let json = serde_json::to_string(&info).unwrap();
+            let restored: ToolInfo = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(restored.prefixed_name, info.prefixed_name);
+            assert_eq!(restored.source_server, info.source_server);
+        }
+
+        #[test]
+        fn test_multiple_tools_same_server() {
+            let server = "filesystem";
+            let tools = vec![
+                ToolInfo::new(Tool::new("read"), server),
+                ToolInfo::new(Tool::new("write"), server),
+                ToolInfo::new(Tool::new("delete"), server),
+            ];
+
+            for info in &tools {
+                assert_eq!(info.source_server, server);
+                assert!(info.prefixed_name.starts_with("filesystem__"));
+            }
+        }
+
+        #[test]
+        fn test_same_tool_different_servers() {
+            let tool_name = "list";
+            let info1 = ToolInfo::new(Tool::new(tool_name), "server1");
+            let info2 = ToolInfo::new(Tool::new(tool_name), "server2");
+
+            assert_eq!(info1.prefixed_name, "server1__list");
+            assert_eq!(info2.prefixed_name, "server2__list");
+            assert_ne!(info1.prefixed_name, info2.prefixed_name);
+        }
+
+        #[test]
+        fn test_system_tool_set_role_properties() {
+            let tool = system_tools::set_role();
+
+            assert_eq!(tool.name, "set_role");
+            assert!(tool.input_schema.is_object());
+
+            let props = &tool.input_schema["properties"];
+            assert!(props.get("role_id").is_some());
+        }
+
+        #[test]
+        fn test_system_tool_list_roles_properties() {
+            let tool = system_tools::list_roles();
+
+            assert_eq!(tool.name, "list_roles");
+            assert!(tool.description.is_some());
+        }
+
+        #[test]
+        fn test_empty_server_name() {
+            let tool = Tool::new("test");
+            let info = ToolInfo::new(tool, "");
+
+            assert_eq!(info.source_server, "");
+            assert_eq!(info.prefixed_name, "__test");
+        }
+
+        #[test]
+        fn test_tool_name_with_spaces() {
+            let tool = Tool::new("tool with spaces");
+            assert_eq!(tool.name, "tool with spaces");
+        }
+
+        #[test]
+        fn test_server_name_with_spaces() {
+            let tool = Tool::new("test");
+            let info = ToolInfo::new(tool, "server name");
+
+            assert_eq!(info.source_server, "server name");
+            assert_eq!(info.prefixed_name, "server name__test");
+        }
+
+        #[test]
+        fn test_tool_with_multiline_description() {
+            let desc = "Line 1\nLine 2\nLine 3";
+            let tool = Tool::new("multiline").with_description(desc);
+
+            assert_eq!(tool.description, Some(desc.to_string()));
+        }
+
+        #[test]
+        fn test_tool_schema_with_array_type() {
+            let schema = serde_json::json!({
+                "type": "array",
+                "items": {"type": "string"}
+            });
+
+            let tool = Tool::new("array_tool").with_schema(schema.clone());
+            assert_eq!(tool.input_schema["type"], "array");
+        }
+
+        #[test]
+        fn test_toolinfo_get_tool() {
+            let tool = Tool::new("original").with_description("desc");
+            let info = ToolInfo::new(tool.clone(), "server");
+
+            // Should be able to access the underlying tool
+            assert_eq!(info.tool.name, "original");
+            assert_eq!(info.tool.description, Some("desc".to_string()));
+        }
+    }
 }
