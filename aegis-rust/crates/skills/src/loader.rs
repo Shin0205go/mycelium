@@ -663,4 +663,411 @@ example: code
         assert_eq!(loader.skills().len(), 1);
         assert_eq!(loader.skills()[0].id, "rich-md");
     }
+
+    // ============== Additional Edge Cases ==============
+
+    #[test]
+    fn test_very_long_skill_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("long-id-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let long_id = "a".repeat(1000);
+        let yaml_content = format!(r#"
+id: {}
+displayName: Long ID
+description: Very long ID
+allowedRoles: []
+allowedTools: []
+"#, long_id);
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert_eq!(loader.skills()[0].id.len(), 1000);
+    }
+
+    #[test]
+    fn test_empty_allowed_roles() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("no-roles");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: no-roles
+displayName: No Roles
+description: No allowed roles
+allowedRoles: []
+allowedTools:
+  - some__tool
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert!(!loader.skills()[0].allows_role("admin"));
+    }
+
+    #[test]
+    fn test_empty_allowed_tools() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("no-tools");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: no-tools
+displayName: No Tools
+description: No allowed tools
+allowedRoles:
+  - admin
+allowedTools: []
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert!(loader.skills()[0].allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn test_skill_with_grants() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("grants-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: grants-skill
+displayName: Grants Skill
+description: Skill with memory grants
+allowedRoles:
+  - admin
+allowedTools: []
+grants:
+  memory: all
+  memoryTeamRoles:
+    - developer
+    - tester
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        let skill = &loader.skills()[0];
+        assert!(skill.grants.is_some());
+    }
+
+    #[test]
+    fn test_skill_with_identity_config() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("identity-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: identity-skill
+displayName: Identity Skill
+description: Skill with identity config
+allowedRoles:
+  - admin
+allowedTools: []
+identity:
+  skillMatching:
+    - role: admin
+      requiredSkills:
+        - admin_access
+  trustedPrefixes:
+    - claude-
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        let skill = &loader.skills()[0];
+        assert!(skill.identity.is_some());
+    }
+
+    #[test]
+    fn test_many_skills_in_directory() {
+        let temp_dir = TempDir::new().unwrap();
+
+        for i in 0..20 {
+            let skill_dir = temp_dir.path().join(format!("skill-{}", i));
+            fs::create_dir(&skill_dir).unwrap();
+            let yaml_content = format!(r#"
+id: skill-{}
+displayName: Skill {}
+description: Description {}
+allowedRoles:
+  - role{}
+allowedTools: []
+"#, i, i, i, i % 3);
+            fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+        }
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 20);
+    }
+
+    #[test]
+    fn test_mixed_yaml_and_md_skills() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // YAML skill
+        let yaml_dir = temp_dir.path().join("yaml-skill");
+        fs::create_dir(&yaml_dir).unwrap();
+        fs::write(yaml_dir.join("SKILL.yaml"), r#"
+id: yaml-skill
+displayName: YAML Skill
+description: From YAML
+allowedRoles:
+  - admin
+allowedTools: []
+"#).unwrap();
+
+        // MD skill
+        let md_dir = temp_dir.path().join("md-skill");
+        fs::create_dir(&md_dir).unwrap();
+        fs::write(md_dir.join("SKILL.md"), r#"---
+id: md-skill
+displayName: MD Skill
+description: From MD
+allowedRoles:
+  - admin
+allowedTools: []
+---
+Content
+"#).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 2);
+    }
+
+    #[test]
+    fn test_loader_default_trait() {
+        let loader = SkillLoader::default();
+        assert!(loader.skills().is_empty());
+    }
+
+    #[test]
+    fn test_loader_debug_trait() {
+        let loader = SkillLoader::new();
+        let debug = format!("{:?}", loader);
+        assert!(debug.contains("SkillLoader"));
+    }
+
+    #[test]
+    fn test_load_nonexistent_directory() {
+        let mut loader = SkillLoader::new();
+        let result = loader.load_from_directory(std::path::Path::new("/nonexistent/path/12345"));
+        // Should handle gracefully (may or may not error)
+        let _ = result;
+    }
+
+    #[test]
+    fn test_whitespace_in_skill_id() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("ws-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: "skill with spaces"
+displayName: WS Skill
+description: ID with spaces
+allowedRoles: []
+allowedTools: []
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert_eq!(loader.skills()[0].id, "skill with spaces");
+    }
+
+    #[test]
+    fn test_emoji_in_description() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("emoji-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: emoji-skill
+displayName: "🎉 Emoji Skill 🎉"
+description: "This is awesome! 🚀💯"
+allowedRoles:
+  - admin
+allowedTools: []
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.skills().len(), 1);
+        assert!(loader.skills()[0].display_name.contains("🎉"));
+    }
+
+    #[test]
+    fn test_skill_manifest_generation() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("manifest-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        let yaml_content = r#"
+id: manifest-skill
+displayName: Manifest Skill
+description: For manifest test
+allowedRoles:
+  - admin
+  - developer
+allowedTools:
+  - filesystem__read
+  - filesystem__write
+"#;
+        fs::write(skill_dir.join("SKILL.yaml"), yaml_content).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        let manifest = loader.to_manifest("1.0.0");
+        assert_eq!(manifest.skills.len(), 1);
+        assert_eq!(manifest.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_manifest_version_format() {
+        let loader = SkillLoader::new();
+        let manifest = loader.to_manifest("2.0.0");
+
+        // Version should match what we passed
+        assert_eq!(manifest.version, "2.0.0");
+    }
+
+    #[test]
+    fn test_manifest_generated_at_timestamp() {
+        let loader = SkillLoader::new();
+        let manifest = loader.to_manifest("1.0.0");
+
+        // Should have a timestamp
+        assert!(!manifest.generated_at.is_empty());
+    }
+
+    #[test]
+    fn test_filter_multiple_roles() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create skill for multiple specific roles
+        let skill_dir = temp_dir.path().join("multi-role-skill");
+        fs::create_dir(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.yaml"), r#"
+id: multi-role
+displayName: Multi Role
+description: Multiple roles
+allowedRoles:
+  - admin
+  - developer
+  - tester
+allowedTools: []
+"#).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        assert_eq!(loader.filter_for_role("admin").len(), 1);
+        assert_eq!(loader.filter_for_role("developer").len(), 1);
+        assert_eq!(loader.filter_for_role("tester").len(), 1);
+        assert_eq!(loader.filter_for_role("guest").len(), 0);
+    }
+
+    #[test]
+    fn test_skill_clone() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("clone-skill");
+        fs::create_dir(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.yaml"), r#"
+id: clone-skill
+displayName: Clone Test
+description: For cloning
+allowedRoles:
+  - admin
+allowedTools:
+  - tool
+"#).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        let skill = loader.skills()[0].clone();
+        assert_eq!(skill.id, "clone-skill");
+    }
+
+    #[test]
+    fn test_yaml_takes_precedence_over_md() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("both-files");
+        fs::create_dir(&skill_dir).unwrap();
+
+        // Create both YAML and MD
+        fs::write(skill_dir.join("SKILL.yaml"), r#"
+id: yaml-version
+displayName: YAML Version
+description: From YAML
+allowedRoles: []
+allowedTools: []
+"#).unwrap();
+
+        fs::write(skill_dir.join("SKILL.md"), r#"---
+id: md-version
+displayName: MD Version
+description: From MD
+allowedRoles: []
+allowedTools: []
+---
+"#).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        // Should only have one skill (YAML takes precedence)
+        assert_eq!(loader.skills().len(), 1);
+        assert_eq!(loader.skills()[0].id, "yaml-version");
+    }
+
+    #[test]
+    fn test_case_sensitivity_in_roles() {
+        let temp_dir = TempDir::new().unwrap();
+        let skill_dir = temp_dir.path().join("case-skill");
+        fs::create_dir(&skill_dir).unwrap();
+
+        fs::write(skill_dir.join("SKILL.yaml"), r#"
+id: case-skill
+displayName: Case Skill
+description: Test case sensitivity
+allowedRoles:
+  - Admin
+allowedTools: []
+"#).unwrap();
+
+        let mut loader = SkillLoader::new();
+        loader.load_from_directory(temp_dir.path()).unwrap();
+
+        // Roles should be case-sensitive
+        assert_eq!(loader.filter_for_role("Admin").len(), 1);
+        assert_eq!(loader.filter_for_role("admin").len(), 0);
+        assert_eq!(loader.filter_for_role("ADMIN").len(), 0);
+    }
 }
