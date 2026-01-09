@@ -526,4 +526,302 @@ mod tests {
         assert_eq!(limiter.get_usage("session-1").calls_this_minute, 2);
         assert_eq!(limiter.get_usage("session-2").calls_this_minute, 1);
     }
+
+    // ============== Additional Edge Case Tests ==============
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_empty_role_id_quota() {
+            let mut limiter = RateLimiter::new();
+            limiter.set_quota("", RoleQuota::default());
+
+            assert!(limiter.quotas.contains_key(""));
+        }
+
+        #[test]
+        fn test_empty_session_id() {
+            let mut limiter = RateLimiter::new();
+            limiter.consume("guest", "", None);
+
+            let usage = limiter.get_usage("");
+            assert_eq!(usage.calls_this_minute, 1);
+        }
+
+        #[test]
+        fn test_unicode_role_id() {
+            let mut limiter = RateLimiter::new();
+            limiter.set_quota("日本語ロール", RoleQuota::default());
+
+            let result = limiter.check("日本語ロール", "session", None);
+            assert!(result.is_allowed());
+        }
+
+        #[test]
+        fn test_unicode_session_id() {
+            let mut limiter = RateLimiter::new();
+            limiter.consume("guest", "セッション", None);
+
+            let usage = limiter.get_usage("セッション");
+            assert_eq!(usage.calls_this_minute, 1);
+        }
+
+        #[test]
+        fn test_very_long_role_id() {
+            let mut limiter = RateLimiter::new();
+            let long_id = "a".repeat(10000);
+            limiter.set_quota(&long_id, RoleQuota::default());
+
+            assert!(limiter.quotas.contains_key(&long_id));
+        }
+
+        #[test]
+        fn test_many_concurrent_operations() {
+            let mut limiter = RateLimiter::new();
+
+            for _ in 0..100 {
+                limiter.start_concurrent("session");
+            }
+
+            let usage = limiter.get_usage("session");
+            assert_eq!(usage.concurrent, 100);
+
+            for _ in 0..100 {
+                limiter.end_concurrent("session");
+            }
+
+            let usage = limiter.get_usage("session");
+            assert_eq!(usage.concurrent, 0);
+        }
+
+        #[test]
+        fn test_quota_replacement() {
+            let mut limiter = RateLimiter::new();
+
+            let quota1 = RoleQuota {
+                max_calls_per_minute: 10,
+                max_calls_per_hour: 100,
+                max_concurrent: 5,
+                tool_limits: HashMap::new(),
+            };
+
+            let quota2 = RoleQuota {
+                max_calls_per_minute: 20,
+                max_calls_per_hour: 200,
+                max_concurrent: 10,
+                tool_limits: HashMap::new(),
+            };
+
+            limiter.set_quota("guest", quota1);
+            assert_eq!(limiter.get_quota("guest").unwrap().max_calls_per_minute, 10);
+
+            limiter.set_quota("guest", quota2);
+            assert_eq!(limiter.get_quota("guest").unwrap().max_calls_per_minute, 20);
+        }
+
+        #[test]
+        fn test_end_concurrent_below_zero() {
+            let mut limiter = RateLimiter::new();
+
+            // Start with 0 concurrent
+            limiter.end_concurrent("session");
+            limiter.end_concurrent("session");
+            limiter.end_concurrent("session");
+
+            // Should never go below 0
+            let usage = limiter.get_usage("session");
+            assert_eq!(usage.concurrent, 0);
+        }
+
+        #[test]
+        fn test_consume_increments_all_counters() {
+            let mut limiter = RateLimiter::new();
+
+            limiter.consume("guest", "session", Some("tool"));
+
+            let usage = limiter.get_usage("session");
+            assert_eq!(usage.calls_this_minute, 1);
+            assert_eq!(usage.calls_this_hour, 1);
+            assert_eq!(usage.calls_this_day, 1);
+        }
+
+        #[test]
+        fn test_reset_usage_keeps_other_sessions() {
+            let mut limiter = RateLimiter::new();
+
+            limiter.consume("guest", "session-1", None);
+            limiter.consume("guest", "session-2", None);
+
+            limiter.reset_usage("session-1");
+
+            assert_eq!(limiter.get_usage("session-1").calls_this_minute, 0);
+            assert_eq!(limiter.get_usage("session-2").calls_this_minute, 1);
+        }
+
+        #[test]
+        fn test_tool_quota_clone() {
+            let quota = ToolQuota {
+                max_calls_per_minute: 5,
+            };
+
+            let cloned = quota.clone();
+            assert_eq!(cloned.max_calls_per_minute, quota.max_calls_per_minute);
+        }
+
+        #[test]
+        fn test_tool_quota_debug() {
+            let quota = ToolQuota {
+                max_calls_per_minute: 10,
+            };
+
+            let debug = format!("{:?}", quota);
+            assert!(debug.contains("ToolQuota"));
+        }
+
+        #[test]
+        fn test_role_quota_clone() {
+            let mut tool_limits = HashMap::new();
+            tool_limits.insert("tool".to_string(), ToolQuota { max_calls_per_minute: 5 });
+
+            let quota = RoleQuota {
+                max_calls_per_minute: 60,
+                max_calls_per_hour: 1000,
+                max_concurrent: 10,
+                tool_limits,
+            };
+
+            let cloned = quota.clone();
+            assert_eq!(cloned.max_calls_per_minute, quota.max_calls_per_minute);
+            assert_eq!(cloned.tool_limits.len(), 1);
+        }
+
+        #[test]
+        fn test_role_quota_debug() {
+            let quota = RoleQuota::default();
+            let debug = format!("{:?}", quota);
+            assert!(debug.contains("RoleQuota"));
+        }
+
+        #[test]
+        fn test_usage_stats_clone() {
+            let usage = UsageStats {
+                calls_this_minute: 5,
+                calls_this_hour: 50,
+                calls_this_day: 100,
+                concurrent: 2,
+                last_minute_reset: None,
+                last_hour_reset: None,
+            };
+
+            let cloned = usage.clone();
+            assert_eq!(cloned.calls_this_minute, usage.calls_this_minute);
+            assert_eq!(cloned.calls_this_hour, usage.calls_this_hour);
+        }
+
+        #[test]
+        fn test_usage_stats_debug() {
+            let usage = UsageStats::default();
+            let debug = format!("{:?}", usage);
+            assert!(debug.contains("UsageStats"));
+        }
+
+        #[test]
+        fn test_rate_limiter_debug() {
+            let limiter = RateLimiter::new();
+            let debug = format!("{:?}", limiter);
+            assert!(debug.contains("RateLimiter"));
+        }
+
+        #[test]
+        fn test_rate_limiter_default() {
+            let limiter = RateLimiter::default();
+            assert!(limiter.quotas.is_empty());
+            // Default is disabled
+            assert!(!limiter.is_enabled());
+        }
+
+        #[test]
+        fn test_many_different_sessions() {
+            let mut limiter = RateLimiter::new();
+
+            for i in 0..50 {
+                limiter.consume("guest", &format!("session-{}", i), None);
+            }
+
+            assert_eq!(limiter.usage.len(), 50);
+        }
+
+        #[test]
+        fn test_set_quotas_batch() {
+            let mut limiter = RateLimiter::new();
+
+            let mut quotas = HashMap::new();
+            quotas.insert("role1".to_string(), RoleQuota::default());
+            quotas.insert("role2".to_string(), RoleQuota::default());
+            quotas.insert("role3".to_string(), RoleQuota::default());
+
+            limiter.set_quotas(quotas);
+
+            assert!(limiter.quotas.contains_key("role1"));
+            assert!(limiter.quotas.contains_key("role2"));
+            assert!(limiter.quotas.contains_key("role3"));
+        }
+
+        #[test]
+        fn test_rate_limit_result_eq() {
+            let allowed1 = RateLimitResult::Allowed;
+            let allowed2 = RateLimitResult::Allowed;
+            assert_eq!(allowed1, allowed2);
+
+            let denied1 = RateLimitResult::Denied {
+                reason: "test".to_string(),
+                retry_after_secs: 60,
+            };
+            let denied2 = RateLimitResult::Denied {
+                reason: "test".to_string(),
+                retry_after_secs: 60,
+            };
+            assert_eq!(denied1, denied2);
+        }
+
+        #[test]
+        fn test_rate_limit_result_clone() {
+            let result = RateLimitResult::Denied {
+                reason: "reason".to_string(),
+                retry_after_secs: 30,
+            };
+
+            let cloned = result.clone();
+            assert!(cloned.is_denied());
+        }
+
+        #[test]
+        fn test_rate_limit_result_debug() {
+            let result = RateLimitResult::Allowed;
+            let debug = format!("{:?}", result);
+            assert!(debug.contains("Allowed"));
+        }
+
+        #[test]
+        fn test_check_with_tool_name() {
+            let mut limiter = RateLimiter::new();
+            limiter.set_quota("guest", RoleQuota::default());
+
+            let result = limiter.check("guest", "session", Some("regular_tool"));
+            assert!(result.is_allowed());
+        }
+
+        #[test]
+        fn test_record_call_uses_default_session() {
+            let mut limiter = RateLimiter::new();
+
+            limiter.record_call("guest", "tool1");
+            limiter.record_call("guest", "tool2");
+
+            // Both should go to "default" session
+            let usage = limiter.get_usage("default");
+            assert_eq!(usage.calls_this_minute, 2);
+        }
+    }
 }
