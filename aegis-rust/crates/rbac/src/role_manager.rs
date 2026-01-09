@@ -1419,4 +1419,605 @@ mod tests {
             assert!(manager.is_tool_allowed_for_role("fullstack", "database__query", "database"));
         }
     }
+
+    // ============== Red Team Security Tests ==============
+
+    mod red_team {
+        use super::*;
+
+        #[test]
+        fn test_sql_injection_in_role_id() {
+            let mut manager = RoleManager::new();
+
+            // Attempt SQL injection in role ID
+            let malicious_id = "admin'; DROP TABLE users; --";
+            let role = Role::new(malicious_id, "Malicious");
+            manager.register_role(role);
+
+            // Should be stored literally, not interpreted
+            assert!(manager.has_role(malicious_id));
+            assert!(!manager.has_role("admin"));
+        }
+
+        #[test]
+        fn test_path_traversal_in_role_id() {
+            let mut manager = RoleManager::new();
+
+            let malicious_ids = vec![
+                "../../../etc/passwd",
+                "..\\..\\..\\windows\\system32",
+                "role/../../admin",
+                "role%2F..%2F..%2Fadmin",
+            ];
+
+            for id in malicious_ids {
+                let role = Role::new(id, "Traversal Test");
+                manager.register_role(role);
+                assert!(manager.has_role(id));
+            }
+        }
+
+        #[test]
+        fn test_null_byte_injection_in_role_id() {
+            let mut manager = RoleManager::new();
+
+            let role = Role::new("admin\x00guest", "Null Injection");
+            manager.register_role(role);
+
+            // Should be stored as-is
+            assert!(manager.has_role("admin\x00guest"));
+            assert!(!manager.has_role("admin"));
+            assert!(!manager.has_role("guest"));
+        }
+
+        #[test]
+        fn test_unicode_normalization_attack() {
+            let mut manager = RoleManager::new();
+
+            // Different Unicode representations of "admin"
+            let admin_variants = vec![
+                "admin",           // Normal
+                "аdmin",           // Cyrillic 'а' (U+0430)
+                "ａdmin",          // Fullwidth 'ａ' (U+FF41)
+            ];
+
+            for admin in admin_variants {
+                let role = Role::new(admin, "Admin Variant");
+                manager.register_role(role);
+            }
+
+            // Each should be stored separately (no normalization)
+            // The manager should not conflate different Unicode strings
+            assert!(manager.has_role("admin"));
+        }
+
+        #[test]
+        fn test_privilege_escalation_nonexistent_parent() {
+            let mut manager = RoleManager::new();
+
+            // Try to inherit from admin when admin doesn't exist
+            let escalation = Role::new("guest", "Guest")
+                .inherits_from("admin");
+
+            manager.register_role(escalation);
+
+            // Should not gain any admin powers
+            let servers = manager.get_effective_servers("guest");
+            assert!(servers.is_empty()); // No servers from nonexistent parent
+        }
+
+        #[test]
+        fn test_privilege_escalation_via_wildcard() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "guest-skill".to_string(),
+                        display_name: "Guest".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["guest".to_string()],
+                        allowed_tools: vec!["filesystem__read_file".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Guest should NOT be able to access dangerous tools
+            assert!(!manager.is_tool_allowed_for_role("guest", "filesystem__delete_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("guest", "database__drop_table", "database"));
+            assert!(!manager.is_tool_allowed_for_role("guest", "execution__run_shell", "execution"));
+        }
+
+        #[test]
+        fn test_memory_policy_escalation() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "guest-skill".to_string(),
+                        display_name: "Guest".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["guest".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::None,
+                            memory_team_roles: vec![],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Guest should NOT be able to access admin memory
+            assert!(!manager.can_access_role_memory("guest", "admin"));
+            assert!(!manager.can_access_all_memories("guest"));
+        }
+
+        #[test]
+        fn test_deep_inheritance_chain_does_not_overflow() {
+            let mut manager = RoleManager::new();
+
+            // Create a very deep inheritance chain
+            for i in 0..100 {
+                let parent = if i == 0 { None } else { Some(format!("role{}", i - 1)) };
+                let role = Role {
+                    id: format!("role{}", i),
+                    name: format!("Role {}", i),
+                    description: String::new(),
+                    inherits: parent,
+                    allowed_servers: vec![format!("server{}", i)],
+                    system_instruction: String::new(),
+                    remote_instruction: None,
+                    tool_permissions: None,
+                    metadata: None,
+                };
+                manager.register_role(role);
+            }
+
+            // Should not stack overflow
+            let chain = manager.get_inheritance_chain("role99");
+            assert_eq!(chain.len(), 100);
+
+            let servers = manager.get_effective_servers("role99");
+            assert_eq!(servers.len(), 100);
+        }
+
+        #[test]
+        fn test_triple_circular_inheritance() {
+            let mut manager = RoleManager::new();
+
+            let role_a = Role::new("a", "A").inherits_from("b");
+            let role_b = Role::new("b", "B").inherits_from("c");
+            let role_c = Role::new("c", "C").inherits_from("a");
+
+            manager.register_role(role_a);
+            manager.register_role(role_b);
+            manager.register_role(role_c);
+
+            // Should not infinite loop - all chains should be <= 3
+            let chain_a = manager.get_inheritance_chain("a");
+            let chain_b = manager.get_inheritance_chain("b");
+            let chain_c = manager.get_inheritance_chain("c");
+
+            assert!(chain_a.len() <= 3);
+            assert!(chain_b.len() <= 3);
+            assert!(chain_c.len() <= 3);
+        }
+
+        #[test]
+        fn test_self_referential_inheritance() {
+            let mut manager = RoleManager::new();
+
+            let self_ref = Role::new("self", "Self").inherits_from("self");
+            manager.register_role(self_ref);
+
+            // Should not infinite loop
+            let chain = manager.get_inheritance_chain("self");
+            assert_eq!(chain.len(), 1);
+            assert_eq!(chain[0], "self");
+        }
+
+        #[test]
+        fn test_tool_name_with_injection_attempt() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "test".to_string(),
+                    display_name: "Test".to_string(),
+                    description: "".to_string(),
+                    allowed_roles: vec!["tester".to_string()],
+                    allowed_tools: vec!["safe__tool".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Injection attempts in tool names should not work
+            assert!(!manager.is_tool_allowed_for_role("tester", "safe__tool; rm -rf /", "safe"));
+            assert!(!manager.is_tool_allowed_for_role("tester", "safe__tool\n dangerous__tool", "safe"));
+            assert!(!manager.is_tool_allowed_for_role("tester", "dangerous__tool", "dangerous"));
+        }
+    }
+
+    // ============== Edge Cases ==============
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_empty_role_id() {
+            let mut manager = RoleManager::new();
+            let role = Role::new("", "Empty ID");
+            manager.register_role(role);
+
+            assert!(manager.has_role(""));
+            assert!(manager.get_role("").is_some());
+        }
+
+        #[test]
+        fn test_very_long_role_id() {
+            let mut manager = RoleManager::new();
+            let long_id = "a".repeat(10000);
+            let role = Role::new(long_id.clone(), "Long ID");
+            manager.register_role(role);
+
+            assert!(manager.has_role(&long_id));
+        }
+
+        #[test]
+        fn test_unicode_role_id() {
+            let mut manager = RoleManager::new();
+            let role = Role::new("管理者ロール", "Japanese Admin");
+            manager.register_role(role);
+
+            assert!(manager.has_role("管理者ロール"));
+        }
+
+        #[test]
+        fn test_emoji_role_id() {
+            let mut manager = RoleManager::new();
+            let role = Role::new("👑admin👑", "Emoji Admin");
+            manager.register_role(role);
+
+            assert!(manager.has_role("👑admin👑"));
+        }
+
+        #[test]
+        fn test_whitespace_role_id() {
+            let mut manager = RoleManager::new();
+            let role = Role::new("   ", "Whitespace");
+            manager.register_role(role);
+
+            assert!(manager.has_role("   "));
+            assert!(!manager.has_role(""));
+        }
+
+        #[test]
+        fn test_newline_in_role_id() {
+            let mut manager = RoleManager::new();
+            let role = Role::new("role\nwith\nnewlines", "Newline Role");
+            manager.register_role(role);
+
+            assert!(manager.has_role("role\nwith\nnewlines"));
+        }
+
+        #[test]
+        fn test_replace_existing_role() {
+            let mut manager = RoleManager::new();
+
+            let role1 = Role::new("admin", "Admin V1")
+                .with_servers(vec!["server1".to_string()]);
+            manager.register_role(role1);
+
+            let role2 = Role::new("admin", "Admin V2")
+                .with_servers(vec!["server2".to_string()]);
+            manager.register_role(role2);
+
+            let role = manager.get_role("admin").unwrap();
+            assert_eq!(role.name, "Admin V2");
+            assert!(role.allowed_servers.contains(&"server2".to_string()));
+        }
+
+        #[test]
+        fn test_get_nonexistent_role() {
+            let manager = RoleManager::new();
+            assert!(manager.get_role("nonexistent").is_none());
+        }
+
+        #[test]
+        fn test_default_trait() {
+            let manager = RoleManager::default();
+            assert_eq!(manager.default_role(), "guest");
+        }
+
+        #[test]
+        fn test_debug_trait() {
+            let mut manager = RoleManager::new();
+            manager.register_role(Role::new("test", "Test"));
+
+            let debug = format!("{:?}", manager);
+            assert!(debug.contains("RoleManager"));
+        }
+
+        #[test]
+        fn test_can_access_server_nonexistent_role() {
+            let manager = RoleManager::new();
+            assert!(!manager.can_access_server("nonexistent", "any-server"));
+        }
+
+        #[test]
+        fn test_get_effective_servers_nonexistent() {
+            let manager = RoleManager::new();
+            let servers = manager.get_effective_servers("nonexistent");
+            assert!(servers.is_empty());
+        }
+
+        #[test]
+        fn test_get_inheritance_chain_nonexistent() {
+            let manager = RoleManager::new();
+            let chain = manager.get_inheritance_chain("nonexistent");
+            // Chain includes the requested role_id even if not found,
+            // but won't traverse to parents since the role doesn't exist
+            assert_eq!(chain.len(), 1);
+            assert_eq!(chain[0], "nonexistent");
+        }
+
+        #[test]
+        fn test_empty_skill_manifest() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.get_role_ids().is_empty());
+        }
+
+        #[test]
+        fn test_skill_with_empty_allowed_roles() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "orphan".to_string(),
+                    display_name: "Orphan".to_string(),
+                    description: "".to_string(),
+                    allowed_roles: vec![],
+                    allowed_tools: vec!["tool".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // No roles should be created
+            assert!(manager.get_role_ids().is_empty());
+        }
+
+        #[test]
+        fn test_skill_with_empty_allowed_tools() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "no-tools".to_string(),
+                    display_name: "No Tools".to_string(),
+                    description: "".to_string(),
+                    allowed_roles: vec!["limited".to_string()],
+                    allowed_tools: vec![],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.has_role("limited"));
+            // Only set_role should be allowed
+            assert!(manager.is_tool_allowed_for_role("limited", "set_role", "aegis"));
+            assert!(!manager.is_tool_allowed_for_role("limited", "any_tool", "any"));
+        }
+
+        #[test]
+        fn test_get_skills_for_role() {
+            let mut manager = RoleManager::new();
+            let manifest = create_test_manifest();
+            manager.load_from_skill_manifest(&manifest);
+
+            let skills = manager.get_skills_for_role("admin");
+            assert_eq!(skills.len(), 2); // docx-handler and code-review
+
+            let skill_ids: Vec<&str> = skills.iter().map(|s| s.id.as_str()).collect();
+            assert!(skill_ids.contains(&"docx-handler"));
+            assert!(skill_ids.contains(&"code-review"));
+        }
+
+        #[test]
+        fn test_get_skills_for_nonexistent_role() {
+            let mut manager = RoleManager::new();
+            let manifest = create_test_manifest();
+            manager.load_from_skill_manifest(&manifest);
+
+            let skills = manager.get_skills_for_role("nonexistent");
+            assert!(skills.is_empty());
+        }
+
+        #[test]
+        fn test_wildcard_server_access() {
+            let mut manager = RoleManager::new();
+
+            let role = Role::new("admin", "Admin")
+                .with_servers(vec!["*".to_string()]);
+            manager.register_role(role);
+
+            assert!(manager.can_access_server("admin", "any-server"));
+            assert!(manager.can_access_server("admin", "filesystem"));
+            assert!(manager.can_access_server("admin", "database"));
+        }
+
+        #[test]
+        fn test_pattern_match_tool_permissions() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "pattern-skill".to_string(),
+                    display_name: "Pattern".to_string(),
+                    description: "".to_string(),
+                    allowed_roles: vec!["pattern-user".to_string()],
+                    allowed_tools: vec![
+                        "fs__*".to_string(),      // All fs tools
+                        "*".to_string(),          // All tools (admin-like)
+                    ],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // With wildcard *, all tools should be allowed
+            assert!(manager.is_tool_allowed_for_role("pattern-user", "any__tool", "any"));
+            assert!(manager.is_tool_allowed_for_role("pattern-user", "fs__read", "fs"));
+        }
+
+        #[test]
+        fn test_duplicate_tools_deduplicated() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "skill1".to_string(),
+                        display_name: "1".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["multi".to_string()],
+                        allowed_tools: vec!["tool__a".to_string(), "tool__b".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "skill2".to_string(),
+                        display_name: "2".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["multi".to_string()],
+                        allowed_tools: vec!["tool__a".to_string(), "tool__c".to_string()], // Overlapping
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+            let role = &role_manifest.roles["multi"];
+
+            // Should have 3 unique tools
+            assert_eq!(role.tools.len(), 3);
+            assert!(role.tools.contains(&"tool__a".to_string()));
+            assert!(role.tools.contains(&"tool__b".to_string()));
+            assert!(role.tools.contains(&"tool__c".to_string()));
+        }
+    }
+
+    // ============== Role Manifest Output Tests ==============
+
+    mod role_manifest_output {
+        use super::*;
+
+        #[test]
+        fn test_role_manifest_source_version() {
+            let manager = RoleManager::new();
+            let manifest = create_test_manifest();
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+            assert_eq!(role_manifest.source_version, "1.0.0");
+        }
+
+        #[test]
+        fn test_dynamic_role_output_clone() {
+            let role = DynamicRoleOutput {
+                id: "test".to_string(),
+                skills: vec!["skill1".to_string()],
+                tools: vec!["tool1".to_string()],
+            };
+
+            let cloned = role.clone();
+            assert_eq!(cloned.id, role.id);
+            assert_eq!(cloned.skills, role.skills);
+            assert_eq!(cloned.tools, role.tools);
+        }
+
+        #[test]
+        fn test_dynamic_role_output_debug() {
+            let role = DynamicRoleOutput {
+                id: "test".to_string(),
+                skills: vec![],
+                tools: vec![],
+            };
+
+            let debug = format!("{:?}", role);
+            assert!(debug.contains("DynamicRoleOutput"));
+            assert!(debug.contains("test"));
+        }
+
+        #[test]
+        fn test_role_manifest_output_clone() {
+            let manager = RoleManager::new();
+            let manifest = create_test_manifest();
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+            let cloned = role_manifest.clone();
+
+            assert_eq!(cloned.source_version, role_manifest.source_version);
+            assert_eq!(cloned.roles.len(), role_manifest.roles.len());
+        }
+
+        #[test]
+        fn test_role_manifest_output_debug() {
+            let manager = RoleManager::new();
+            let manifest = create_test_manifest();
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+            let debug = format!("{:?}", role_manifest);
+
+            assert!(debug.contains("RoleManifestOutput"));
+        }
+    }
 }
