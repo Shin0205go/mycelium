@@ -336,4 +336,262 @@ mod tests {
         let result: Result<i32> = Err(AegisError::Other("error".to_string()));
         assert!(result.is_err());
     }
+
+    // ============== Edge Cases ==============
+
+    #[test]
+    fn test_role_not_found_empty_role_id() {
+        let error = RoleNotFoundError {
+            role_id: "".to_string(),
+            available_roles: vec!["admin".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_role_not_found_unicode_role_id() {
+        let error = RoleNotFoundError {
+            role_id: "管理者".to_string(),
+            available_roles: vec!["ユーザー".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("管理者"));
+        assert!(msg.contains("ユーザー"));
+    }
+
+    #[test]
+    fn test_role_not_found_many_available_roles() {
+        let available: Vec<String> = (0..100).map(|i| format!("role_{}", i)).collect();
+        let error = RoleNotFoundError {
+            role_id: "missing".to_string(),
+            available_roles: available.clone(),
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("role_0"));
+        assert!(msg.contains("role_99"));
+    }
+
+    #[test]
+    fn test_server_not_accessible_unicode() {
+        let error = ServerNotAccessibleError {
+            server_name: "データベース".to_string(),
+            current_role: "ゲスト".to_string(),
+            allowed_servers: vec!["ファイル".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("データベース"));
+        assert!(msg.contains("ゲスト"));
+    }
+
+    #[test]
+    fn test_server_not_accessible_empty_server_name() {
+        let error = ServerNotAccessibleError {
+            server_name: "".to_string(),
+            current_role: "user".to_string(),
+            allowed_servers: vec!["server".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("not accessible"));
+    }
+
+    #[test]
+    fn test_tool_not_accessible_empty_reason() {
+        let error = ToolNotAccessibleError {
+            tool_name: "tool".to_string(),
+            current_role: "role".to_string(),
+            reason: "".to_string(),
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("tool"));
+        assert!(msg.contains("role"));
+    }
+
+    #[test]
+    fn test_tool_not_accessible_unicode() {
+        let error = ToolNotAccessibleError {
+            tool_name: "削除ツール".to_string(),
+            current_role: "閲覧者".to_string(),
+            reason: "権限不足".to_string(),
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("削除ツール"));
+        assert!(msg.contains("権限不足"));
+    }
+
+    #[test]
+    fn test_tool_not_accessible_long_reason() {
+        let long_reason = "x".repeat(10000);
+        let error = ToolNotAccessibleError {
+            tool_name: "tool".to_string(),
+            current_role: "role".to_string(),
+            reason: long_reason.clone(),
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains(&long_reason));
+    }
+
+    #[test]
+    fn test_aegis_error_config_empty_message() {
+        let error = AegisError::Config("".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("Configuration error"));
+    }
+
+    #[test]
+    fn test_aegis_error_config_unicode() {
+        let error = AegisError::Config("設定エラー".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("設定エラー"));
+    }
+
+    #[test]
+    fn test_aegis_error_mcp_empty_message() {
+        let error = AegisError::Mcp("".to_string());
+        let msg = error.to_string();
+        assert!(msg.contains("MCP error"));
+    }
+
+    #[test]
+    fn test_aegis_error_other_empty() {
+        let error = AegisError::Other("".to_string());
+        assert_eq!(error.to_string(), "");
+    }
+
+    #[test]
+    fn test_aegis_error_io_different_kinds() {
+        let kinds = vec![
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+            std::io::ErrorKind::ConnectionRefused,
+            std::io::ErrorKind::TimedOut,
+        ];
+
+        for kind in kinds {
+            let io_error = std::io::Error::new(kind, "test");
+            let error: AegisError = io_error.into();
+            assert!(matches!(error, AegisError::Io(_)));
+        }
+    }
+
+    #[test]
+    fn test_result_map() {
+        let ok_result: Result<i32> = Ok(5);
+        let mapped = ok_result.map(|x| x * 2);
+        assert_eq!(mapped.unwrap(), 10);
+    }
+
+    #[test]
+    fn test_result_and_then() {
+        let ok_result: Result<i32> = Ok(5);
+        let chained = ok_result.and_then(|x| Ok(x * 2));
+        assert_eq!(chained.unwrap(), 10);
+    }
+
+    #[test]
+    fn test_result_unwrap_or() {
+        let err_result: Result<i32> = Err(AegisError::Other("error".to_string()));
+        let value = err_result.unwrap_or(42);
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn test_error_source_chain() {
+        use std::error::Error;
+
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let error: AegisError = io_error.into();
+
+        // AegisError should have a source
+        assert!(error.source().is_some());
+    }
+
+    #[test]
+    fn test_role_not_found_error_source() {
+        use std::error::Error;
+
+        let error = RoleNotFoundError {
+            role_id: "test".to_string(),
+            available_roles: vec![],
+        };
+
+        // RoleNotFoundError doesn't wrap another error
+        assert!(error.source().is_none());
+    }
+
+    // ============== Special Character Tests ==============
+
+    #[test]
+    fn test_role_not_found_with_newlines() {
+        let error = RoleNotFoundError {
+            role_id: "role\nwith\nnewlines".to_string(),
+            available_roles: vec!["normal".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("role\nwith\nnewlines"));
+    }
+
+    #[test]
+    fn test_server_not_accessible_with_special_chars() {
+        let error = ServerNotAccessibleError {
+            server_name: "server:8080/path".to_string(),
+            current_role: "user@domain".to_string(),
+            allowed_servers: vec!["other:9090".to_string()],
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("server:8080/path"));
+        assert!(msg.contains("user@domain"));
+    }
+
+    #[test]
+    fn test_tool_not_accessible_with_quotes() {
+        let error = ToolNotAccessibleError {
+            tool_name: "tool\"with\"quotes".to_string(),
+            current_role: "role'with'quotes".to_string(),
+            reason: "reason: \"quoted\"".to_string(),
+        };
+
+        let msg = error.to_string();
+        assert!(msg.contains("tool\"with\"quotes"));
+    }
+
+    // ============== Clone Tests ==============
+
+    #[test]
+    fn test_aegis_error_debug_all_variants() {
+        let errors: Vec<AegisError> = vec![
+            AegisError::RoleNotFound(RoleNotFoundError {
+                role_id: "test".to_string(),
+                available_roles: vec![],
+            }),
+            AegisError::ServerNotAccessible(ServerNotAccessibleError {
+                server_name: "s".to_string(),
+                current_role: "r".to_string(),
+                allowed_servers: vec![],
+            }),
+            AegisError::ToolNotAccessible(ToolNotAccessibleError {
+                tool_name: "t".to_string(),
+                current_role: "r".to_string(),
+                reason: "x".to_string(),
+            }),
+            AegisError::Config("c".to_string()),
+            AegisError::Mcp("m".to_string()),
+            AegisError::Other("o".to_string()),
+        ];
+
+        for error in errors {
+            let debug = format!("{:?}", error);
+            assert!(!debug.is_empty());
+        }
+    }
 }
