@@ -303,4 +303,282 @@ mod tests {
         // Should still have only one server
         assert_eq!(router.servers.len(), 1);
     }
+
+    // ============== Edge Case Tests ==============
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_empty_server_name() {
+            let mut router = StdioRouter::new();
+            router.add_server("", create_test_config());
+
+            assert!(router.servers.contains_key(""));
+            assert!(!router.is_connected(""));
+        }
+
+        #[test]
+        fn test_unicode_server_name() {
+            let mut router = StdioRouter::new();
+            router.add_server("日本語サーバー", create_test_config());
+
+            assert!(router.servers.contains_key("日本語サーバー"));
+            let names = router.server_names();
+            assert!(names.contains(&"日本語サーバー"));
+        }
+
+        #[test]
+        fn test_special_chars_in_server_name() {
+            let mut router = StdioRouter::new();
+
+            let names_to_test = vec![
+                "server-with-dash",
+                "server_with_underscore",
+                "server.with.dots",
+                "server:with:colons",
+            ];
+
+            for name in &names_to_test {
+                router.add_server(*name, create_test_config());
+            }
+
+            assert_eq!(router.servers.len(), names_to_test.len());
+            for name in names_to_test {
+                assert!(router.servers.contains_key(name));
+            }
+        }
+
+        #[test]
+        fn test_very_long_server_name() {
+            let mut router = StdioRouter::new();
+            let long_name = "a".repeat(10000);
+
+            router.add_server(long_name.clone(), create_test_config());
+
+            assert!(router.servers.contains_key(&long_name));
+        }
+
+        #[test]
+        fn test_server_with_empty_args() {
+            let mut router = StdioRouter::new();
+
+            let config = MCPServerConfig {
+                command: "cmd".to_string(),
+                args: vec![],
+                env: HashMap::new(),
+            };
+
+            router.add_server("empty-args", config);
+            let server = router.servers.get("empty-args").unwrap();
+            assert!(server.config.args.is_empty());
+        }
+
+        #[test]
+        fn test_server_with_many_args() {
+            let mut router = StdioRouter::new();
+
+            let config = MCPServerConfig {
+                command: "cmd".to_string(),
+                args: (0..100).map(|i| format!("arg{}", i)).collect(),
+                env: HashMap::new(),
+            };
+
+            router.add_server("many-args", config);
+            let server = router.servers.get("many-args").unwrap();
+            assert_eq!(server.config.args.len(), 100);
+        }
+
+        #[test]
+        fn test_server_with_many_env_vars() {
+            let mut router = StdioRouter::new();
+
+            let mut env = HashMap::new();
+            for i in 0..50 {
+                env.insert(format!("VAR_{}", i), format!("value_{}", i));
+            }
+
+            let config = MCPServerConfig {
+                command: "cmd".to_string(),
+                args: vec![],
+                env,
+            };
+
+            router.add_server("many-env", config);
+            let server = router.servers.get("many-env").unwrap();
+            assert_eq!(server.config.env.len(), 50);
+        }
+
+        #[test]
+        fn test_stop_already_stopped_server() {
+            let mut router = StdioRouter::new();
+            router.add_server("test", create_test_config());
+
+            // Server is not connected, so stopping should be no-op
+            let result = router.stop_server("test");
+            assert!(result.is_ok());
+
+            // Stop again should still be ok
+            let result = router.stop_server("test");
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_stop_all_with_multiple_servers() {
+            let mut router = StdioRouter::new();
+
+            for i in 0..10 {
+                router.add_server(format!("server{}", i), create_test_config());
+            }
+
+            router.stop_all();
+
+            // All servers should be marked as not connected
+            for i in 0..10 {
+                assert!(!router.is_connected(&format!("server{}", i)));
+            }
+        }
+    }
+
+    // ============== Server Connection Tests ==============
+
+    mod server_connection_tests {
+        use super::*;
+
+        #[test]
+        fn test_connection_initial_state() {
+            let config = create_test_config();
+            let conn = ServerConnection::new("test-server", config);
+
+            assert_eq!(conn.name, "test-server");
+            assert!(!conn.connected);
+            assert!(conn.tools.is_empty());
+            assert!(conn.process.is_none());
+        }
+
+        #[test]
+        fn test_connection_with_custom_config() {
+            let mut env = HashMap::new();
+            env.insert("KEY".to_string(), "VALUE".to_string());
+
+            let config = MCPServerConfig {
+                command: "custom_cmd".to_string(),
+                args: vec!["arg1".to_string(), "arg2".to_string()],
+                env,
+            };
+
+            let conn = ServerConnection::new("custom", config);
+
+            assert_eq!(conn.config.command, "custom_cmd");
+            assert_eq!(conn.config.args.len(), 2);
+            assert_eq!(conn.config.env.get("KEY"), Some(&"VALUE".to_string()));
+        }
+
+        #[test]
+        fn test_connection_debug_trait() {
+            let conn = ServerConnection::new("debug-test", create_test_config());
+            let debug = format!("{:?}", conn);
+            assert!(debug.contains("ServerConnection"));
+            assert!(debug.contains("debug-test"));
+        }
+    }
+
+    // ============== Router Debug Tests ==============
+
+    mod router_debug {
+        use super::*;
+
+        #[test]
+        fn test_router_debug_empty() {
+            let router = StdioRouter::new();
+            let debug = format!("{:?}", router);
+            assert!(debug.contains("StdioRouter"));
+        }
+
+        #[test]
+        fn test_router_debug_with_servers() {
+            let mut router = StdioRouter::new();
+            router.add_server("server1", create_test_config());
+            router.add_server("server2", create_test_config());
+
+            let debug = format!("{:?}", router);
+            assert!(debug.contains("StdioRouter"));
+        }
+    }
+
+    // ============== Tool Discovery Extension Tests ==============
+
+    mod tool_discovery_extension {
+        use super::*;
+
+        #[test]
+        fn test_tools_from_disconnected_servers_not_included() {
+            let mut router = StdioRouter::new();
+            router.add_server("server1", create_test_config());
+            router.add_server("server2", create_test_config());
+
+            // Neither server is connected
+            let tools = router.get_all_tools();
+            assert!(tools.is_empty());
+        }
+
+        #[test]
+        fn test_server_names_order_independence() {
+            let mut router = StdioRouter::new();
+
+            router.add_server("zebra", create_test_config());
+            router.add_server("alpha", create_test_config());
+            router.add_server("middle", create_test_config());
+
+            let names = router.server_names();
+            assert_eq!(names.len(), 3);
+            // All names should be present regardless of order
+            assert!(names.contains(&"zebra"));
+            assert!(names.contains(&"alpha"));
+            assert!(names.contains(&"middle"));
+        }
+    }
+
+    // ============== Concurrency-Style Tests ==============
+
+    mod concurrency_style {
+        use super::*;
+
+        #[test]
+        fn test_rapid_add_remove() {
+            let mut router = StdioRouter::new();
+
+            for i in 0..100 {
+                router.add_server(format!("server{}", i), create_test_config());
+            }
+
+            assert_eq!(router.servers.len(), 100);
+
+            for i in 0..100 {
+                let _ = router.stop_server(&format!("server{}", i));
+            }
+
+            // Servers are still in the map, just not connected
+            assert_eq!(router.servers.len(), 100);
+        }
+
+        #[test]
+        fn test_replace_server_multiple_times() {
+            let mut router = StdioRouter::new();
+
+            for i in 0..50 {
+                let config = MCPServerConfig {
+                    command: format!("cmd{}", i),
+                    args: vec![],
+                    env: HashMap::new(),
+                };
+                router.add_server("same-name", config);
+            }
+
+            // Should only have one server
+            assert_eq!(router.servers.len(), 1);
+            // With the last command
+            assert_eq!(router.servers.get("same-name").unwrap().config.command, "cmd49");
+        }
+    }
 }

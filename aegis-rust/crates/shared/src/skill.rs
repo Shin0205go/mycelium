@@ -265,12 +265,68 @@ impl RoleManifest {
 mod tests {
     use super::*;
 
+    // ============== Memory Policy Tests ==============
+
     #[test]
     fn test_memory_policy_ordering() {
         assert!(MemoryPolicy::All.is_higher_than(&MemoryPolicy::Team));
         assert!(MemoryPolicy::Team.is_higher_than(&MemoryPolicy::Isolated));
         assert!(MemoryPolicy::Isolated.is_higher_than(&MemoryPolicy::None));
     }
+
+    #[test]
+    fn test_memory_policy_privilege_levels() {
+        assert_eq!(MemoryPolicy::None.privilege_level(), 0);
+        assert_eq!(MemoryPolicy::Isolated.privilege_level(), 1);
+        assert_eq!(MemoryPolicy::Team.privilege_level(), 2);
+        assert_eq!(MemoryPolicy::All.privilege_level(), 3);
+    }
+
+    #[test]
+    fn test_memory_policy_default() {
+        let policy = MemoryPolicy::default();
+        assert_eq!(policy, MemoryPolicy::None);
+    }
+
+    #[test]
+    fn test_memory_policy_clone() {
+        let policy = MemoryPolicy::All;
+        let cloned = policy;
+        assert_eq!(policy, cloned);
+    }
+
+    #[test]
+    fn test_memory_policy_equal_not_higher() {
+        assert!(!MemoryPolicy::All.is_higher_than(&MemoryPolicy::All));
+        assert!(!MemoryPolicy::None.is_higher_than(&MemoryPolicy::None));
+    }
+
+    #[test]
+    fn test_memory_policy_serialization() {
+        let policy = MemoryPolicy::Isolated;
+        let json = serde_json::to_string(&policy).unwrap();
+        assert_eq!(json, "\"isolated\"");
+
+        let parsed: MemoryPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MemoryPolicy::Isolated);
+    }
+
+    #[test]
+    fn test_memory_policy_all_variants_serialize() {
+        let variants = vec![
+            (MemoryPolicy::None, "\"none\""),
+            (MemoryPolicy::Isolated, "\"isolated\""),
+            (MemoryPolicy::Team, "\"team\""),
+            (MemoryPolicy::All, "\"all\""),
+        ];
+
+        for (policy, expected) in variants {
+            let json = serde_json::to_string(&policy).unwrap();
+            assert_eq!(json, expected);
+        }
+    }
+
+    // ============== Skill Definition Tests ==============
 
     #[test]
     fn test_skill_role_check() {
@@ -336,5 +392,458 @@ mod tests {
         let identity = skill.identity.unwrap();
         assert_eq!(identity.skill_matching.len(), 1);
         assert_eq!(identity.trusted_prefixes, vec!["claude-"]);
+    }
+
+    #[test]
+    fn test_skill_memory_policy() {
+        let skill = SkillDefinition {
+            id: "memory-skill".to_string(),
+            display_name: "Memory Skill".to_string(),
+            description: "Has memory".to_string(),
+            allowed_roles: vec!["developer".to_string()],
+            allowed_tools: vec![],
+            grants: Some(SkillGrants {
+                memory: MemoryPolicy::Isolated,
+                memory_team_roles: vec![],
+            }),
+            identity: None,
+            metadata: None,
+        };
+
+        assert_eq!(skill.memory_policy(), MemoryPolicy::Isolated);
+    }
+
+    #[test]
+    fn test_skill_memory_policy_default() {
+        let skill = SkillDefinition {
+            id: "no-grants".to_string(),
+            display_name: "No Grants".to_string(),
+            description: "No grants".to_string(),
+            allowed_roles: vec![],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+
+        assert_eq!(skill.memory_policy(), MemoryPolicy::None);
+    }
+
+    #[test]
+    fn test_skill_non_universal() {
+        let skill = SkillDefinition {
+            id: "restricted".to_string(),
+            display_name: "Restricted".to_string(),
+            description: "Not for everyone".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+
+        assert!(!skill.is_universal());
+    }
+
+    #[test]
+    fn test_skill_with_mixed_roles() {
+        let skill = SkillDefinition {
+            id: "mixed".to_string(),
+            display_name: "Mixed".to_string(),
+            description: "Mixed roles".to_string(),
+            allowed_roles: vec!["admin".to_string(), "*".to_string()],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+
+        // Should be universal because it contains "*"
+        assert!(skill.is_universal());
+        assert!(skill.allows_role("anyone"));
+    }
+
+    #[test]
+    fn test_skill_serialization() {
+        let skill = SkillDefinition {
+            id: "test".to_string(),
+            display_name: "Test".to_string(),
+            description: "Test skill".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec!["tool1".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+
+        let json = serde_json::to_string(&skill).unwrap();
+        let parsed: SkillDefinition = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, skill.id);
+        assert_eq!(parsed.display_name, skill.display_name);
+    }
+
+    // ============== Skill Grants Tests ==============
+
+    #[test]
+    fn test_skill_grants_default() {
+        let grants = SkillGrants::default();
+        assert_eq!(grants.memory, MemoryPolicy::None);
+        assert!(grants.memory_team_roles.is_empty());
+    }
+
+    #[test]
+    fn test_skill_grants_with_team_roles() {
+        let grants = SkillGrants {
+            memory: MemoryPolicy::Team,
+            memory_team_roles: vec!["frontend".to_string(), "backend".to_string()],
+        };
+
+        assert_eq!(grants.memory, MemoryPolicy::Team);
+        assert_eq!(grants.memory_team_roles.len(), 2);
+    }
+
+    #[test]
+    fn test_skill_grants_serialization() {
+        let grants = SkillGrants {
+            memory: MemoryPolicy::Team,
+            memory_team_roles: vec!["role1".to_string()],
+        };
+
+        let json = serde_json::to_string(&grants).unwrap();
+        assert!(json.contains("\"memory\":\"team\""));
+        assert!(json.contains("\"memoryTeamRoles\""));
+    }
+
+    // ============== Skill Metadata Tests ==============
+
+    #[test]
+    fn test_skill_metadata_default() {
+        let meta = SkillMetadata::default();
+        assert!(meta.version.is_none());
+        assert!(meta.category.is_none());
+        assert!(meta.author.is_none());
+        assert!(meta.tags.is_empty());
+    }
+
+    #[test]
+    fn test_skill_metadata_full() {
+        let meta = SkillMetadata {
+            version: Some("1.0.0".to_string()),
+            category: Some("dev-tools".to_string()),
+            author: Some("AEGIS Team".to_string()),
+            tags: vec!["coding".to_string(), "review".to_string()],
+        };
+
+        assert_eq!(meta.version.unwrap(), "1.0.0");
+        assert_eq!(meta.category.unwrap(), "dev-tools");
+        assert_eq!(meta.tags.len(), 2);
+    }
+
+    // ============== Skill Match Rule Tests ==============
+
+    #[test]
+    fn test_skill_match_rule_default_min() {
+        let rule = SkillMatchRule {
+            role: "test".to_string(),
+            required_skills: vec![],
+            any_skills: vec![],
+            min_skill_match: default_min_skill_match(),
+            forbidden_skills: vec![],
+            context: None,
+            description: None,
+            priority: 0,
+        };
+
+        assert_eq!(rule.min_skill_match, 1);
+    }
+
+    #[test]
+    fn test_skill_match_rule_with_context() {
+        let rule = SkillMatchRule {
+            role: "office".to_string(),
+            required_skills: vec![],
+            any_skills: vec!["coding".to_string()],
+            min_skill_match: 1,
+            forbidden_skills: vec![],
+            context: Some(RuleContext {
+                allowed_time: Some("09:00-18:00".to_string()),
+                allowed_days: vec![1, 2, 3, 4, 5],
+                timezone: Some("Asia/Tokyo".to_string()),
+            }),
+            description: Some("Office hours only".to_string()),
+            priority: 50,
+        };
+
+        assert!(rule.context.is_some());
+        let ctx = rule.context.unwrap();
+        assert_eq!(ctx.allowed_time.unwrap(), "09:00-18:00");
+        assert_eq!(ctx.allowed_days, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_skill_match_rule_serialization() {
+        let rule = SkillMatchRule {
+            role: "admin".to_string(),
+            required_skills: vec!["admin_access".to_string()],
+            any_skills: vec![],
+            min_skill_match: 1,
+            forbidden_skills: vec!["banned".to_string()],
+            context: None,
+            description: Some("Admin rule".to_string()),
+            priority: 100,
+        };
+
+        let json = serde_json::to_string(&rule).unwrap();
+        let parsed: SkillMatchRule = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.role, rule.role);
+        assert_eq!(parsed.required_skills, rule.required_skills);
+        assert_eq!(parsed.forbidden_skills, rule.forbidden_skills);
+        assert_eq!(parsed.priority, rule.priority);
+    }
+
+    // ============== Skill Identity Config Tests ==============
+
+    #[test]
+    fn test_skill_identity_config_default() {
+        let config = SkillIdentityConfig::default();
+        assert!(config.skill_matching.is_empty());
+        assert!(config.trusted_prefixes.is_empty());
+    }
+
+    #[test]
+    fn test_skill_identity_config_with_rules() {
+        let config = SkillIdentityConfig {
+            skill_matching: vec![
+                SkillMatchRule {
+                    role: "admin".to_string(),
+                    required_skills: vec!["admin".to_string()],
+                    any_skills: vec![],
+                    min_skill_match: 1,
+                    forbidden_skills: vec![],
+                    context: None,
+                    description: None,
+                    priority: 100,
+                },
+                SkillMatchRule {
+                    role: "developer".to_string(),
+                    required_skills: vec![],
+                    any_skills: vec!["coding".to_string()],
+                    min_skill_match: 1,
+                    forbidden_skills: vec![],
+                    context: None,
+                    description: None,
+                    priority: 50,
+                },
+            ],
+            trusted_prefixes: vec!["claude-".to_string(), "aegis-".to_string()],
+        };
+
+        assert_eq!(config.skill_matching.len(), 2);
+        assert_eq!(config.trusted_prefixes.len(), 2);
+    }
+
+    // ============== Rule Context Tests ==============
+
+    #[test]
+    fn test_rule_context_serialization() {
+        let ctx = RuleContext {
+            allowed_time: Some("09:00-17:00".to_string()),
+            allowed_days: vec![1, 2, 3, 4, 5],
+            timezone: Some("America/New_York".to_string()),
+        };
+
+        let json = serde_json::to_string(&ctx).unwrap();
+        let parsed: RuleContext = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.allowed_time, ctx.allowed_time);
+        assert_eq!(parsed.allowed_days, ctx.allowed_days);
+        assert_eq!(parsed.timezone, ctx.timezone);
+    }
+
+    #[test]
+    fn test_rule_context_empty() {
+        let ctx = RuleContext {
+            allowed_time: None,
+            allowed_days: vec![],
+            timezone: None,
+        };
+
+        assert!(ctx.allowed_time.is_none());
+        assert!(ctx.allowed_days.is_empty());
+    }
+
+    // ============== Skill Manifest Tests ==============
+
+    #[test]
+    fn test_skill_manifest_basic() {
+        let manifest = SkillManifest {
+            skills: vec![],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+
+        assert!(manifest.skills.is_empty());
+        assert_eq!(manifest.version, "1.0.0");
+    }
+
+    #[test]
+    fn test_skill_manifest_with_skills() {
+        let skill = SkillDefinition {
+            id: "test".to_string(),
+            display_name: "Test".to_string(),
+            description: "Test".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec!["tool1".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+
+        let manifest = SkillManifest {
+            skills: vec![skill],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+
+        assert_eq!(manifest.skills.len(), 1);
+        assert_eq!(manifest.skills[0].id, "test");
+    }
+
+    // ============== Dynamic Role Tests ==============
+
+    #[test]
+    fn test_dynamic_role_creation() {
+        let role = DynamicRole {
+            id: "developer".to_string(),
+            skills: vec!["code-review".to_string(), "testing".to_string()],
+            tools: vec!["filesystem__read".to_string(), "git__commit".to_string()],
+        };
+
+        assert_eq!(role.id, "developer");
+        assert_eq!(role.skills.len(), 2);
+        assert_eq!(role.tools.len(), 2);
+    }
+
+    // ============== Role Manifest Tests ==============
+
+    #[test]
+    fn test_role_manifest_from_empty_skills() {
+        let manifest = RoleManifest::from_skills(&[], "1.0.0");
+
+        assert!(manifest.roles.is_empty());
+        assert_eq!(manifest.source_version, "1.0.0");
+    }
+
+    #[test]
+    fn test_role_manifest_from_skills() {
+        let skills = vec![
+            SkillDefinition {
+                id: "skill1".to_string(),
+                display_name: "Skill 1".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["admin".to_string(), "developer".to_string()],
+                allowed_tools: vec!["tool1".to_string()],
+                grants: None,
+                identity: None,
+                metadata: None,
+            },
+            SkillDefinition {
+                id: "skill2".to_string(),
+                display_name: "Skill 2".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["developer".to_string()],
+                allowed_tools: vec!["tool2".to_string()],
+                grants: None,
+                identity: None,
+                metadata: None,
+            },
+        ];
+
+        let manifest = RoleManifest::from_skills(&skills, "1.0.0");
+
+        assert_eq!(manifest.roles.len(), 2);
+        assert!(manifest.roles.contains_key("admin"));
+        assert!(manifest.roles.contains_key("developer"));
+
+        // Admin has only skill1
+        assert_eq!(manifest.roles["admin"].skills.len(), 1);
+        assert_eq!(manifest.roles["admin"].tools.len(), 1);
+
+        // Developer has both skills
+        assert_eq!(manifest.roles["developer"].skills.len(), 2);
+        assert_eq!(manifest.roles["developer"].tools.len(), 2);
+    }
+
+    #[test]
+    fn test_role_manifest_ignores_wildcard() {
+        let skills = vec![SkillDefinition {
+            id: "public".to_string(),
+            display_name: "Public".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec!["*".to_string()],
+            allowed_tools: vec!["public_tool".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        }];
+
+        let manifest = RoleManifest::from_skills(&skills, "1.0.0");
+
+        // Wildcard role should not create a role entry
+        assert!(manifest.roles.is_empty());
+    }
+
+    #[test]
+    fn test_role_manifest_deduplicates_tools() {
+        let skills = vec![
+            SkillDefinition {
+                id: "skill1".to_string(),
+                display_name: "S1".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["dev".to_string()],
+                allowed_tools: vec!["tool1".to_string(), "tool2".to_string()],
+                grants: None,
+                identity: None,
+                metadata: None,
+            },
+            SkillDefinition {
+                id: "skill2".to_string(),
+                display_name: "S2".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["dev".to_string()],
+                allowed_tools: vec!["tool2".to_string(), "tool3".to_string()], // tool2 overlaps
+                grants: None,
+                identity: None,
+                metadata: None,
+            },
+        ];
+
+        let manifest = RoleManifest::from_skills(&skills, "1.0.0");
+
+        // Should have 3 unique tools, not 4
+        assert_eq!(manifest.roles["dev"].tools.len(), 3);
+    }
+
+    #[test]
+    fn test_role_manifest_sorts_tools() {
+        let skills = vec![SkillDefinition {
+            id: "skill".to_string(),
+            display_name: "S".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec!["dev".to_string()],
+            allowed_tools: vec!["z_tool".to_string(), "a_tool".to_string(), "m_tool".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        }];
+
+        let manifest = RoleManifest::from_skills(&skills, "1.0.0");
+        let tools = &manifest.roles["dev"].tools;
+
+        // Should be sorted
+        assert_eq!(tools[0], "a_tool");
+        assert_eq!(tools[1], "m_tool");
+        assert_eq!(tools[2], "z_tool");
     }
 }
