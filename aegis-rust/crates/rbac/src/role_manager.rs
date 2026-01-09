@@ -219,6 +219,133 @@ impl RoleManager {
         team_roles.dedup();
         (highest_policy, team_roles)
     }
+
+    /// Check if a role has any memory access
+    pub fn has_memory_access(&self, role_id: &str) -> bool {
+        let (policy, _) = self.get_effective_memory_permission(role_id);
+        policy != MemoryPolicy::None
+    }
+
+    /// Check if a role can access all memories (admin level)
+    pub fn can_access_all_memories(&self, role_id: &str) -> bool {
+        let (policy, _) = self.get_effective_memory_permission(role_id);
+        policy == MemoryPolicy::All
+    }
+
+    /// Check if source_role can access target_role's memory
+    pub fn can_access_role_memory(&self, source_role: &str, target_role: &str) -> bool {
+        let (policy, team_roles) = self.get_effective_memory_permission(source_role);
+
+        match policy {
+            MemoryPolicy::None => false,
+            MemoryPolicy::Isolated => source_role == target_role,
+            MemoryPolicy::Team => source_role == target_role || team_roles.contains(&target_role.to_string()),
+            MemoryPolicy::All => true,
+        }
+    }
+
+    /// Check if a tool is allowed for a role (considering patterns)
+    pub fn is_tool_allowed_for_role(&self, role_id: &str, tool_name: &str, server: &str) -> bool {
+        // Always allow system tools
+        if tool_name == "set_role" {
+            return true;
+        }
+
+        // Check if server is allowed
+        if !self.can_access_server(role_id, server) {
+            return false;
+        }
+
+        if let Some(role) = self.get_role(role_id) {
+            if let Some(perms) = &role.tool_permissions {
+                // Check explicit allow list
+                if perms.allow.contains(&tool_name.to_string()) {
+                    return true;
+                }
+
+                // Check allow patterns (e.g., "filesystem__*")
+                for pattern in &perms.allow {
+                    if pattern.ends_with("__*") {
+                        let prefix = &pattern[..pattern.len() - 1]; // "filesystem__"
+                        if tool_name.starts_with(prefix) {
+                            return true;
+                        }
+                    }
+                    if pattern == "*" {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Check if a server is allowed for a role
+    pub fn is_server_allowed_for_role(&self, role_id: &str, server: &str) -> bool {
+        self.can_access_server(role_id, server)
+    }
+
+    /// Check if role exists
+    pub fn has_role(&self, role_id: &str) -> bool {
+        self.roles.contains_key(role_id)
+    }
+
+    /// Get all skills for a role
+    pub fn get_skills_for_role(&self, role_id: &str) -> Vec<&SkillDefinition> {
+        self.skills
+            .iter()
+            .filter(|s| s.allows_role(role_id))
+            .collect()
+    }
+
+    /// Generate role manifest from skills
+    pub fn generate_role_manifest(&self, manifest: &SkillManifest) -> RoleManifestOutput {
+        let mut roles: HashMap<String, DynamicRoleOutput> = HashMap::new();
+
+        for skill in &manifest.skills {
+            for role_id in &skill.allowed_roles {
+                if role_id == "*" {
+                    continue;
+                }
+
+                let entry = roles.entry(role_id.clone()).or_insert_with(|| DynamicRoleOutput {
+                    id: role_id.clone(),
+                    skills: Vec::new(),
+                    tools: Vec::new(),
+                });
+
+                entry.skills.push(skill.id.clone());
+                entry.tools.extend(skill.allowed_tools.clone());
+            }
+        }
+
+        // Deduplicate tools
+        for role in roles.values_mut() {
+            role.tools.sort();
+            role.tools.dedup();
+        }
+
+        RoleManifestOutput {
+            roles,
+            source_version: manifest.version.clone(),
+        }
+    }
+}
+
+/// Dynamic role output for manifest generation
+#[derive(Debug, Clone)]
+pub struct DynamicRoleOutput {
+    pub id: String,
+    pub skills: Vec<String>,
+    pub tools: Vec<String>,
+}
+
+/// Role manifest output
+#[derive(Debug, Clone)]
+pub struct RoleManifestOutput {
+    pub roles: HashMap<String, DynamicRoleOutput>,
+    pub source_version: String,
 }
 
 impl Default for RoleManager {
@@ -230,7 +357,7 @@ impl Default for RoleManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::{SkillGrants};
+    use shared::SkillGrants;
 
     fn create_test_manifest() -> SkillManifest {
         SkillManifest {
@@ -277,6 +404,8 @@ mod tests {
             generated_at: "2024-01-01".to_string(),
         }
     }
+
+    // ============== Basic Role Tests ==============
 
     #[test]
     fn test_role_registration() {
@@ -417,100 +546,6 @@ mod tests {
     }
 
     #[test]
-    fn test_memory_permission_from_skills() {
-        let mut manager = RoleManager::new();
-
-        let manifest = SkillManifest {
-            skills: vec![
-                SkillDefinition {
-                    id: "memory-skill".to_string(),
-                    display_name: "Memory Skill".to_string(),
-                    description: "Has memory access".to_string(),
-                    allowed_roles: vec!["developer".to_string()],
-                    allowed_tools: vec![],
-                    grants: Some(SkillGrants {
-                        memory: MemoryPolicy::Isolated,
-                        memory_team_roles: vec![],
-                    }),
-                    identity: None,
-                    metadata: None,
-                },
-                SkillDefinition {
-                    id: "admin-memory".to_string(),
-                    display_name: "Admin Memory".to_string(),
-                    description: "Full memory access".to_string(),
-                    allowed_roles: vec!["admin".to_string()],
-                    allowed_tools: vec![],
-                    grants: Some(SkillGrants {
-                        memory: MemoryPolicy::All,
-                        memory_team_roles: vec![],
-                    }),
-                    identity: None,
-                    metadata: None,
-                },
-            ],
-            version: "1.0.0".to_string(),
-            generated_at: "2024-01-01".to_string(),
-        };
-
-        manager.load_from_skill_manifest(&manifest);
-
-        let (dev_policy, _) = manager.get_effective_memory_permission("developer");
-        assert_eq!(dev_policy, MemoryPolicy::Isolated);
-
-        let (admin_policy, _) = manager.get_effective_memory_permission("admin");
-        assert_eq!(admin_policy, MemoryPolicy::All);
-
-        let (guest_policy, _) = manager.get_effective_memory_permission("guest");
-        assert_eq!(guest_policy, MemoryPolicy::None);
-    }
-
-    #[test]
-    fn test_team_memory_roles_merged() {
-        let mut manager = RoleManager::new();
-
-        let manifest = SkillManifest {
-            skills: vec![
-                SkillDefinition {
-                    id: "team-skill-1".to_string(),
-                    display_name: "Team 1".to_string(),
-                    description: "Team access".to_string(),
-                    allowed_roles: vec!["lead".to_string()],
-                    allowed_tools: vec![],
-                    grants: Some(SkillGrants {
-                        memory: MemoryPolicy::Team,
-                        memory_team_roles: vec!["frontend".to_string()],
-                    }),
-                    identity: None,
-                    metadata: None,
-                },
-                SkillDefinition {
-                    id: "team-skill-2".to_string(),
-                    display_name: "Team 2".to_string(),
-                    description: "More team access".to_string(),
-                    allowed_roles: vec!["lead".to_string()],
-                    allowed_tools: vec![],
-                    grants: Some(SkillGrants {
-                        memory: MemoryPolicy::Team,
-                        memory_team_roles: vec!["backend".to_string()],
-                    }),
-                    identity: None,
-                    metadata: None,
-                },
-            ],
-            version: "1.0.0".to_string(),
-            generated_at: "2024-01-01".to_string(),
-        };
-
-        manager.load_from_skill_manifest(&manifest);
-
-        let (policy, team_roles) = manager.get_effective_memory_permission("lead");
-        assert_eq!(policy, MemoryPolicy::Team);
-        assert!(team_roles.contains(&"frontend".to_string()));
-        assert!(team_roles.contains(&"backend".to_string()));
-    }
-
-    #[test]
     fn test_default_role() {
         let mut manager = RoleManager::new();
         assert_eq!(manager.default_role(), "guest");
@@ -528,5 +563,860 @@ mod tests {
         let ids = manager.get_role_ids();
         assert!(ids.contains(&"admin"));
         assert!(ids.contains(&"user"));
+    }
+
+    #[test]
+    fn test_has_role() {
+        let mut manager = RoleManager::new();
+        manager.register_role(Role::new("admin", "Admin"));
+
+        assert!(manager.has_role("admin"));
+        assert!(!manager.has_role("nonexistent"));
+    }
+
+    // ============== Memory Permission Tests ==============
+
+    mod memory_permission {
+        use super::*;
+
+        #[test]
+        fn test_deny_memory_when_no_skill_grants() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "basic-skill".to_string(),
+                    display_name: "Basic".to_string(),
+                    description: "No memory grants".to_string(),
+                    allowed_roles: vec!["viewer".to_string()],
+                    allowed_tools: vec!["read_file".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(!manager.has_memory_access("viewer"));
+            let (policy, _) = manager.get_effective_memory_permission("viewer");
+            assert_eq!(policy, MemoryPolicy::None);
+        }
+
+        #[test]
+        fn test_deny_memory_when_explicit_none() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "no-memory".to_string(),
+                    display_name: "No Memory".to_string(),
+                    description: "Explicit none".to_string(),
+                    allowed_roles: vec!["guest".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::None,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(!manager.has_memory_access("guest"));
+        }
+
+        #[test]
+        fn test_isolated_memory_access_via_skill() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "memory-basic".to_string(),
+                    display_name: "Basic Memory".to_string(),
+                    description: "Isolated memory".to_string(),
+                    allowed_roles: vec!["developer".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Isolated,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.has_memory_access("developer"));
+            let (policy, _) = manager.get_effective_memory_permission("developer");
+            assert_eq!(policy, MemoryPolicy::Isolated);
+        }
+
+        #[test]
+        fn test_isolated_own_memory_only() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "memory-isolated".to_string(),
+                    display_name: "Isolated".to_string(),
+                    description: "Isolated access".to_string(),
+                    allowed_roles: vec!["frontend".to_string(), "backend".to_string()],
+                    allowed_tools: vec![],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Isolated,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Frontend can access own memory
+            assert!(manager.can_access_role_memory("frontend", "frontend"));
+            // Frontend cannot access backend's memory
+            assert!(!manager.can_access_role_memory("frontend", "backend"));
+            // Backend can access own memory
+            assert!(manager.can_access_role_memory("backend", "backend"));
+            // Backend cannot access frontend's memory
+            assert!(!manager.can_access_role_memory("backend", "frontend"));
+        }
+
+        #[test]
+        fn test_team_memory_access() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "team-memory".to_string(),
+                        display_name: "Team Memory".to_string(),
+                        description: "Team access".to_string(),
+                        allowed_roles: vec!["lead".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Team,
+                            memory_team_roles: vec!["frontend".to_string(), "backend".to_string()],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "basic".to_string(),
+                        display_name: "Basic".to_string(),
+                        description: "Creates roles".to_string(),
+                        allowed_roles: vec!["frontend".to_string(), "backend".to_string(), "security".to_string()],
+                        allowed_tools: vec!["read".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.has_memory_access("lead"));
+            let (policy, _) = manager.get_effective_memory_permission("lead");
+            assert_eq!(policy, MemoryPolicy::Team);
+
+            // Lead can access own memory
+            assert!(manager.can_access_role_memory("lead", "lead"));
+            // Lead can access frontend's memory
+            assert!(manager.can_access_role_memory("lead", "frontend"));
+            // Lead can access backend's memory
+            assert!(manager.can_access_role_memory("lead", "backend"));
+            // Lead cannot access security's memory (not in team)
+            assert!(!manager.can_access_role_memory("lead", "security"));
+        }
+
+        #[test]
+        fn test_all_memory_access() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "admin-memory".to_string(),
+                        display_name: "Admin Memory".to_string(),
+                        description: "Full access".to_string(),
+                        allowed_roles: vec!["admin".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::All,
+                            memory_team_roles: vec![],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "isolated".to_string(),
+                        display_name: "Isolated".to_string(),
+                        description: "Isolated".to_string(),
+                        allowed_roles: vec!["dev".to_string(), "ops".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Isolated,
+                            memory_team_roles: vec![],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.has_memory_access("admin"));
+            assert!(manager.can_access_all_memories("admin"));
+
+            // Admin can access any role
+            assert!(manager.can_access_role_memory("admin", "admin"));
+            assert!(manager.can_access_role_memory("admin", "dev"));
+            assert!(manager.can_access_role_memory("admin", "ops"));
+            assert!(manager.can_access_role_memory("admin", "nonexistent"));
+        }
+
+        #[test]
+        fn test_highest_policy_wins() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "isolated-skill".to_string(),
+                        display_name: "Isolated".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["developer".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Isolated,
+                            memory_team_roles: vec![],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "team-skill".to_string(),
+                        display_name: "Team".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["developer".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Team,
+                            memory_team_roles: vec!["qa".to_string()],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // team > isolated
+            let (policy, _) = manager.get_effective_memory_permission("developer");
+            assert_eq!(policy, MemoryPolicy::Team);
+        }
+
+        #[test]
+        fn test_all_over_team_priority() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "team-skill".to_string(),
+                        display_name: "Team".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["superuser".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Team,
+                            memory_team_roles: vec!["a".to_string(), "b".to_string()],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "all-skill".to_string(),
+                        display_name: "All".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["superuser".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::All,
+                            memory_team_roles: vec![],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // all > team
+            let (policy, _) = manager.get_effective_memory_permission("superuser");
+            assert_eq!(policy, MemoryPolicy::All);
+            assert!(manager.can_access_all_memories("superuser"));
+        }
+
+        #[test]
+        fn test_team_roles_merged() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "team-a".to_string(),
+                        display_name: "Team A".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["coordinator".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Team,
+                            memory_team_roles: vec!["dev1".to_string(), "dev2".to_string()],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "team-b".to_string(),
+                        display_name: "Team B".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["coordinator".to_string()],
+                        allowed_tools: vec![],
+                        grants: Some(SkillGrants {
+                            memory: MemoryPolicy::Team,
+                            memory_team_roles: vec!["ops1".to_string(), "ops2".to_string()],
+                        }),
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            let (policy, team_roles) = manager.get_effective_memory_permission("coordinator");
+            assert_eq!(policy, MemoryPolicy::Team);
+            assert!(team_roles.contains(&"dev1".to_string()));
+            assert!(team_roles.contains(&"dev2".to_string()));
+            assert!(team_roles.contains(&"ops1".to_string()));
+            assert!(team_roles.contains(&"ops2".to_string()));
+        }
+
+        #[test]
+        fn test_handle_nonexistent_role() {
+            let manager = RoleManager::new();
+            assert!(!manager.has_memory_access("nonexistent"));
+            let (policy, _) = manager.get_effective_memory_permission("nonexistent");
+            assert_eq!(policy, MemoryPolicy::None);
+        }
+
+        #[test]
+        fn test_empty_manifest() {
+            let mut manager = RoleManager::new();
+            let manifest = SkillManifest {
+                skills: vec![],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(!manager.has_memory_access("any"));
+        }
+    }
+
+    // ============== Tool Filtering Tests ==============
+
+    mod tool_filtering {
+        use super::*;
+
+        fn create_tool_manifest() -> SkillManifest {
+            SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "orchestration".to_string(),
+                        display_name: "Orchestration".to_string(),
+                        description: "Delegation only".to_string(),
+                        allowed_roles: vec!["orchestrator".to_string()],
+                        allowed_tools: vec![],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "frontend-dev".to_string(),
+                        display_name: "Frontend Dev".to_string(),
+                        description: "Frontend tasks".to_string(),
+                        allowed_roles: vec!["frontend".to_string()],
+                        allowed_tools: vec![
+                            "filesystem__read_file".to_string(),
+                            "filesystem__write_file".to_string(),
+                            "filesystem__list_directory".to_string(),
+                        ],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "guest-access".to_string(),
+                        display_name: "Guest Access".to_string(),
+                        description: "Read only".to_string(),
+                        allowed_roles: vec!["guest".to_string()],
+                        allowed_tools: vec![
+                            "filesystem__read_file".to_string(),
+                            "filesystem__list_directory".to_string(),
+                        ],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "devops-full".to_string(),
+                        display_name: "DevOps Full".to_string(),
+                        description: "Full access".to_string(),
+                        allowed_roles: vec!["devops".to_string()],
+                        allowed_tools: vec![
+                            "filesystem__*".to_string(),
+                            "execution__*".to_string(),
+                        ],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            }
+        }
+
+        #[test]
+        fn test_orchestrator_no_tools() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            // Orchestrator has no tools
+            assert!(!manager.is_tool_allowed_for_role("orchestrator", "filesystem__read_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("orchestrator", "execution__run_command", "execution"));
+        }
+
+        #[test]
+        fn test_orchestrator_set_role_allowed() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            // set_role is always allowed
+            assert!(manager.is_tool_allowed_for_role("orchestrator", "set_role", "aegis-router"));
+        }
+
+        #[test]
+        fn test_frontend_read_write_allowed() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            assert!(manager.is_tool_allowed_for_role("frontend", "filesystem__read_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("frontend", "filesystem__write_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("frontend", "filesystem__list_directory", "filesystem"));
+        }
+
+        #[test]
+        fn test_frontend_delete_denied() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            assert!(!manager.is_tool_allowed_for_role("frontend", "filesystem__delete_file", "filesystem"));
+        }
+
+        #[test]
+        fn test_guest_read_only() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            assert!(manager.is_tool_allowed_for_role("guest", "filesystem__read_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("guest", "filesystem__list_directory", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("guest", "filesystem__write_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("guest", "filesystem__delete_file", "filesystem"));
+        }
+
+        #[test]
+        fn test_devops_wildcard_match() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            // DevOps has filesystem__* and execution__*
+            assert!(manager.is_tool_allowed_for_role("devops", "filesystem__read_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("devops", "filesystem__write_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("devops", "filesystem__delete_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("devops", "filesystem__any_operation", "filesystem"));
+
+            assert!(manager.is_tool_allowed_for_role("devops", "execution__run_command", "execution"));
+            assert!(manager.is_tool_allowed_for_role("devops", "execution__any_command", "execution"));
+        }
+
+        #[test]
+        fn test_set_role_always_allowed_all_roles() {
+            let mut manager = RoleManager::new();
+            manager.load_from_skill_manifest(&create_tool_manifest());
+
+            let roles = ["orchestrator", "frontend", "guest", "devops"];
+            for role in roles {
+                assert!(
+                    manager.is_tool_allowed_for_role(role, "set_role", "aegis-router"),
+                    "set_role should be allowed for {}",
+                    role
+                );
+            }
+        }
+    }
+
+    // ============== Role Switching Tests ==============
+
+    mod role_switching {
+        use super::*;
+
+        #[test]
+        fn test_different_tools_for_roles() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "editor-skill".to_string(),
+                        display_name: "Editor".to_string(),
+                        description: "Edit files".to_string(),
+                        allowed_roles: vec!["editor".to_string()],
+                        allowed_tools: vec![
+                            "filesystem__read_file".to_string(),
+                            "filesystem__write_file".to_string(),
+                            "filesystem__delete_file".to_string(),
+                        ],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "viewer-skill".to_string(),
+                        display_name: "Viewer".to_string(),
+                        description: "View only".to_string(),
+                        allowed_roles: vec!["viewer".to_string()],
+                        allowed_tools: vec![
+                            "filesystem__read_file".to_string(),
+                            "filesystem__list_directory".to_string(),
+                        ],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Editor can write and delete
+            assert!(manager.is_tool_allowed_for_role("editor", "filesystem__write_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("editor", "filesystem__delete_file", "filesystem"));
+
+            // Viewer cannot
+            assert!(!manager.is_tool_allowed_for_role("viewer", "filesystem__write_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("viewer", "filesystem__delete_file", "filesystem"));
+        }
+
+        #[test]
+        fn test_skill_assignment_per_role() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "docx-handler".to_string(),
+                        display_name: "DOCX".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["doc-editor".to_string(), "admin".to_string()],
+                        allowed_tools: vec!["docx__read".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "code-formatter".to_string(),
+                        display_name: "Code".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["developer".to_string(), "admin".to_string()],
+                        allowed_tools: vec!["prettier__format".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+
+            // Doc editor has only docx-handler
+            assert!(role_manifest.roles["doc-editor"].skills.contains(&"docx-handler".to_string()));
+            assert!(!role_manifest.roles["doc-editor"].skills.contains(&"code-formatter".to_string()));
+
+            // Developer has only code-formatter
+            assert!(role_manifest.roles["developer"].skills.contains(&"code-formatter".to_string()));
+            assert!(!role_manifest.roles["developer"].skills.contains(&"docx-handler".to_string()));
+
+            // Admin has both
+            assert!(role_manifest.roles["admin"].skills.contains(&"docx-handler".to_string()));
+            assert!(role_manifest.roles["admin"].skills.contains(&"code-formatter".to_string()));
+        }
+
+        #[test]
+        fn test_aggregate_tools_from_multiple_skills() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "skill-a".to_string(),
+                        display_name: "A".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["multi-skill-user".to_string()],
+                        allowed_tools: vec!["server1__tool1".to_string(), "server1__tool2".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "skill-b".to_string(),
+                        display_name: "B".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["multi-skill-user".to_string()],
+                        allowed_tools: vec!["server2__tool1".to_string(), "server1__tool1".to_string()], // Overlap
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+            let role_manifest = manager.generate_role_manifest(&manifest);
+
+            let role = &role_manifest.roles["multi-skill-user"];
+
+            // Should have 2 skills
+            assert_eq!(role.skills.len(), 2);
+
+            // Should have 3 unique tools (deduplicated)
+            assert!(role.tools.contains(&"server1__tool1".to_string()));
+            assert!(role.tools.contains(&"server1__tool2".to_string()));
+            assert!(role.tools.contains(&"server2__tool1".to_string()));
+            assert_eq!(role.tools.len(), 3);
+        }
+    }
+
+    // ============== Skill Integration Tests ==============
+
+    mod skill_integration {
+        use super::*;
+
+        #[test]
+        fn test_generate_roles_from_skills() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "docx-handler".to_string(),
+                        display_name: "DOCX Handler".to_string(),
+                        description: "Handle DOCX".to_string(),
+                        allowed_roles: vec!["editor".to_string(), "admin".to_string()],
+                        allowed_tools: vec!["filesystem__read_file".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "code-reviewer".to_string(),
+                        display_name: "Code Reviewer".to_string(),
+                        description: "Review code".to_string(),
+                        allowed_roles: vec!["developer".to_string(), "admin".to_string()],
+                        allowed_tools: vec!["git__status".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+
+            // Should have 3 roles: editor, developer, admin
+            assert_eq!(role_manifest.roles.len(), 3);
+
+            // Editor has docx-handler
+            assert!(role_manifest.roles["editor"].skills.contains(&"docx-handler".to_string()));
+            assert!(!role_manifest.roles["editor"].skills.contains(&"code-reviewer".to_string()));
+
+            // Developer has code-reviewer
+            assert!(role_manifest.roles["developer"].skills.contains(&"code-reviewer".to_string()));
+            assert!(!role_manifest.roles["developer"].skills.contains(&"docx-handler".to_string()));
+
+            // Admin has both
+            assert!(role_manifest.roles["admin"].skills.contains(&"docx-handler".to_string()));
+            assert!(role_manifest.roles["admin"].skills.contains(&"code-reviewer".to_string()));
+        }
+
+        #[test]
+        fn test_ignore_wildcard_role() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "public-skill".to_string(),
+                        display_name: "Public".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["*".to_string()],
+                        allowed_tools: vec!["public_tool".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "private-skill".to_string(),
+                        display_name: "Private".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["admin".to_string()],
+                        allowed_tools: vec!["private_tool".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            let role_manifest = manager.generate_role_manifest(&manifest);
+
+            // Only admin role should exist (wildcard ignored)
+            assert_eq!(role_manifest.roles.len(), 1);
+            assert!(role_manifest.roles.contains_key("admin"));
+
+            // Admin only has private skill
+            assert!(role_manifest.roles["admin"].skills.contains(&"private-skill".to_string()));
+            assert!(!role_manifest.roles["admin"].skills.contains(&"public-skill".to_string()));
+        }
+
+        #[test]
+        fn test_load_creates_roles() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![SkillDefinition {
+                    id: "test-skill".to_string(),
+                    display_name: "Test".to_string(),
+                    description: "Testing".to_string(),
+                    allowed_roles: vec!["tester".to_string()],
+                    allowed_tools: vec!["filesystem__read_file".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                }],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            assert!(manager.has_role("tester"));
+        }
+
+        #[test]
+        fn test_frontend_backend_fullstack() {
+            let mut manager = RoleManager::new();
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "frontend-skill".to_string(),
+                        display_name: "Frontend".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["frontend".to_string(), "fullstack".to_string()],
+                        allowed_tools: vec!["filesystem__read_file".to_string(), "filesystem__write_file".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "backend-skill".to_string(),
+                        display_name: "Backend".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["backend".to_string(), "fullstack".to_string()],
+                        allowed_tools: vec!["filesystem__read_file".to_string(), "database__query".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+
+            manager.load_from_skill_manifest(&manifest);
+
+            // Should have 3 roles
+            assert!(manager.has_role("frontend"));
+            assert!(manager.has_role("backend"));
+            assert!(manager.has_role("fullstack"));
+
+            // Frontend: read + write, no database
+            assert!(manager.is_tool_allowed_for_role("frontend", "filesystem__read_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("frontend", "filesystem__write_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("frontend", "database__query", "database"));
+
+            // Backend: read + database, no write
+            assert!(manager.is_tool_allowed_for_role("backend", "filesystem__read_file", "filesystem"));
+            assert!(!manager.is_tool_allowed_for_role("backend", "filesystem__write_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("backend", "database__query", "database"));
+
+            // Fullstack: all
+            assert!(manager.is_tool_allowed_for_role("fullstack", "filesystem__read_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("fullstack", "filesystem__write_file", "filesystem"));
+            assert!(manager.is_tool_allowed_for_role("fullstack", "database__query", "database"));
+        }
     }
 }

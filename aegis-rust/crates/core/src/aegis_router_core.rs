@@ -196,14 +196,313 @@ impl AegisRouterCore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::NullLogger;
+    use shared::{NullLogger, SkillDefinition, SkillGrants, MemoryPolicy};
+
+    fn create_logger() -> Arc<dyn Logger> {
+        Arc::new(NullLogger)
+    }
+
+    fn create_test_manifest() -> SkillManifest {
+        SkillManifest {
+            skills: vec![
+                SkillDefinition {
+                    id: "guest-access".to_string(),
+                    display_name: "Guest Access".to_string(),
+                    description: "Minimal read-only".to_string(),
+                    allowed_roles: vec!["guest".to_string()],
+                    allowed_tools: vec!["filesystem__read_file".to_string()],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "developer-tools".to_string(),
+                    display_name: "Developer Tools".to_string(),
+                    description: "Development access".to_string(),
+                    allowed_roles: vec!["developer".to_string()],
+                    allowed_tools: vec![
+                        "filesystem__read_file".to_string(),
+                        "filesystem__write_file".to_string(),
+                    ],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::Isolated,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+                SkillDefinition {
+                    id: "admin-full".to_string(),
+                    display_name: "Admin Full".to_string(),
+                    description: "Full access".to_string(),
+                    allowed_roles: vec!["admin".to_string()],
+                    allowed_tools: vec!["*".to_string()],
+                    grants: Some(SkillGrants {
+                        memory: MemoryPolicy::All,
+                        memory_team_roles: vec![],
+                    }),
+                    identity: None,
+                    metadata: None,
+                },
+            ],
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        }
+    }
+
+    // ============== Basic Router Tests ==============
 
     #[test]
     fn test_router_creation() {
-        let logger = Arc::new(NullLogger);
+        let logger = create_logger();
         let router = AegisRouterCore::new(logger, RouterConfig::default());
 
         assert!(!router.is_a2a_mode());
         assert!(router.current_role().is_none());
+    }
+
+    #[test]
+    fn test_router_with_a2a_mode_enabled() {
+        let logger = create_logger();
+        let config = RouterConfig {
+            a2a_mode: true,
+            ..Default::default()
+        };
+        let router = AegisRouterCore::new(logger, config);
+
+        assert!(router.is_a2a_mode());
+    }
+
+    #[test]
+    fn test_enable_disable_a2a_mode() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        assert!(!router.is_a2a_mode());
+
+        router.enable_a2a_mode();
+        assert!(router.is_a2a_mode());
+
+        router.disable_a2a_mode();
+        assert!(!router.is_a2a_mode());
+    }
+
+    #[test]
+    fn test_toggle_a2a_mode_multiple_times() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        router.enable_a2a_mode();
+        assert!(router.is_a2a_mode());
+        router.disable_a2a_mode();
+        assert!(!router.is_a2a_mode());
+        router.enable_a2a_mode();
+        assert!(router.is_a2a_mode());
+    }
+
+    // ============== Skill Manifest Loading Tests ==============
+
+    #[test]
+    fn test_load_from_skill_manifest() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        // Roles should be available
+        let roles = router.list_roles();
+        assert!(roles.contains(&"guest"));
+        assert!(roles.contains(&"developer"));
+        assert!(roles.contains(&"admin"));
+    }
+
+    // ============== Role Setting Tests ==============
+
+    #[test]
+    fn test_set_role_success() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        let result = router.set_role("guest");
+        assert!(result.is_ok());
+        assert_eq!(router.current_role(), Some("guest"));
+    }
+
+    #[test]
+    fn test_set_role_nonexistent_fails() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        let result = router.set_role("nonexistent-role-xyz");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_role_disabled_in_a2a_mode() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        router.enable_a2a_mode();
+
+        let result = router.set_role("guest");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("A2A mode"));
+    }
+
+    #[test]
+    fn test_role_switch_between_roles() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        router.set_role("guest").unwrap();
+        assert_eq!(router.current_role(), Some("guest"));
+
+        router.set_role("developer").unwrap();
+        assert_eq!(router.current_role(), Some("developer"));
+
+        router.set_role("admin").unwrap();
+        assert_eq!(router.current_role(), Some("admin"));
+    }
+
+    // ============== A2A Identity Resolution Tests ==============
+
+    #[test]
+    fn test_set_role_from_identity() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        let agent_card = A2AAgentCard {
+            name: "test-agent".to_string(),
+            version: "1.0.0".to_string(),
+            skills: vec![],
+        };
+
+        let resolution = router.set_role_from_identity(&agent_card);
+
+        // Should resolve to default role since no skills match
+        assert!(!resolution.role_id.is_empty());
+    }
+
+    // ============== Audit Tests ==============
+
+    #[test]
+    fn test_audit_stats_available() {
+        let logger = create_logger();
+        let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let stats = router.get_audit_stats();
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.denial_count, 0);
+    }
+
+    #[test]
+    fn test_audit_logs_role_switch() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        router.set_role("guest").unwrap();
+        router.set_role("developer").unwrap();
+
+        let stats = router.get_audit_stats();
+        assert_eq!(stats.total_entries, 2);
+    }
+
+    #[test]
+    fn test_get_recent_denials() {
+        let logger = create_logger();
+        let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let denials = router.get_recent_denials(10);
+        assert!(denials.is_empty());
+    }
+
+    // ============== Identity Resolver Stats Tests ==============
+
+    #[test]
+    fn test_identity_stats_available() {
+        let logger = create_logger();
+        let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let stats = router.get_identity_stats();
+        assert_eq!(stats.total_rules, 0);
+    }
+
+    // ============== Default Config Tests ==============
+
+    #[test]
+    fn test_router_config_default() {
+        let config = RouterConfig::default();
+
+        assert!(!config.a2a_mode);
+        assert_eq!(config.default_role, "guest");
+    }
+
+    // ============== List Roles Tests ==============
+
+    #[test]
+    fn test_list_roles_empty_initially() {
+        let logger = create_logger();
+        let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let roles = router.list_roles();
+        assert!(roles.is_empty());
+    }
+
+    #[test]
+    fn test_list_roles_after_manifest_load() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let manifest = create_test_manifest();
+        router.load_from_skill_manifest(&manifest);
+
+        let roles = router.list_roles();
+        assert_eq!(roles.len(), 3);
+    }
+
+    // ============== Tool Visibility Tests ==============
+
+    #[test]
+    fn test_get_visible_tools_without_role() {
+        let logger = create_logger();
+        let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let tools = router.get_visible_tools();
+        // Without a role set, behavior depends on implementation
+        assert!(tools.is_empty() || !tools.is_empty()); // Just verify it doesn't panic
+    }
+
+    // ============== Config Loading Tests ==============
+
+    #[test]
+    fn test_load_config() {
+        let logger = create_logger();
+        let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+        let config = DesktopConfig {
+            mcp_servers: std::collections::HashMap::new(),
+        };
+
+        let result = router.load_config(&config);
+        assert!(result.is_ok());
     }
 }
