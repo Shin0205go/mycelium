@@ -379,4 +379,236 @@ mod tests {
 
         assert_eq!(config.args.len(), 100);
     }
+
+    // ============== Additional Edge Case Tests ==============
+
+    #[test]
+    fn test_config_from_file_nonexistent() {
+        let result = DesktopConfig::from_file(std::path::Path::new("/nonexistent/path.json"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mcp_config_camel_case_serialization() {
+        let config = MCPServerConfig {
+            command: "test".to_string(),
+            args: vec!["a".to_string()],
+            env: HashMap::new(),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        // Should use camelCase
+        assert!(json.contains("\"command\""));
+        assert!(json.contains("\"args\""));
+    }
+
+    #[test]
+    fn test_desktop_config_camel_case() {
+        let mut servers = HashMap::new();
+        servers.insert("test".to_string(), MCPServerConfig {
+            command: "cmd".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+        });
+
+        let config = DesktopConfig { mcp_servers: servers };
+        let json = serde_json::to_string(&config).unwrap();
+
+        // Should use mcpServers (camelCase)
+        assert!(json.contains("mcpServers"));
+    }
+
+    #[test]
+    fn test_mcp_config_empty_command() {
+        let config = MCPServerConfig {
+            command: "".to_string(),
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        assert!(config.command.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_config_whitespace_in_args() {
+        let config = MCPServerConfig {
+            command: "echo".to_string(),
+            args: vec!["hello world".to_string(), "  spaced  ".to_string()],
+            env: HashMap::new(),
+        };
+
+        assert_eq!(config.args[0], "hello world");
+        assert_eq!(config.args[1], "  spaced  ");
+    }
+
+    #[test]
+    fn test_mcp_config_special_env_values() {
+        let mut env = HashMap::new();
+        env.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+        env.insert("EMPTY".to_string(), "".to_string());
+        env.insert("QUOTES".to_string(), "\"quoted\"".to_string());
+
+        let config = MCPServerConfig {
+            command: "cmd".to_string(),
+            args: vec![],
+            env,
+        };
+
+        assert_eq!(config.env.get("PATH"), Some(&"/usr/bin:/bin".to_string()));
+        assert_eq!(config.env.get("EMPTY"), Some(&"".to_string()));
+        assert_eq!(config.env.get("QUOTES"), Some(&"\"quoted\"".to_string()));
+    }
+
+    #[test]
+    fn test_desktop_config_clone() {
+        let mut servers = HashMap::new();
+        servers.insert("test".to_string(), MCPServerConfig {
+            command: "cmd".to_string(),
+            args: vec!["arg".to_string()],
+            env: HashMap::new(),
+        });
+
+        let config = DesktopConfig { mcp_servers: servers };
+        let cloned = config.clone();
+
+        assert_eq!(cloned.mcp_servers.len(), config.mcp_servers.len());
+        assert!(cloned.mcp_servers.contains_key("test"));
+    }
+
+    #[test]
+    fn test_desktop_config_debug() {
+        let config = DesktopConfig { mcp_servers: HashMap::new() };
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("DesktopConfig"));
+    }
+
+    #[test]
+    fn test_mcp_config_very_long_command() {
+        let long_command = "a".repeat(10000);
+        let config = MCPServerConfig {
+            command: long_command.clone(),
+            args: vec![],
+            env: HashMap::new(),
+        };
+
+        assert_eq!(config.command.len(), 10000);
+    }
+
+    #[test]
+    fn test_config_from_file_invalid_json() {
+        use std::io::Write;
+
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("invalid_aegis_test.json");
+
+        {
+            let mut file = std::fs::File::create(&file_path).unwrap();
+            file.write_all(b"{ invalid json }").unwrap();
+        }
+
+        let result = DesktopConfig::from_file(&file_path);
+        assert!(result.is_err());
+
+        // Cleanup
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn test_config_from_file_valid() {
+        use std::io::Write;
+
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("valid_aegis_test.json");
+
+        {
+            let mut file = std::fs::File::create(&file_path).unwrap();
+            file.write_all(br#"{"mcpServers": {"test": {"command": "cmd", "args": []}}}"#).unwrap();
+        }
+
+        let result = DesktopConfig::from_file(&file_path);
+        assert!(result.is_ok());
+
+        let config = result.unwrap();
+        assert!(config.mcp_servers.contains_key("test"));
+
+        // Cleanup
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn test_logger_trait_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ConsoleLogger>();
+        assert_send_sync::<NullLogger>();
+    }
+
+    #[test]
+    fn test_config_deserialization_missing_optional_fields() {
+        let json = r#"{"mcpServers": {"s": {"command": "c"}}}"#;
+        let config: DesktopConfig = serde_json::from_str(json).unwrap();
+
+        let server = &config.mcp_servers["s"];
+        // args and env should default to empty
+        assert!(server.args.is_empty());
+        assert!(server.env.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_config_with_all_fields() {
+        let mut env = HashMap::new();
+        env.insert("KEY".to_string(), "VALUE".to_string());
+
+        let config = MCPServerConfig {
+            command: "full-command".to_string(),
+            args: vec!["arg1".to_string(), "arg2".to_string(), "arg3".to_string()],
+            env,
+        };
+
+        assert_eq!(config.command, "full-command");
+        assert_eq!(config.args.len(), 3);
+        assert_eq!(config.env.len(), 1);
+    }
+
+    #[test]
+    fn test_server_names_returns_all_names() {
+        let json = r#"{
+            "mcpServers": {
+                "a": {"command": "a"},
+                "b": {"command": "b"},
+                "c": {"command": "c"},
+                "d": {"command": "d"},
+                "e": {"command": "e"}
+            }
+        }"#;
+
+        let config: DesktopConfig = serde_json::from_str(json).unwrap();
+        let names = config.server_names();
+
+        assert_eq!(names.len(), 5);
+        for name in ["a", "b", "c", "d", "e"] {
+            assert!(names.contains(&name));
+        }
+    }
+
+    #[test]
+    fn test_console_logger_methods_dont_panic() {
+        let logger = ConsoleLogger;
+
+        // These produce output to stderr but shouldn't panic
+        logger.debug("debug message", None);
+        logger.info("info message", None);
+        logger.warn("warn message", None);
+        logger.error("error message", None);
+    }
+
+    #[test]
+    fn test_logger_with_empty_metadata() {
+        let logger = NullLogger;
+        let meta = HashMap::new();
+
+        logger.debug("test", Some(&meta));
+        logger.info("test", Some(&meta));
+        logger.warn("test", Some(&meta));
+        logger.error("test", Some(&meta));
+    }
 }
