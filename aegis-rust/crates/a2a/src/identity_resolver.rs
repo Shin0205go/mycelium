@@ -1310,4 +1310,399 @@ mod tests {
             assert!(debug.contains("IdentityResolverStats"));
         }
     }
+
+    // ============== Additional Edge Case Tests ==============
+
+    mod additional_edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_resolver_with_strict_validation() {
+            let config = IdentityResolverConfig {
+                strict_validation: true,
+                ..Default::default()
+            };
+            let resolver = IdentityResolver::new(Arc::new(NullLogger), config);
+
+            let stats = resolver.get_stats();
+            assert_eq!(stats.total_rules, 0);
+        }
+
+        #[test]
+        fn test_resolution_result_debug() {
+            let resolver = create_resolver();
+            let agent = A2AAgentCard {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let result = resolver.resolve(&agent);
+            let debug = format!("{:?}", result);
+            assert!(debug.contains("IdentityResolution"));
+        }
+
+        #[test]
+        fn test_resolution_result_clone() {
+            let resolver = create_resolver();
+            let agent = A2AAgentCard {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let result = resolver.resolve(&agent);
+            let cloned = result.clone();
+
+            assert_eq!(cloned.role_id, result.role_id);
+            assert_eq!(cloned.agent_name, result.agent_name);
+        }
+
+        #[test]
+        fn test_multiple_forbidden_skills_all_block() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "admin".to_string(),
+                    required_skills: vec!["admin_access".to_string()],
+                    any_skills: Vec::new(),
+                    min_skill_match: 1,
+                    forbidden_skills: vec!["blocked1".to_string(), "blocked2".to_string()],
+                    context: None,
+                    description: None,
+                    priority: 100,
+                }],
+                trusted_prefixes: Vec::new(),
+            });
+
+            // Has admin_access but also has blocked2
+            let agent = A2AAgentCard {
+                name: "blocked-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("admin_access"), create_skill("blocked2")],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.role_id, "guest");
+        }
+
+        #[test]
+        fn test_priority_ordering_respected() {
+            let mut resolver = create_resolver();
+
+            // Add rules in non-priority order
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![
+                    SkillMatchRule {
+                        role: "low".to_string(),
+                        required_skills: Vec::new(),
+                        any_skills: vec!["common".to_string()],
+                        min_skill_match: 1,
+                        forbidden_skills: Vec::new(),
+                        context: None,
+                        description: None,
+                        priority: 10,
+                    },
+                    SkillMatchRule {
+                        role: "high".to_string(),
+                        required_skills: Vec::new(),
+                        any_skills: vec!["common".to_string()],
+                        min_skill_match: 1,
+                        forbidden_skills: Vec::new(),
+                        context: None,
+                        description: None,
+                        priority: 100,
+                    },
+                ],
+                trusted_prefixes: Vec::new(),
+            });
+
+            let agent = A2AAgentCard {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("common")],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.role_id, "high");
+        }
+
+        #[test]
+        fn test_agent_version_recorded() {
+            let resolver = create_resolver();
+
+            let agent = A2AAgentCard {
+                name: "test".to_string(),
+                version: "2.5.0".to_string(),
+                skills: vec![],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.agent_name, "test");
+        }
+
+        #[test]
+        fn test_matched_rule_is_none_for_default() {
+            let resolver = create_resolver();
+
+            let agent = A2AAgentCard {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert!(result.matched_rule.is_none());
+            assert_eq!(result.role_id, "guest");
+        }
+
+        #[test]
+        fn test_matched_skills_populated() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "developer".to_string(),
+                    required_skills: Vec::new(),
+                    any_skills: vec!["react".to_string(), "vue".to_string()],
+                    min_skill_match: 1,
+                    forbidden_skills: Vec::new(),
+                    context: None,
+                    description: None,
+                    priority: 50,
+                }],
+                trusted_prefixes: Vec::new(),
+            });
+
+            let agent = A2AAgentCard {
+                name: "dev".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("react"), create_skill("python")],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.role_id, "developer");
+            assert!(result.matched_skills.contains(&"react".to_string()));
+        }
+
+        #[test]
+        fn test_trusted_prefix_detection() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: Vec::new(),
+                trusted_prefixes: vec!["trusted-".to_string(), "verified-".to_string()],
+            });
+
+            let agent1 = A2AAgentCard {
+                name: "trusted-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let agent2 = A2AAgentCard {
+                name: "verified-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let agent3 = A2AAgentCard {
+                name: "untrusted-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            assert!(resolver.resolve(&agent1).is_trusted);
+            assert!(resolver.resolve(&agent2).is_trusted);
+            assert!(!resolver.resolve(&agent3).is_trusted);
+        }
+
+        #[test]
+        fn test_empty_any_skills_with_required() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "admin".to_string(),
+                    required_skills: vec!["admin_access".to_string()],
+                    any_skills: Vec::new(), // Empty any_skills
+                    min_skill_match: 1,
+                    forbidden_skills: Vec::new(),
+                    context: None,
+                    description: None,
+                    priority: 100,
+                }],
+                trusted_prefixes: Vec::new(),
+            });
+
+            let agent = A2AAgentCard {
+                name: "admin".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("admin_access")],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.role_id, "admin");
+        }
+
+        #[test]
+        fn test_empty_required_with_any_skills() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "developer".to_string(),
+                    required_skills: Vec::new(), // Empty required
+                    any_skills: vec!["react".to_string()],
+                    min_skill_match: 1,
+                    forbidden_skills: Vec::new(),
+                    context: None,
+                    description: None,
+                    priority: 50,
+                }],
+                trusted_prefixes: Vec::new(),
+            });
+
+            let agent = A2AAgentCard {
+                name: "dev".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("react")],
+            };
+
+            let result = resolver.resolve(&agent);
+            assert_eq!(result.role_id, "developer");
+        }
+
+        #[test]
+        fn test_both_required_and_any_skills() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![SkillMatchRule {
+                    role: "senior_dev".to_string(),
+                    required_skills: vec!["coding".to_string()],
+                    any_skills: vec!["react".to_string(), "vue".to_string()],
+                    min_skill_match: 1,
+                    forbidden_skills: Vec::new(),
+                    context: None,
+                    description: None,
+                    priority: 80,
+                }],
+                trusted_prefixes: Vec::new(),
+            });
+
+            // Has required but not any
+            let agent1 = A2AAgentCard {
+                name: "coder".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("coding")],
+            };
+
+            // Has any but not required
+            let agent2 = A2AAgentCard {
+                name: "frontend".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("react")],
+            };
+
+            // Has both
+            let agent3 = A2AAgentCard {
+                name: "fullstack".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("coding"), create_skill("vue")],
+            };
+
+            assert_eq!(resolver.resolve(&agent1).role_id, "guest");
+            assert_eq!(resolver.resolve(&agent2).role_id, "guest");
+            assert_eq!(resolver.resolve(&agent3).role_id, "senior_dev");
+        }
+
+        #[test]
+        fn test_stats_rules_by_role_count() {
+            let mut resolver = create_resolver();
+            resolver.add_rules_from_identity_config(&SkillIdentityConfig {
+                skill_matching: vec![
+                    SkillMatchRule {
+                        role: "admin".to_string(),
+                        required_skills: vec!["skill1".to_string()],
+                        any_skills: Vec::new(),
+                        min_skill_match: 1,
+                        forbidden_skills: Vec::new(),
+                        context: None,
+                        description: None,
+                        priority: 100,
+                    },
+                    SkillMatchRule {
+                        role: "admin".to_string(),
+                        required_skills: vec!["skill2".to_string()],
+                        any_skills: Vec::new(),
+                        min_skill_match: 1,
+                        forbidden_skills: Vec::new(),
+                        context: None,
+                        description: None,
+                        priority: 99,
+                    },
+                    SkillMatchRule {
+                        role: "developer".to_string(),
+                        required_skills: vec!["coding".to_string()],
+                        any_skills: Vec::new(),
+                        min_skill_match: 1,
+                        forbidden_skills: Vec::new(),
+                        context: None,
+                        description: None,
+                        priority: 50,
+                    },
+                ],
+                trusted_prefixes: Vec::new(),
+            });
+
+            let stats = resolver.get_stats();
+            assert_eq!(stats.rules_by_role["admin"], 2);
+            assert_eq!(stats.rules_by_role["developer"], 1);
+        }
+
+        #[test]
+        fn test_a2a_agent_skill_debug() {
+            let skill = A2AAgentSkill {
+                id: "test".to_string(),
+                name: Some("Test Skill".to_string()),
+                description: Some("A test skill".to_string()),
+            };
+
+            let debug = format!("{:?}", skill);
+            assert!(debug.contains("A2AAgentSkill"));
+        }
+
+        #[test]
+        fn test_a2a_agent_skill_clone() {
+            let skill = A2AAgentSkill {
+                id: "test".to_string(),
+                name: Some("Test".to_string()),
+                description: Some("Desc".to_string()),
+            };
+
+            let cloned = skill.clone();
+            assert_eq!(cloned.id, skill.id);
+        }
+
+        #[test]
+        fn test_a2a_agent_card_debug() {
+            let card = A2AAgentCard {
+                name: "agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let debug = format!("{:?}", card);
+            assert!(debug.contains("A2AAgentCard"));
+        }
+
+        #[test]
+        fn test_a2a_agent_card_clone() {
+            let card = A2AAgentCard {
+                name: "agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![create_skill("skill")],
+            };
+
+            let cloned = card.clone();
+            assert_eq!(cloned.name, card.name);
+            assert_eq!(cloned.skills.len(), 1);
+        }
+    }
 }
