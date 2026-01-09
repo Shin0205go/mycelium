@@ -1,7 +1,7 @@
 //! RateLimiter - Rate limiting for AEGIS
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Rate limit quota configuration
 #[derive(Debug, Clone)]
