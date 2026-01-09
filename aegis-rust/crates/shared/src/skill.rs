@@ -846,4 +846,377 @@ mod tests {
         assert_eq!(tools[1], "m_tool");
         assert_eq!(tools[2], "z_tool");
     }
+
+    // ============== Additional Tests ==============
+
+    mod additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_memory_policy_debug() {
+            let policy = MemoryPolicy::Isolated;
+            let debug = format!("{:?}", policy);
+            assert!(debug.contains("Isolated"));
+        }
+
+        #[test]
+        fn test_memory_policy_eq() {
+            assert_eq!(MemoryPolicy::None, MemoryPolicy::None);
+            assert_ne!(MemoryPolicy::None, MemoryPolicy::Isolated);
+        }
+
+        #[test]
+        fn test_skill_grants_debug() {
+            let grants = SkillGrants::default();
+            let debug = format!("{:?}", grants);
+            assert!(debug.contains("SkillGrants"));
+        }
+
+        #[test]
+        fn test_skill_grants_clone() {
+            let grants = SkillGrants {
+                memory: MemoryPolicy::Team,
+                memory_team_roles: vec!["role1".to_string(), "role2".to_string()],
+            };
+
+            let cloned = grants.clone();
+            assert_eq!(cloned.memory, grants.memory);
+            assert_eq!(cloned.memory_team_roles.len(), 2);
+        }
+
+        #[test]
+        fn test_skill_metadata_debug() {
+            let meta = SkillMetadata::default();
+            let debug = format!("{:?}", meta);
+            assert!(debug.contains("SkillMetadata"));
+        }
+
+        #[test]
+        fn test_skill_metadata_clone() {
+            let meta = SkillMetadata {
+                version: Some("1.0.0".to_string()),
+                category: Some("tools".to_string()),
+                author: Some("Author".to_string()),
+                tags: vec!["tag1".to_string()],
+            };
+
+            let cloned = meta.clone();
+            assert_eq!(cloned.version, meta.version);
+            assert_eq!(cloned.tags.len(), 1);
+        }
+
+        #[test]
+        fn test_skill_definition_debug() {
+            let skill = SkillDefinition {
+                id: "test".to_string(),
+                display_name: "Test".to_string(),
+                description: "Desc".to_string(),
+                allowed_roles: vec![],
+                allowed_tools: vec![],
+                grants: None,
+                identity: None,
+                metadata: None,
+            };
+
+            let debug = format!("{:?}", skill);
+            assert!(debug.contains("SkillDefinition"));
+        }
+
+        #[test]
+        fn test_skill_definition_clone() {
+            let skill = SkillDefinition {
+                id: "test".to_string(),
+                display_name: "Test".to_string(),
+                description: "Desc".to_string(),
+                allowed_roles: vec!["admin".to_string()],
+                allowed_tools: vec!["tool".to_string()],
+                grants: Some(SkillGrants::default()),
+                identity: None,
+                metadata: None,
+            };
+
+            let cloned = skill.clone();
+            assert_eq!(cloned.id, skill.id);
+            assert_eq!(cloned.allowed_roles, skill.allowed_roles);
+        }
+
+        #[test]
+        fn test_skill_manifest_debug() {
+            let manifest = SkillManifest {
+                skills: vec![],
+                version: "1.0.0".to_string(),
+                generated_at: "2024".to_string(),
+            };
+
+            let debug = format!("{:?}", manifest);
+            assert!(debug.contains("SkillManifest"));
+        }
+
+        #[test]
+        fn test_skill_manifest_clone() {
+            let manifest = SkillManifest {
+                skills: vec![],
+                version: "1.0.0".to_string(),
+                generated_at: "2024".to_string(),
+            };
+
+            let cloned = manifest.clone();
+            assert_eq!(cloned.version, manifest.version);
+        }
+
+        #[test]
+        fn test_dynamic_role_debug() {
+            let role = DynamicRole {
+                id: "test".to_string(),
+                skills: vec![],
+                tools: vec![],
+            };
+
+            let debug = format!("{:?}", role);
+            assert!(debug.contains("DynamicRole"));
+        }
+
+        #[test]
+        fn test_dynamic_role_clone() {
+            let role = DynamicRole {
+                id: "dev".to_string(),
+                skills: vec!["skill1".to_string()],
+                tools: vec!["tool1".to_string()],
+            };
+
+            let cloned = role.clone();
+            assert_eq!(cloned.id, role.id);
+        }
+
+        #[test]
+        fn test_role_manifest_debug() {
+            let manifest = RoleManifest::from_skills(&[], "1.0.0");
+            let debug = format!("{:?}", manifest);
+            assert!(debug.contains("RoleManifest"));
+        }
+
+        #[test]
+        fn test_role_manifest_clone() {
+            let manifest = RoleManifest::from_skills(&[], "1.0.0");
+            let cloned = manifest.clone();
+            assert_eq!(cloned.source_version, manifest.source_version);
+        }
+
+        #[test]
+        fn test_skill_identity_config_debug() {
+            let config = SkillIdentityConfig::default();
+            let debug = format!("{:?}", config);
+            assert!(debug.contains("SkillIdentityConfig"));
+        }
+
+        #[test]
+        fn test_skill_identity_config_clone() {
+            let config = SkillIdentityConfig {
+                skill_matching: vec![],
+                trusted_prefixes: vec!["claude-".to_string()],
+            };
+
+            let cloned = config.clone();
+            assert_eq!(cloned.trusted_prefixes.len(), 1);
+        }
+
+        #[test]
+        fn test_skill_match_rule_debug() {
+            let rule = SkillMatchRule {
+                role: "admin".to_string(),
+                required_skills: vec![],
+                any_skills: vec![],
+                min_skill_match: 1,
+                forbidden_skills: vec![],
+                context: None,
+                description: None,
+                priority: 0,
+            };
+
+            let debug = format!("{:?}", rule);
+            assert!(debug.contains("SkillMatchRule"));
+        }
+
+        #[test]
+        fn test_skill_match_rule_clone() {
+            let rule = SkillMatchRule {
+                role: "admin".to_string(),
+                required_skills: vec!["skill1".to_string()],
+                any_skills: vec!["skill2".to_string()],
+                min_skill_match: 2,
+                forbidden_skills: vec!["banned".to_string()],
+                context: None,
+                description: Some("Test rule".to_string()),
+                priority: 100,
+            };
+
+            let cloned = rule.clone();
+            assert_eq!(cloned.role, rule.role);
+            assert_eq!(cloned.priority, 100);
+        }
+
+        #[test]
+        fn test_rule_context_debug() {
+            let ctx = RuleContext {
+                allowed_time: Some("09:00-17:00".to_string()),
+                allowed_days: vec![1, 2, 3],
+                timezone: Some("UTC".to_string()),
+            };
+
+            let debug = format!("{:?}", ctx);
+            assert!(debug.contains("RuleContext"));
+        }
+
+        #[test]
+        fn test_rule_context_clone() {
+            let ctx = RuleContext {
+                allowed_time: Some("09:00-17:00".to_string()),
+                allowed_days: vec![1, 2, 3, 4, 5],
+                timezone: Some("America/New_York".to_string()),
+            };
+
+            let cloned = ctx.clone();
+            assert_eq!(cloned.allowed_days.len(), 5);
+        }
+
+        #[test]
+        fn test_skill_allows_role_case_sensitive() {
+            let skill = SkillDefinition {
+                id: "test".to_string(),
+                display_name: "Test".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["Admin".to_string()],
+                allowed_tools: vec![],
+                grants: None,
+                identity: None,
+                metadata: None,
+            };
+
+            assert!(skill.allows_role("Admin"));
+            assert!(!skill.allows_role("admin"));
+            assert!(!skill.allows_role("ADMIN"));
+        }
+
+        #[test]
+        fn test_skill_memory_policy_with_grants_all() {
+            let skill = SkillDefinition {
+                id: "admin".to_string(),
+                display_name: "Admin".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["admin".to_string()],
+                allowed_tools: vec![],
+                grants: Some(SkillGrants {
+                    memory: MemoryPolicy::All,
+                    memory_team_roles: vec![],
+                }),
+                identity: None,
+                metadata: None,
+            };
+
+            assert_eq!(skill.memory_policy(), MemoryPolicy::All);
+        }
+
+        #[test]
+        fn test_skill_many_roles() {
+            let roles: Vec<String> = (0..100).map(|i| format!("role_{}", i)).collect();
+
+            let skill = SkillDefinition {
+                id: "many".to_string(),
+                display_name: "Many Roles".to_string(),
+                description: "".to_string(),
+                allowed_roles: roles.clone(),
+                allowed_tools: vec![],
+                grants: None,
+                identity: None,
+                metadata: None,
+            };
+
+            assert_eq!(skill.allowed_roles.len(), 100);
+            assert!(skill.allows_role("role_50"));
+        }
+
+        #[test]
+        fn test_skill_many_tools() {
+            let tools: Vec<String> = (0..100).map(|i| format!("tool_{}", i)).collect();
+
+            let skill = SkillDefinition {
+                id: "many".to_string(),
+                display_name: "Many Tools".to_string(),
+                description: "".to_string(),
+                allowed_roles: vec!["admin".to_string()],
+                allowed_tools: tools.clone(),
+                grants: None,
+                identity: None,
+                metadata: None,
+            };
+
+            assert_eq!(skill.allowed_tools.len(), 100);
+        }
+
+        #[test]
+        fn test_role_manifest_many_skills() {
+            let skills: Vec<SkillDefinition> = (0..50)
+                .map(|i| SkillDefinition {
+                    id: format!("skill_{}", i),
+                    display_name: format!("Skill {}", i),
+                    description: "".to_string(),
+                    allowed_roles: vec!["admin".to_string()],
+                    allowed_tools: vec![format!("tool_{}", i)],
+                    grants: None,
+                    identity: None,
+                    metadata: None,
+                })
+                .collect();
+
+            let manifest = RoleManifest::from_skills(&skills, "1.0.0");
+
+            assert!(manifest.roles.contains_key("admin"));
+            assert_eq!(manifest.roles["admin"].skills.len(), 50);
+            assert_eq!(manifest.roles["admin"].tools.len(), 50);
+        }
+
+        #[test]
+        fn test_memory_policy_serialization_all_variants() {
+            let variants = [
+                MemoryPolicy::None,
+                MemoryPolicy::Isolated,
+                MemoryPolicy::Team,
+                MemoryPolicy::All,
+            ];
+
+            for policy in &variants {
+                let json = serde_json::to_string(policy).unwrap();
+                let restored: MemoryPolicy = serde_json::from_str(&json).unwrap();
+                assert_eq!(&restored, policy);
+            }
+        }
+
+        #[test]
+        fn test_skill_definition_serialization() {
+            let skill = SkillDefinition {
+                id: "test".to_string(),
+                display_name: "Test".to_string(),
+                description: "Description".to_string(),
+                allowed_roles: vec!["admin".to_string()],
+                allowed_tools: vec!["tool".to_string()],
+                grants: Some(SkillGrants {
+                    memory: MemoryPolicy::Isolated,
+                    memory_team_roles: vec![],
+                }),
+                identity: None,
+                metadata: Some(SkillMetadata {
+                    version: Some("1.0.0".to_string()),
+                    category: None,
+                    author: None,
+                    tags: vec![],
+                }),
+            };
+
+            let json = serde_json::to_string(&skill).unwrap();
+            let restored: SkillDefinition = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(restored.id, skill.id);
+            assert_eq!(restored.memory_policy(), MemoryPolicy::Isolated);
+        }
+    }
 }
