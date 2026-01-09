@@ -130,6 +130,8 @@ impl Default for AuditLogger {
 mod tests {
     use super::*;
 
+    // ============== Basic Logger Tests ==============
+
     #[test]
     fn test_log_entry() {
         let mut logger = AuditLogger::new(100);
@@ -252,5 +254,319 @@ mod tests {
     fn test_default_max_entries() {
         let logger = AuditLogger::default();
         assert_eq!(logger.max_entries, 10000);
+    }
+
+    // ============== Additional Logger Tests ==============
+
+    #[test]
+    fn test_logger_with_custom_max_entries() {
+        let logger = AuditLogger::new(50);
+        assert_eq!(logger.max_entries, 50);
+    }
+
+    #[test]
+    fn test_empty_logger_stats() {
+        let logger = AuditLogger::new(100);
+        let stats = logger.get_stats();
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.denial_count, 0);
+    }
+
+    #[test]
+    fn test_empty_logger_get_recent() {
+        let logger = AuditLogger::new(100);
+        let recent = logger.get_recent(10);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn test_empty_logger_get_recent_denials() {
+        let logger = AuditLogger::new(100);
+        let denials = logger.get_recent_denials(10);
+        assert!(denials.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_role_switches() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_role_switch("guest", "developer");
+        logger.log_role_switch("developer", "admin");
+        logger.log_role_switch("admin", "guest");
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.total_entries, 3);
+        assert_eq!(stats.denial_count, 0);
+
+        let recent = logger.get_recent(3);
+        assert_eq!(recent.len(), 3);
+        assert_eq!(recent[0].role_id, "guest");
+        assert_eq!(recent[1].role_id, "admin");
+        assert_eq!(recent[2].role_id, "developer");
+    }
+
+    #[test]
+    fn test_mixed_success_and_denial() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_tool_call("admin", "tool1", true, None);
+        logger.log_tool_call("guest", "tool2", false, Some("Not allowed"));
+        logger.log_tool_call("admin", "tool3", true, None);
+        logger.log_tool_call("user", "tool4", false, Some("Rate limited"));
+        logger.log_tool_call("admin", "tool5", true, None);
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.total_entries, 5);
+        assert_eq!(stats.denial_count, 2);
+    }
+
+    #[test]
+    fn test_get_recent_with_limit_larger_than_entries() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_tool_call("admin", "tool1", true, None);
+        logger.log_tool_call("admin", "tool2", true, None);
+
+        let recent = logger.get_recent(100);
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_get_recent_with_zero_limit() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_tool_call("admin", "tool1", true, None);
+        logger.log_tool_call("admin", "tool2", true, None);
+
+        let recent = logger.get_recent(0);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn test_log_with_reason() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_tool_call("guest", "dangerous_tool", false, Some("Insufficient permissions"));
+
+        let recent = logger.get_recent(1);
+        assert_eq!(recent[0].reason, Some("Insufficient permissions".to_string()));
+    }
+
+    #[test]
+    fn test_log_without_reason() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_tool_call("admin", "tool", true, None);
+
+        let recent = logger.get_recent(1);
+        assert!(recent[0].reason.is_none());
+    }
+
+    #[test]
+    fn test_export_json_empty() {
+        let logger = AuditLogger::new(100);
+        let json = logger.export_json();
+        assert!(json.is_array());
+        assert!(json.as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_log_server_access() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log(AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            event_type: AuditEventType::ServerAccess,
+            role_id: "admin".to_string(),
+            tool_name: None,
+            server_name: Some("filesystem".to_string()),
+            success: true,
+            reason: None,
+            metadata: None,
+        });
+
+        let recent = logger.get_recent(1);
+        assert!(matches!(recent[0].event_type, AuditEventType::ServerAccess));
+        assert_eq!(recent[0].server_name, Some("filesystem".to_string()));
+    }
+
+    #[test]
+    fn test_log_server_denied() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log(AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            event_type: AuditEventType::ServerDenied,
+            role_id: "guest".to_string(),
+            tool_name: None,
+            server_name: Some("database".to_string()),
+            success: false,
+            reason: Some("Server not allowed for role".to_string()),
+            metadata: None,
+        });
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.denial_count, 1);
+
+        let denials = logger.get_recent_denials(1);
+        assert_eq!(denials[0].server_name, Some("database".to_string()));
+    }
+
+    #[test]
+    fn test_log_rate_limited() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log(AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            event_type: AuditEventType::RateLimited,
+            role_id: "user".to_string(),
+            tool_name: Some("expensive_api".to_string()),
+            server_name: None,
+            success: false,
+            reason: Some("Rate limit exceeded".to_string()),
+            metadata: None,
+        });
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.denial_count, 1);
+
+        let recent = logger.get_recent(1);
+        assert!(matches!(recent[0].event_type, AuditEventType::RateLimited));
+    }
+
+    #[test]
+    fn test_log_with_metadata() {
+        let mut logger = AuditLogger::new(100);
+
+        let metadata = serde_json::json!({
+            "ip": "192.168.1.1",
+            "user_agent": "Claude/1.0"
+        });
+
+        logger.log(AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            event_type: AuditEventType::ToolCall,
+            role_id: "admin".to_string(),
+            tool_name: Some("api_call".to_string()),
+            server_name: None,
+            success: true,
+            reason: None,
+            metadata: Some(metadata.clone()),
+        });
+
+        let recent = logger.get_recent(1);
+        assert!(recent[0].metadata.is_some());
+        assert_eq!(recent[0].metadata.as_ref().unwrap()["ip"], "192.168.1.1");
+    }
+
+    #[test]
+    fn test_denials_only_count_failures() {
+        let mut logger = AuditLogger::new(100);
+
+        // All successful
+        logger.log_tool_call("admin", "tool1", true, None);
+        logger.log_tool_call("admin", "tool2", true, None);
+        logger.log_role_switch("guest", "admin");
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.total_entries, 3);
+        assert_eq!(stats.denial_count, 0);
+
+        let denials = logger.get_recent_denials(10);
+        assert!(denials.is_empty());
+    }
+
+    #[test]
+    fn test_max_entries_exactly_at_limit() {
+        let mut logger = AuditLogger::new(3);
+
+        logger.log_tool_call("admin", "tool1", true, None);
+        logger.log_tool_call("admin", "tool2", true, None);
+        logger.log_tool_call("admin", "tool3", true, None);
+
+        let stats = logger.get_stats();
+        assert_eq!(stats.total_entries, 3);
+
+        // All three should still be there
+        let recent = logger.get_recent(10);
+        assert_eq!(recent.len(), 3);
+    }
+
+    #[test]
+    fn test_oldest_entry_removed_on_overflow() {
+        let mut logger = AuditLogger::new(2);
+
+        logger.log_tool_call("admin", "first", true, None);
+        logger.log_tool_call("admin", "second", true, None);
+        logger.log_tool_call("admin", "third", true, None);
+
+        let recent = logger.get_recent(10);
+        let tools: Vec<_> = recent.iter()
+            .filter_map(|e| e.tool_name.as_ref())
+            .collect();
+
+        assert!(!tools.contains(&&"first".to_string()));
+        assert!(tools.contains(&&"second".to_string()));
+        assert!(tools.contains(&&"third".to_string()));
+    }
+
+    #[test]
+    fn test_role_switch_has_correct_event_type() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log_role_switch("from_role", "to_role");
+
+        let recent = logger.get_recent(1);
+        assert!(matches!(recent[0].event_type, AuditEventType::RoleSwitch));
+        assert!(recent[0].success);
+    }
+
+    #[test]
+    fn test_tool_call_with_server_name() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log(AuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            event_type: AuditEventType::ToolCall,
+            role_id: "admin".to_string(),
+            tool_name: Some("read_file".to_string()),
+            server_name: Some("filesystem".to_string()),
+            success: true,
+            reason: None,
+            metadata: None,
+        });
+
+        let recent = logger.get_recent(1);
+        assert_eq!(recent[0].tool_name, Some("read_file".to_string()));
+        assert_eq!(recent[0].server_name, Some("filesystem".to_string()));
+    }
+
+    #[test]
+    fn test_json_export_contains_all_fields() {
+        let mut logger = AuditLogger::new(100);
+
+        logger.log(AuditEntry {
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+            event_type: AuditEventType::ToolCall,
+            role_id: "admin".to_string(),
+            tool_name: Some("test_tool".to_string()),
+            server_name: Some("test_server".to_string()),
+            success: true,
+            reason: Some("test reason".to_string()),
+            metadata: Some(serde_json::json!({"key": "value"})),
+        });
+
+        let json = logger.export_json();
+        let entries = json.as_array().unwrap();
+        let entry = &entries[0];
+
+        assert!(entry.get("timestamp").is_some());
+        assert!(entry.get("eventType").is_some());
+        assert!(entry.get("roleId").is_some());
+        assert!(entry.get("toolName").is_some());
+        assert!(entry.get("serverName").is_some());
+        assert!(entry.get("success").is_some());
+        assert!(entry.get("reason").is_some());
+        assert!(entry.get("metadata").is_some());
     }
 }
