@@ -594,4 +594,100 @@ mod tests {
             assert!(!debug.is_empty());
         }
     }
+
+    // ============== Additional Error Tests ==============
+
+    mod additional_error_tests {
+        use super::*;
+
+        #[test]
+        fn test_error_display_consistency() {
+            let error = AegisError::Config("test".to_string());
+            let display = error.to_string();
+            let debug = format!("{:?}", error);
+
+            // Both should contain the message
+            assert!(display.contains("test"));
+            assert!(debug.contains("test"));
+        }
+
+        #[test]
+        fn test_role_not_found_long_list() {
+            let roles: Vec<String> = (0..1000).map(|i| format!("role_{}", i)).collect();
+            let error = RoleNotFoundError {
+                role_id: "missing".to_string(),
+                available_roles: roles,
+            };
+
+            let msg = error.to_string();
+            assert!(msg.contains("missing"));
+            assert!(msg.contains("role_0"));
+        }
+
+        #[test]
+        fn test_server_not_accessible_with_wildcard() {
+            let error = ServerNotAccessibleError {
+                server_name: "secret".to_string(),
+                current_role: "limited".to_string(),
+                allowed_servers: vec!["public*".to_string()],
+            };
+
+            let msg = error.to_string();
+            assert!(msg.contains("secret"));
+            assert!(msg.contains("public*"));
+        }
+
+        #[test]
+        fn test_tool_not_accessible_complex_reason() {
+            let error = ToolNotAccessibleError {
+                tool_name: "dangerous_tool".to_string(),
+                current_role: "guest".to_string(),
+                reason: "Tool is denied by pattern '*_dangerous_*' and role lacks permission 'admin.tools.execute'".to_string(),
+            };
+
+            let msg = error.to_string();
+            assert!(msg.contains("dangerous_tool"));
+            assert!(msg.contains("pattern"));
+        }
+
+        #[test]
+        fn test_aegis_error_chain() {
+            use std::error::Error;
+
+            let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "inner");
+            let aegis_err: AegisError = io_err.into();
+
+            // Should have a source
+            assert!(aegis_err.source().is_some());
+        }
+
+        #[test]
+        fn test_result_unwrap_or_else() {
+            let err_result: Result<i32> = Err(AegisError::Other("failed".to_string()));
+            let value = err_result.unwrap_or_else(|e| {
+                if e.to_string().contains("failed") { 42 } else { 0 }
+            });
+            assert_eq!(value, 42);
+        }
+
+        #[test]
+        fn test_error_with_newlines_in_message() {
+            let error = AegisError::Config("line1\nline2\nline3".to_string());
+            let msg = error.to_string();
+            assert!(msg.contains("line1"));
+            assert!(msg.contains("line3"));
+        }
+
+        #[test]
+        fn test_multiple_error_conversions() {
+            // Create multiple errors and convert
+            for _ in 0..10 {
+                let role_err = RoleNotFoundError {
+                    role_id: "x".to_string(),
+                    available_roles: vec![],
+                };
+                let _: AegisError = role_err.into();
+            }
+        }
+    }
 }

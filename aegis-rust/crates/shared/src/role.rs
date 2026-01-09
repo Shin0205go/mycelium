@@ -841,4 +841,319 @@ mod tests {
         assert_eq!(parsed.roles.len(), 1);
         assert_eq!(parsed.current_role, result.current_role);
     }
+
+    // ============== Additional Role Tests ==============
+
+    mod additional_role_tests {
+        use super::*;
+
+        #[test]
+        fn test_role_with_remote_instruction() {
+            let role = Role {
+                id: "test".to_string(),
+                name: "Test".to_string(),
+                description: "Test role".to_string(),
+                inherits: None,
+                allowed_servers: vec!["server".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: Some(RemoteInstruction {
+                    backend: "backend".to_string(),
+                    prompt_name: "prompt".to_string(),
+                    arguments: HashMap::new(),
+                    cache_ttl: 300,
+                    fallback: None,
+                }),
+                tool_permissions: None,
+                metadata: None,
+            };
+
+            assert!(role.remote_instruction.is_some());
+            assert_eq!(role.remote_instruction.as_ref().unwrap().backend, "backend");
+        }
+
+        #[test]
+        fn test_role_with_metadata() {
+            let role = Role {
+                id: "meta".to_string(),
+                name: "Meta".to_string(),
+                description: "".to_string(),
+                inherits: None,
+                allowed_servers: vec![],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: None,
+                metadata: Some(RoleMetadata {
+                    version: Some("2.0".to_string()),
+                    priority: Some(100),
+                    active: true,
+                    ..Default::default()
+                }),
+            };
+
+            assert!(role.metadata.is_some());
+            assert_eq!(role.metadata.as_ref().unwrap().priority, Some(100));
+        }
+
+        #[test]
+        fn test_role_many_servers() {
+            let servers: Vec<String> = (0..100).map(|i| format!("server_{}", i)).collect();
+            let role = Role::new("multi", "Multi").with_servers(servers.clone());
+
+            assert_eq!(role.allowed_servers.len(), 100);
+            assert!(role.allows_server("server_50"));
+            assert!(!role.allows_server("server_999"));
+        }
+
+        #[test]
+        fn test_role_server_empty_string() {
+            let role = Role::new("test", "Test")
+                .with_servers(vec!["".to_string(), "valid".to_string()]);
+
+            assert!(role.allows_server(""));
+            assert!(role.allows_server("valid"));
+        }
+
+        #[test]
+        fn test_role_deserialization_with_all_fields() {
+            let json = r#"{
+                "id": "full",
+                "name": "Full Role",
+                "description": "A complete role",
+                "inherits": "base",
+                "allowedServers": ["server1", "server2"],
+                "systemInstruction": "Be helpful",
+                "toolPermissions": {
+                    "allow": ["read"],
+                    "deny": ["delete"],
+                    "allowPatterns": ["read_*"],
+                    "denyPatterns": ["*_delete"]
+                },
+                "metadata": {
+                    "version": "1.0",
+                    "active": true,
+                    "priority": 10
+                }
+            }"#;
+
+            let role: Role = serde_json::from_str(json).unwrap();
+            assert_eq!(role.id, "full");
+            assert_eq!(role.inherits, Some("base".to_string()));
+            assert!(role.tool_permissions.is_some());
+            assert!(role.metadata.is_some());
+        }
+
+        #[test]
+        fn test_role_summary_many_skills() {
+            let skills: Vec<String> = (0..50).map(|i| format!("skill_{}", i)).collect();
+            let summary = RoleSummary {
+                id: "test".to_string(),
+                name: "Test".to_string(),
+                description: "".to_string(),
+                server_count: 10,
+                tool_count: 100,
+                skills,
+                is_active: true,
+                is_current: false,
+            };
+
+            assert_eq!(summary.skills.len(), 50);
+        }
+
+        #[test]
+        fn test_list_roles_result_many_roles() {
+            let roles: Vec<RoleSummary> = (0..100).map(|i| RoleSummary {
+                id: format!("role_{}", i),
+                name: format!("Role {}", i),
+                description: "".to_string(),
+                server_count: i,
+                tool_count: i * 2,
+                skills: vec![],
+                is_active: i % 2 == 0,
+                is_current: i == 0,
+            }).collect();
+
+            let result = ListRolesResult {
+                roles,
+                current_role: Some("role_0".to_string()),
+                default_role: "role_1".to_string(),
+            };
+
+            assert_eq!(result.roles.len(), 100);
+        }
+
+        #[test]
+        fn test_tool_permissions_many_patterns() {
+            let perms = ToolPermissions {
+                allow: (0..50).map(|i| format!("allow_{}", i)).collect(),
+                deny: (0..50).map(|i| format!("deny_{}", i)).collect(),
+                allow_patterns: (0..50).map(|i| format!("allow_*_{}", i)).collect(),
+                deny_patterns: (0..50).map(|i| format!("deny_*_{}", i)).collect(),
+            };
+
+            assert_eq!(perms.allow.len(), 50);
+            assert_eq!(perms.deny.len(), 50);
+            assert_eq!(perms.allow_patterns.len(), 50);
+            assert_eq!(perms.deny_patterns.len(), 50);
+        }
+
+        #[test]
+        fn test_role_metadata_all_fields() {
+            let metadata = RoleMetadata {
+                version: Some("3.0.0".to_string()),
+                created_at: Some("2024-01-01T00:00:00Z".to_string()),
+                created_by: Some("admin@example.com".to_string()),
+                last_modified: Some("2024-06-01T12:00:00Z".to_string()),
+                priority: Some(999),
+                tags: vec!["admin".to_string(), "security".to_string(), "core".to_string()],
+                active: true,
+                skills: vec!["skill1".to_string(), "skill2".to_string()],
+            };
+
+            assert_eq!(metadata.version, Some("3.0.0".to_string()));
+            assert_eq!(metadata.priority, Some(999));
+            assert_eq!(metadata.tags.len(), 3);
+            assert_eq!(metadata.skills.len(), 2);
+        }
+
+        #[test]
+        fn test_remote_instruction_with_many_arguments() {
+            let mut args = HashMap::new();
+            for i in 0..50 {
+                args.insert(format!("arg_{}", i), format!("value_{}", i));
+            }
+
+            let remote = RemoteInstruction {
+                backend: "server".to_string(),
+                prompt_name: "prompt".to_string(),
+                arguments: args,
+                cache_ttl: 1000,
+                fallback: Some("fallback".to_string()),
+            };
+
+            assert_eq!(remote.arguments.len(), 50);
+        }
+
+        #[test]
+        fn test_role_with_null_byte_in_name() {
+            let role = Role::new("test", "Test\x00Role");
+            assert_eq!(role.name, "Test\x00Role");
+        }
+
+        #[test]
+        fn test_role_server_prefix_matching() {
+            let role = Role::new("test", "Test")
+                .with_servers(vec!["fs".to_string(), "db".to_string()]);
+
+            // Should not match substrings
+            assert!(!role.allows_server("filesystem"));
+            assert!(!role.allows_server("database"));
+            assert!(role.allows_server("fs"));
+            assert!(role.allows_server("db"));
+        }
+
+        #[test]
+        fn test_list_roles_options_with_many_tags() {
+            let options = ListRolesOptions {
+                include_inactive: true,
+                tags: (0..100).map(|i| format!("tag_{}", i)).collect(),
+            };
+
+            assert_eq!(options.tags.len(), 100);
+        }
+
+        #[test]
+        fn test_role_inherits_from_chained() {
+            let role = Role::new("child", "Child")
+                .inherits_from("parent")
+                .with_servers(vec!["server".to_string()])
+                .with_description("A child role")
+                .with_instruction("Be good");
+
+            assert_eq!(role.inherits, Some("parent".to_string()));
+            assert_eq!(role.allowed_servers, vec!["server".to_string()]);
+            assert_eq!(role.description, "A child role");
+            assert_eq!(role.system_instruction, "Be good");
+        }
+
+        #[test]
+        fn test_role_summary_zero_counts() {
+            let summary = RoleSummary {
+                id: "empty".to_string(),
+                name: "Empty".to_string(),
+                description: "".to_string(),
+                server_count: 0,
+                tool_count: 0,
+                skills: vec![],
+                is_active: false,
+                is_current: false,
+            };
+
+            assert_eq!(summary.server_count, 0);
+            assert_eq!(summary.tool_count, 0);
+        }
+
+        #[test]
+        fn test_role_summary_max_counts() {
+            let summary = RoleSummary {
+                id: "max".to_string(),
+                name: "Max".to_string(),
+                description: "".to_string(),
+                server_count: usize::MAX,
+                tool_count: usize::MAX,
+                skills: vec![],
+                is_active: true,
+                is_current: true,
+            };
+
+            assert_eq!(summary.server_count, usize::MAX);
+            assert_eq!(summary.tool_count, usize::MAX);
+        }
+
+        #[test]
+        fn test_list_roles_result_no_current_role() {
+            let result = ListRolesResult {
+                roles: vec![],
+                current_role: None,
+                default_role: "guest".to_string(),
+            };
+
+            assert!(result.current_role.is_none());
+        }
+
+        #[test]
+        fn test_role_metadata_negative_priority() {
+            let metadata = RoleMetadata {
+                priority: Some(-100),
+                ..Default::default()
+            };
+
+            assert_eq!(metadata.priority, Some(-100));
+        }
+
+        #[test]
+        fn test_remote_instruction_zero_ttl() {
+            let remote = RemoteInstruction {
+                backend: "server".to_string(),
+                prompt_name: "prompt".to_string(),
+                arguments: HashMap::new(),
+                cache_ttl: 0,
+                fallback: None,
+            };
+
+            assert_eq!(remote.cache_ttl, 0);
+        }
+
+        #[test]
+        fn test_remote_instruction_max_ttl() {
+            let remote = RemoteInstruction {
+                backend: "server".to_string(),
+                prompt_name: "prompt".to_string(),
+                arguments: HashMap::new(),
+                cache_ttl: u64::MAX,
+                fallback: None,
+            };
+
+            assert_eq!(remote.cache_ttl, u64::MAX);
+        }
+    }
 }

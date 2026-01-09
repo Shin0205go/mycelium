@@ -1070,4 +1070,168 @@ allowedTools: []
         assert_eq!(loader.filter_for_role("admin").len(), 0);
         assert_eq!(loader.filter_for_role("ADMIN").len(), 0);
     }
+
+    // ============== Final Additional Tests ==============
+
+    #[test]
+    fn test_skill_definition_clone() {
+        let skill = SkillDefinition {
+            id: "test".to_string(),
+            display_name: "Test".to_string(),
+            description: "Description".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec!["tool".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        let cloned = skill.clone();
+        assert_eq!(cloned.id, skill.id);
+        assert_eq!(cloned.allowed_roles, skill.allowed_roles);
+    }
+
+    #[test]
+    fn test_skill_definition_debug() {
+        let skill = SkillDefinition {
+            id: "debug".to_string(),
+            display_name: "Debug".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec![],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        let debug = format!("{:?}", skill);
+        assert!(debug.contains("debug"));
+    }
+
+    #[test]
+    fn test_manifest_with_100_skills() {
+        let skills: Vec<SkillDefinition> = (0..100).map(|i| SkillDefinition {
+            id: format!("skill_{}", i),
+            display_name: format!("Skill {}", i),
+            description: "".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        }).collect();
+
+        let manifest = SkillManifest {
+            skills,
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+        assert_eq!(manifest.skills.len(), 100);
+    }
+
+    #[test]
+    fn test_manifest_clone() {
+        let skills = vec![SkillDefinition {
+            id: "test".to_string(),
+            display_name: "Test".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec![],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        }];
+        let manifest = SkillManifest {
+            skills,
+            version: "1.0.0".to_string(),
+            generated_at: "2024-01-01".to_string(),
+        };
+        let cloned = manifest.clone();
+        assert_eq!(cloned.skills.len(), manifest.skills.len());
+        assert_eq!(cloned.version, manifest.version);
+    }
+
+    #[test]
+    fn test_skill_with_long_id() {
+        let long_id = "x".repeat(1000);
+        let skill = SkillDefinition {
+            id: long_id.clone(),
+            display_name: "Long".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec![],
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        assert_eq!(skill.id.len(), 1000);
+    }
+
+    #[test]
+    fn test_skill_with_unicode_in_all_fields() {
+        let skill = SkillDefinition {
+            id: "スキル_123".to_string(),
+            display_name: "日本語スキル".to_string(),
+            description: "説明文です".to_string(),
+            allowed_roles: vec!["管理者".to_string()],
+            allowed_tools: vec!["ツール".to_string()],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        assert!(skill.id.contains("スキル"));
+        assert!(skill.display_name.contains("日本語"));
+    }
+
+    #[test]
+    fn test_load_skill_minimal_yaml() {
+        let yaml = r#"
+id: minimal
+displayName: Min
+description: ""
+allowedRoles: []
+allowedTools: []
+"#;
+        let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(skill.id, "minimal");
+        assert!(skill.allowed_roles.is_empty());
+    }
+
+    #[test]
+    fn test_empty_loader_to_manifest() {
+        let loader = SkillLoader::new();
+        let manifest = loader.to_manifest("empty");
+        assert!(manifest.skills.is_empty());
+        assert_eq!(manifest.version, "empty");
+    }
+
+    #[test]
+    fn test_skill_with_many_roles() {
+        let roles: Vec<String> = (0..50).map(|i| format!("role_{}", i)).collect();
+        let skill = SkillDefinition {
+            id: "many-roles".to_string(),
+            display_name: "Many Roles".to_string(),
+            description: "".to_string(),
+            allowed_roles: roles,
+            allowed_tools: vec![],
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        assert_eq!(skill.allowed_roles.len(), 50);
+    }
+
+    #[test]
+    fn test_skill_with_many_tools() {
+        let tools: Vec<String> = (0..100).map(|i| format!("tool_{}", i)).collect();
+        let skill = SkillDefinition {
+            id: "many-tools".to_string(),
+            display_name: "Many Tools".to_string(),
+            description: "".to_string(),
+            allowed_roles: vec!["admin".to_string()],
+            allowed_tools: tools,
+            grants: None,
+            identity: None,
+            metadata: None,
+        };
+        assert_eq!(skill.allowed_tools.len(), 100);
+    }
 }

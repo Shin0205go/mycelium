@@ -367,4 +367,273 @@ mod tests {
 
         assert_eq!(skill.id, "日本語");
     }
+
+    // ============== Additional Type Tests ==============
+
+    mod additional_type_tests {
+        use super::*;
+
+        #[test]
+        fn test_agent_skill_empty_fields() {
+            let skill = A2AAgentSkill {
+                id: "".to_string(),
+                name: Some("".to_string()),
+                description: Some("".to_string()),
+            };
+
+            assert!(skill.id.is_empty());
+            assert_eq!(skill.name, Some("".to_string()));
+        }
+
+        #[test]
+        fn test_agent_skill_long_id() {
+            let long_id = "x".repeat(10000);
+            let skill = A2AAgentSkill {
+                id: long_id.clone(),
+                name: None,
+                description: None,
+            };
+
+            assert_eq!(skill.id, long_id);
+        }
+
+        #[test]
+        fn test_agent_skill_serialization_roundtrip() {
+            let skill = A2AAgentSkill {
+                id: "test".to_string(),
+                name: Some("Test Skill".to_string()),
+                description: Some("A test skill".to_string()),
+            };
+
+            let json = serde_json::to_string(&skill).unwrap();
+            let parsed: A2AAgentSkill = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(parsed.id, skill.id);
+            assert_eq!(parsed.name, skill.name);
+            assert_eq!(parsed.description, skill.description);
+        }
+
+        #[test]
+        fn test_agent_card_empty_name() {
+            let card = A2AAgentCard {
+                name: "".to_string(),
+                version: "".to_string(),
+                skills: vec![],
+            };
+
+            assert!(card.name.is_empty());
+            assert!(card.version.is_empty());
+        }
+
+        #[test]
+        fn test_agent_card_long_name() {
+            let long_name = "agent".repeat(1000);
+            let card = A2AAgentCard {
+                name: long_name.clone(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            assert_eq!(card.name, long_name);
+        }
+
+        #[test]
+        fn test_agent_card_serialization_roundtrip() {
+            let card = A2AAgentCard {
+                name: "test-agent".to_string(),
+                version: "2.0.0".to_string(),
+                skills: vec![
+                    A2AAgentSkill {
+                        id: "skill1".to_string(),
+                        name: Some("Skill 1".to_string()),
+                        description: None,
+                    },
+                    A2AAgentSkill {
+                        id: "skill2".to_string(),
+                        name: None,
+                        description: Some("Description".to_string()),
+                    },
+                ],
+            };
+
+            let json = serde_json::to_string(&card).unwrap();
+            let parsed: A2AAgentCard = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(parsed.name, card.name);
+            assert_eq!(parsed.version, card.version);
+            assert_eq!(parsed.skills.len(), 2);
+        }
+
+        #[test]
+        fn test_identity_resolution_multiple_skills() {
+            let resolution = IdentityResolution {
+                role_id: "developer".to_string(),
+                agent_name: "dev-agent".to_string(),
+                matched_rule: None,
+                matched_skills: vec![
+                    "react".to_string(),
+                    "typescript".to_string(),
+                    "testing".to_string(),
+                ],
+                is_trusted: true,
+                resolved_at: chrono::Utc::now(),
+            };
+
+            assert_eq!(resolution.matched_skills.len(), 3);
+        }
+
+        #[test]
+        fn test_identity_resolution_empty_matched_skills() {
+            let resolution = IdentityResolution {
+                role_id: "guest".to_string(),
+                agent_name: "guest-agent".to_string(),
+                matched_rule: None,
+                matched_skills: vec![],
+                is_trusted: false,
+                resolved_at: chrono::Utc::now(),
+            };
+
+            assert!(resolution.matched_skills.is_empty());
+        }
+
+        #[test]
+        fn test_identity_resolution_with_rule_priority() {
+            let rule = SkillMatchRule {
+                role: "admin".to_string(),
+                required_skills: vec!["admin_access".to_string()],
+                any_skills: vec![],
+                min_skill_match: 1,
+                forbidden_skills: vec!["trial".to_string()],
+                context: None,
+                description: Some("High priority admin rule".to_string()),
+                priority: 100,
+            };
+
+            let resolution = IdentityResolution {
+                role_id: "admin".to_string(),
+                agent_name: "admin-agent".to_string(),
+                matched_rule: Some(rule),
+                matched_skills: vec!["admin_access".to_string()],
+                is_trusted: true,
+                resolved_at: chrono::Utc::now(),
+            };
+
+            assert_eq!(resolution.matched_rule.as_ref().unwrap().priority, 100);
+        }
+
+        #[test]
+        fn test_agent_card_with_special_chars() {
+            let card = A2AAgentCard {
+                name: "agent/v2@domain.com".to_string(),
+                version: "v1.0.0-beta+build.123".to_string(),
+                skills: vec![],
+            };
+
+            assert!(card.name.contains('@'));
+            assert!(card.version.contains('+'));
+        }
+
+        #[test]
+        fn test_agent_skill_with_special_chars() {
+            let skill = A2AAgentSkill {
+                id: "skill-v2.0/beta".to_string(),
+                name: Some("Skill <v2>".to_string()),
+                description: Some("Desc with \"quotes\"".to_string()),
+            };
+
+            assert!(skill.id.contains('/'));
+            assert!(skill.description.as_ref().unwrap().contains('"'));
+        }
+
+        #[test]
+        fn test_identity_resolution_timestamps_different() {
+            let now = chrono::Utc::now();
+            let later = now + chrono::Duration::seconds(1);
+
+            let res1 = IdentityResolution {
+                role_id: "test".to_string(),
+                agent_name: "agent1".to_string(),
+                matched_rule: None,
+                matched_skills: vec![],
+                is_trusted: false,
+                resolved_at: now,
+            };
+
+            let res2 = IdentityResolution {
+                role_id: "test".to_string(),
+                agent_name: "agent2".to_string(),
+                matched_rule: None,
+                matched_skills: vec![],
+                is_trusted: false,
+                resolved_at: later,
+            };
+
+            assert!(res2.resolved_at > res1.resolved_at);
+        }
+
+        #[test]
+        fn test_agent_card_200_skills() {
+            let skills: Vec<A2AAgentSkill> = (0..200)
+                .map(|i| A2AAgentSkill {
+                    id: format!("skill_{}", i),
+                    name: Some(format!("Skill {}", i)),
+                    description: None,
+                })
+                .collect();
+
+            let card = A2AAgentCard {
+                name: "super-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills,
+            };
+
+            assert_eq!(card.skills.len(), 200);
+        }
+
+        #[test]
+        fn test_identity_resolution_clone_independence() {
+            let original = IdentityResolution {
+                role_id: "test".to_string(),
+                agent_name: "agent".to_string(),
+                matched_rule: None,
+                matched_skills: vec!["skill".to_string()],
+                is_trusted: true,
+                resolved_at: chrono::Utc::now(),
+            };
+
+            let cloned = original.clone();
+
+            // Modifications to one should not affect the other
+            assert_eq!(original.role_id, cloned.role_id);
+            assert_eq!(original.matched_skills, cloned.matched_skills);
+        }
+
+        #[test]
+        fn test_agent_skill_special_unicode() {
+            let skill = A2AAgentSkill {
+                id: "emoji_🎉".to_string(),
+                name: Some("スキル with 日本語".to_string()),
+                description: Some("مهارة عربية".to_string()),
+            };
+
+            assert!(skill.id.contains('🎉'));
+            assert!(skill.name.as_ref().unwrap().contains("日本語"));
+        }
+
+        #[test]
+        fn test_agent_card_json_extra_fields() {
+            // Test that extra fields are ignored during deserialization
+            let json = r#"{
+                "name": "agent",
+                "version": "1.0.0",
+                "skills": [],
+                "extra_field": "ignored",
+                "another_extra": 123
+            }"#;
+
+            let card: A2AAgentCard = serde_json::from_str(json).unwrap();
+            assert_eq!(card.name, "agent");
+            assert!(card.skills.is_empty());
+        }
+    }
 }

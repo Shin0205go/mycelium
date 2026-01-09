@@ -1428,4 +1428,265 @@ mod tests {
             assert!(!debug.is_empty());
         }
     }
+
+    // ============== Additional Integration Tests ==============
+
+    mod integration_tests {
+        use super::*;
+
+        #[test]
+        fn test_router_full_flow() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            // Load manifest
+            let manifest = create_test_manifest();
+            router.load_from_skill_manifest(&manifest);
+
+            // Set role
+            router.set_role("guest").unwrap();
+            assert_eq!(router.current_role(), Some("guest"));
+
+            // Check audit
+            let stats = router.get_audit_stats();
+            assert_eq!(stats.total_entries, 1);
+
+            // Switch role
+            router.set_role("developer").unwrap();
+            assert_eq!(router.current_role(), Some("developer"));
+            assert_eq!(router.get_audit_stats().total_entries, 2);
+        }
+
+        #[test]
+        fn test_a2a_full_flow() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = create_test_manifest();
+            router.load_from_skill_manifest(&manifest);
+
+            // Enable A2A mode
+            router.enable_a2a_mode();
+            assert!(router.is_a2a_mode());
+
+            // Use identity
+            let agent_card = A2AAgentCard {
+                name: "test-agent".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+
+            let resolution = router.set_role_from_identity(&agent_card);
+            assert!(!resolution.role_id.is_empty());
+        }
+
+        #[test]
+        fn test_rapid_manifest_reloads() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            for i in 0..10 {
+                let manifest = SkillManifest {
+                    skills: vec![
+                        SkillDefinition {
+                            id: format!("skill_{}", i),
+                            display_name: format!("Skill {}", i),
+                            description: "".to_string(),
+                            allowed_roles: vec![format!("role_{}", i)],
+                            allowed_tools: vec![],
+                            grants: None,
+                            identity: None,
+                            metadata: None,
+                        },
+                    ],
+                    version: format!("{}.0.0", i),
+                    generated_at: "2024-01-01".to_string(),
+                };
+                router.load_from_skill_manifest(&manifest);
+            }
+
+            let roles = router.list_roles();
+            assert!(!roles.is_empty());
+        }
+
+        #[test]
+        fn test_mixed_role_switching() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = create_test_manifest();
+            router.load_from_skill_manifest(&manifest);
+
+            // Manual switching
+            router.set_role("guest").unwrap();
+
+            // Identity switching
+            let agent_card = A2AAgentCard {
+                name: "test".to_string(),
+                version: "1.0.0".to_string(),
+                skills: vec![],
+            };
+            let _resolution = router.set_role_from_identity(&agent_card);
+
+            // Back to manual (should work since A2A mode not enabled)
+            router.set_role("admin").unwrap();
+            assert_eq!(router.current_role(), Some("admin"));
+        }
+
+        #[test]
+        fn test_config_and_manifest_combined() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            // Load config
+            let mut servers = std::collections::HashMap::new();
+            servers.insert("fs".to_string(), shared::MCPServerConfig {
+                command: "echo".to_string(),
+                args: vec![],
+                env: std::collections::HashMap::new(),
+            });
+            let config = DesktopConfig { mcp_servers: servers };
+            router.load_config(&config).unwrap();
+
+            // Load manifest
+            let manifest = create_test_manifest();
+            router.load_from_skill_manifest(&manifest);
+
+            // Set role and start servers
+            router.set_role("admin").unwrap();
+            let _ = router.start_servers_for_role();
+
+            assert_eq!(router.current_role(), Some("admin"));
+        }
+
+        #[test]
+        fn test_empty_skill_list() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = SkillManifest {
+                skills: vec![],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+            router.load_from_skill_manifest(&manifest);
+
+            assert!(router.list_roles().is_empty());
+        }
+
+        #[test]
+        fn test_multiple_skills_same_role() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "skill1".to_string(),
+                        display_name: "Skill 1".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["shared".to_string()],
+                        allowed_tools: vec!["tool1".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                    SkillDefinition {
+                        id: "skill2".to_string(),
+                        display_name: "Skill 2".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["shared".to_string()],
+                        allowed_tools: vec!["tool2".to_string()],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+            router.load_from_skill_manifest(&manifest);
+
+            router.set_role("shared").unwrap();
+            assert_eq!(router.current_role(), Some("shared"));
+        }
+
+        #[test]
+        fn test_audit_stats_accumulate() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = create_test_manifest();
+            router.load_from_skill_manifest(&manifest);
+
+            for i in 0..50 {
+                if i % 3 == 0 {
+                    router.set_role("guest").unwrap();
+                } else if i % 3 == 1 {
+                    router.set_role("developer").unwrap();
+                } else {
+                    router.set_role("admin").unwrap();
+                }
+            }
+
+            let stats = router.get_audit_stats();
+            assert_eq!(stats.total_entries, 50);
+        }
+
+        #[test]
+        fn test_identity_stats_available() {
+            let logger = create_logger();
+            let router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let stats = router.get_identity_stats();
+            let debug = format!("{:?}", stats);
+            assert!(!debug.is_empty());
+        }
+
+        #[test]
+        fn test_router_with_unicode_role() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let manifest = SkillManifest {
+                skills: vec![
+                    SkillDefinition {
+                        id: "日本語スキル".to_string(),
+                        display_name: "Japanese Skill".to_string(),
+                        description: "".to_string(),
+                        allowed_roles: vec!["日本語ロール".to_string()],
+                        allowed_tools: vec![],
+                        grants: None,
+                        identity: None,
+                        metadata: None,
+                    },
+                ],
+                version: "1.0.0".to_string(),
+                generated_at: "2024-01-01".to_string(),
+            };
+            router.load_from_skill_manifest(&manifest);
+
+            router.set_role("日本語ロール").unwrap();
+            assert_eq!(router.current_role(), Some("日本語ロール"));
+        }
+
+        #[test]
+        fn test_config_with_multiple_servers() {
+            let logger = create_logger();
+            let mut router = AegisRouterCore::new(logger, RouterConfig::default());
+
+            let mut servers = std::collections::HashMap::new();
+            for i in 0..10 {
+                servers.insert(format!("server_{}", i), shared::MCPServerConfig {
+                    command: format!("cmd_{}", i),
+                    args: vec![format!("arg_{}", i)],
+                    env: std::collections::HashMap::new(),
+                });
+            }
+
+            let config = DesktopConfig { mcp_servers: servers };
+            let result = router.load_config(&config);
+            assert!(result.is_ok());
+        }
+    }
 }

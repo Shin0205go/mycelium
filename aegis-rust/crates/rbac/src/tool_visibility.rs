@@ -1019,4 +1019,328 @@ mod tests {
             assert_eq!(err.current_role, "none");
         }
     }
+
+    // ============== Additional Edge Cases ==============
+
+    mod additional_tests {
+        use super::*;
+
+        #[test]
+        fn test_register_1000_tools() {
+            let mut manager = ToolVisibilityManager::new();
+
+            for i in 0..1000 {
+                manager.register_tool(ToolInfo::new(
+                    Tool::new(format!("tool_{}", i)),
+                    format!("server_{}", i % 100),
+                ));
+            }
+
+            let role = Role::new("admin", "Admin")
+                .with_servers(vec!["*".to_string()]);
+            manager.set_current_role(role);
+
+            assert_eq!(manager.get_all_tools().len(), 1000);
+            assert_eq!(manager.get_visible_tools().len(), 1000);
+        }
+
+        #[test]
+        fn test_rapid_role_switching() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("read"), "fs"));
+            manager.register_tool(ToolInfo::new(Tool::new("query"), "db"));
+
+            for i in 0..100 {
+                if i % 2 == 0 {
+                    let role = Role::new("fs_user", "FS User")
+                        .with_servers(vec!["fs".to_string()]);
+                    manager.set_current_role(role);
+                    assert!(manager.is_visible("fs__read"));
+                    assert!(!manager.is_visible("db__query"));
+                } else {
+                    let role = Role::new("db_user", "DB User")
+                        .with_servers(vec!["db".to_string()]);
+                    manager.set_current_role(role);
+                    assert!(!manager.is_visible("fs__read"));
+                    assert!(manager.is_visible("db__query"));
+                }
+            }
+        }
+
+        #[test]
+        fn test_tool_with_special_server_name() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("tool"), "server.example.com:8080"));
+
+            let role = Role::new("user", "User")
+                .with_servers(vec!["server.example.com:8080".to_string()]);
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("server.example.com:8080__tool"));
+        }
+
+        #[test]
+        fn test_tool_with_underscore_server() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("tool"), "my_server"));
+
+            let role = Role::new("user", "User")
+                .with_servers(vec!["my_server".to_string()]);
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("my_server__tool"));
+        }
+
+        #[test]
+        fn test_allow_and_deny_same_tool() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("conflict"), "server"));
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["server".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec!["server__conflict".to_string()],
+                    deny: vec!["server__conflict".to_string()],
+                    allow_patterns: vec![],
+                    deny_patterns: vec![],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            // Deny takes precedence
+            assert!(!manager.is_visible("server__conflict"));
+        }
+
+        #[test]
+        fn test_complex_pattern_combination() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tools(vec![
+                ToolInfo::new(Tool::new("read_file"), "fs"),
+                ToolInfo::new(Tool::new("read_secret_file"), "fs"),
+                ToolInfo::new(Tool::new("write_file"), "fs"),
+                ToolInfo::new(Tool::new("delete_file"), "fs"),
+            ]);
+
+            let role = Role {
+                id: "reader".to_string(),
+                name: "Reader".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["fs".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec![],
+                    deny: vec![],
+                    allow_patterns: vec!["fs__read_*".to_string()],
+                    deny_patterns: vec!["*_secret_*".to_string()],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("fs__read_file"));
+            assert!(!manager.is_visible("fs__read_secret_file")); // Denied by pattern
+            assert!(!manager.is_visible("fs__write_file")); // Not allowed
+            assert!(!manager.is_visible("fs__delete_file")); // Not allowed
+        }
+
+        #[test]
+        fn test_multiple_servers_with_patterns() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tools(vec![
+                ToolInfo::new(Tool::new("read"), "fs1"),
+                ToolInfo::new(Tool::new("read"), "fs2"),
+                ToolInfo::new(Tool::new("read"), "db"),
+            ]);
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["fs1".to_string(), "fs2".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec!["fs1__read".to_string()],
+                    deny: vec!["fs2__read".to_string()],
+                    allow_patterns: vec![],
+                    deny_patterns: vec![],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("fs1__read"));
+            assert!(!manager.is_visible("fs2__read"));
+            assert!(!manager.is_visible("db__read")); // Server not allowed
+        }
+
+        #[test]
+        fn test_empty_allow_deny_patterns() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("tool"), "server"));
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["server".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec![],
+                    deny: vec![],
+                    allow_patterns: vec![],
+                    deny_patterns: vec![],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            // No allow list means server access implies tool access
+            assert!(manager.is_visible("server__tool"));
+        }
+
+        #[test]
+        fn test_visibility_reason_tracking() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("denied"), "server"));
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["server".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec![],
+                    deny: vec!["server__denied".to_string()],
+                    allow_patterns: vec![],
+                    deny_patterns: vec![],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            let err = manager.check_access("server__denied").unwrap_err();
+            assert!(!err.reason.is_empty());
+        }
+
+        #[test]
+        fn test_all_tools_includes_hidden() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tools(vec![
+                ToolInfo::new(Tool::new("visible"), "server"),
+                ToolInfo::new(Tool::new("hidden"), "other"),
+            ]);
+
+            let role = Role::new("user", "User")
+                .with_servers(vec!["server".to_string()]);
+            manager.set_current_role(role);
+
+            let all = manager.get_all_tools();
+            let visible = manager.get_visible_tools();
+
+            assert_eq!(all.len(), 2);
+            assert_eq!(visible.len(), 1);
+        }
+
+        #[test]
+        fn test_tool_case_sensitivity() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tools(vec![
+                ToolInfo::new(Tool::new("ReadFile"), "Server"),
+                ToolInfo::new(Tool::new("readfile"), "server"),
+            ]);
+
+            let role = Role::new("user", "User")
+                .with_servers(vec!["Server".to_string()]);
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("Server__ReadFile"));
+            assert!(!manager.is_visible("server__readfile"));
+        }
+
+        #[test]
+        fn test_wildcard_server_with_patterns() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tools(vec![
+                ToolInfo::new(Tool::new("tool"), "server1"),
+                ToolInfo::new(Tool::new("tool"), "server2"),
+            ]);
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["*".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec!["server1__tool".to_string()],
+                    deny: vec!["server2__tool".to_string()],
+                    allow_patterns: vec![],
+                    deny_patterns: vec![],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            assert!(manager.is_visible("server1__tool"));
+            assert!(!manager.is_visible("server2__tool"));
+        }
+
+        #[test]
+        fn test_deny_pattern_exact_match() {
+            let mut manager = ToolVisibilityManager::new();
+            manager.register_tool(ToolInfo::new(Tool::new("delete"), "fs"));
+
+            let role = Role {
+                id: "user".to_string(),
+                name: "User".to_string(),
+                description: String::new(),
+                inherits: None,
+                allowed_servers: vec!["fs".to_string()],
+                system_instruction: String::new(),
+                remote_instruction: None,
+                tool_permissions: Some(ToolPermissions {
+                    allow: vec![],
+                    deny: vec![],
+                    allow_patterns: vec![],
+                    deny_patterns: vec!["delete".to_string()],
+                }),
+                metadata: None,
+            };
+            manager.set_current_role(role);
+
+            assert!(!manager.is_visible("fs__delete"));
+        }
+
+        #[test]
+        fn test_registration_after_role_set() {
+            let mut manager = ToolVisibilityManager::new();
+
+            let role = Role::new("user", "User")
+                .with_servers(vec!["fs".to_string()]);
+            manager.set_current_role(role);
+
+            // Register after role is set
+            manager.register_tool(ToolInfo::new(Tool::new("late_tool"), "fs"));
+
+            assert!(manager.is_visible("fs__late_tool"));
+        }
+    }
 }
