@@ -530,4 +530,315 @@ mod tests {
         let role = Role::new("japanese", "日本語ロール");
         assert_eq!(role.name, "日本語ロール");
     }
+
+    #[test]
+    fn test_role_with_empty_id() {
+        let role = Role::new("", "Empty ID");
+        assert_eq!(role.id, "");
+    }
+
+    #[test]
+    fn test_role_with_very_long_id() {
+        let long_id = "a".repeat(10000);
+        let role = Role::new(long_id.clone(), "Long");
+        assert_eq!(role.id, long_id);
+    }
+
+    #[test]
+    fn test_role_with_emoji_in_name() {
+        let role = Role::new("admin", "👑 Admin 👑");
+        assert_eq!(role.name, "👑 Admin 👑");
+    }
+
+    #[test]
+    fn test_role_with_whitespace_in_id() {
+        let role = Role::new("   ", "Whitespace");
+        assert_eq!(role.id, "   ");
+    }
+
+    #[test]
+    fn test_role_with_newline_in_description() {
+        let role = Role::new("test", "Test")
+            .with_description("Line 1\nLine 2\nLine 3");
+        assert!(role.description.contains('\n'));
+    }
+
+    #[test]
+    fn test_role_clone() {
+        let role = Role::new("admin", "Admin")
+            .with_description("Test")
+            .with_servers(vec!["server".to_string()])
+            .inherits_from("base");
+
+        let cloned = role.clone();
+        assert_eq!(cloned.id, role.id);
+        assert_eq!(cloned.name, role.name);
+        assert_eq!(cloned.inherits, role.inherits);
+    }
+
+    #[test]
+    fn test_role_debug_trait() {
+        let role = Role::new("test", "Test");
+        let debug = format!("{:?}", role);
+        assert!(debug.contains("Role"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn test_tool_permissions_clone() {
+        let perms = ToolPermissions {
+            allow: vec!["tool".to_string()],
+            deny: vec!["other".to_string()],
+            allow_patterns: vec!["pattern*".to_string()],
+            deny_patterns: vec![],
+        };
+
+        let cloned = perms.clone();
+        assert_eq!(cloned.allow, perms.allow);
+        assert_eq!(cloned.deny, perms.deny);
+    }
+
+    #[test]
+    fn test_tool_permissions_debug() {
+        let perms = ToolPermissions::default();
+        let debug = format!("{:?}", perms);
+        assert!(debug.contains("ToolPermissions"));
+    }
+
+    #[test]
+    fn test_role_metadata_clone() {
+        let metadata = RoleMetadata {
+            version: Some("1.0".to_string()),
+            active: true,
+            priority: Some(5),
+            ..Default::default()
+        };
+
+        let cloned = metadata.clone();
+        assert_eq!(cloned.version, metadata.version);
+        assert_eq!(cloned.active, metadata.active);
+    }
+
+    #[test]
+    fn test_role_metadata_debug() {
+        let metadata = RoleMetadata::default();
+        let debug = format!("{:?}", metadata);
+        assert!(debug.contains("RoleMetadata"));
+    }
+
+    #[test]
+    fn test_remote_instruction_clone() {
+        let remote = RemoteInstruction {
+            backend: "backend".to_string(),
+            prompt_name: "prompt".to_string(),
+            arguments: HashMap::new(),
+            cache_ttl: 100,
+            fallback: Some("fallback".to_string()),
+        };
+
+        let cloned = remote.clone();
+        assert_eq!(cloned.backend, remote.backend);
+        assert_eq!(cloned.cache_ttl, remote.cache_ttl);
+    }
+
+    #[test]
+    fn test_remote_instruction_debug() {
+        let remote = RemoteInstruction {
+            backend: "test".to_string(),
+            prompt_name: "test".to_string(),
+            arguments: HashMap::new(),
+            cache_ttl: 0,
+            fallback: None,
+        };
+        let debug = format!("{:?}", remote);
+        assert!(debug.contains("RemoteInstruction"));
+    }
+
+    #[test]
+    fn test_list_roles_options_debug() {
+        let options = ListRolesOptions::default();
+        let debug = format!("{:?}", options);
+        assert!(debug.contains("ListRolesOptions"));
+    }
+
+    #[test]
+    fn test_list_roles_options_clone() {
+        let options = ListRolesOptions {
+            include_inactive: true,
+            tags: vec!["tag".to_string()],
+        };
+        let cloned = options.clone();
+        assert_eq!(cloned.include_inactive, options.include_inactive);
+    }
+
+    #[test]
+    fn test_role_summary_debug() {
+        let summary = RoleSummary {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            description: "".to_string(),
+            server_count: 0,
+            tool_count: 0,
+            skills: vec![],
+            is_active: true,
+            is_current: false,
+        };
+        let debug = format!("{:?}", summary);
+        assert!(debug.contains("RoleSummary"));
+    }
+
+    #[test]
+    fn test_role_summary_clone() {
+        let summary = RoleSummary {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            description: "Desc".to_string(),
+            server_count: 5,
+            tool_count: 10,
+            skills: vec!["skill".to_string()],
+            is_active: true,
+            is_current: true,
+        };
+        let cloned = summary.clone();
+        assert_eq!(cloned.id, summary.id);
+        assert_eq!(cloned.server_count, summary.server_count);
+    }
+
+    #[test]
+    fn test_list_roles_result_debug() {
+        let result = ListRolesResult {
+            roles: vec![],
+            current_role: None,
+            default_role: "guest".to_string(),
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("ListRolesResult"));
+    }
+
+    #[test]
+    fn test_list_roles_result_clone() {
+        let result = ListRolesResult {
+            roles: vec![],
+            current_role: Some("admin".to_string()),
+            default_role: "guest".to_string(),
+        };
+        let cloned = result.clone();
+        assert_eq!(cloned.current_role, result.current_role);
+    }
+
+    #[test]
+    fn test_role_allows_server_case_sensitive() {
+        let role = Role::new("test", "Test")
+            .with_servers(vec!["FileSystem".to_string()]);
+
+        assert!(role.allows_server("FileSystem"));
+        assert!(!role.allows_server("filesystem"));
+        assert!(!role.allows_server("FILESYSTEM"));
+    }
+
+    #[test]
+    fn test_role_allows_server_multiple_wildcards() {
+        let role = Role::new("admin", "Admin")
+            .with_servers(vec!["*".to_string(), "*".to_string()]);
+
+        assert!(role.allows_all_servers());
+    }
+
+    #[test]
+    fn test_role_deserialization_with_optional_fields() {
+        let json = r#"{
+            "id": "minimal",
+            "name": "Minimal",
+            "description": ""
+        }"#;
+
+        let role: Role = serde_json::from_str(json).unwrap();
+        assert_eq!(role.id, "minimal");
+        assert!(role.allowed_servers.is_empty());
+        assert!(role.inherits.is_none());
+        assert!(role.tool_permissions.is_none());
+    }
+
+    #[test]
+    fn test_role_serialization_roundtrip() {
+        let role = Role::new("test", "Test")
+            .with_description("Description")
+            .with_servers(vec!["server1".to_string(), "server2".to_string()])
+            .with_instruction("Instruction")
+            .inherits_from("parent");
+
+        let json = serde_json::to_string(&role).unwrap();
+        let parsed: Role = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.id, role.id);
+        assert_eq!(parsed.name, role.name);
+        assert_eq!(parsed.description, role.description);
+        assert_eq!(parsed.allowed_servers, role.allowed_servers);
+        assert_eq!(parsed.inherits, role.inherits);
+    }
+
+    #[test]
+    fn test_remote_instruction_serialization_roundtrip() {
+        let mut args = HashMap::new();
+        args.insert("key".to_string(), "value".to_string());
+
+        let remote = RemoteInstruction {
+            backend: "server".to_string(),
+            prompt_name: "prompt".to_string(),
+            arguments: args,
+            cache_ttl: 500,
+            fallback: Some("fallback".to_string()),
+        };
+
+        let json = serde_json::to_string(&remote).unwrap();
+        let parsed: RemoteInstruction = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.backend, remote.backend);
+        assert_eq!(parsed.arguments.get("key"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn test_role_metadata_serialization_roundtrip() {
+        let metadata = RoleMetadata {
+            version: Some("1.0.0".to_string()),
+            created_at: Some("2024-01-01".to_string()),
+            created_by: Some("admin".to_string()),
+            last_modified: Some("2024-01-02".to_string()),
+            priority: Some(10),
+            tags: vec!["admin".to_string(), "core".to_string()],
+            active: true,
+            skills: vec!["skill1".to_string()],
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let parsed: RoleMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.version, metadata.version);
+        assert_eq!(parsed.priority, metadata.priority);
+        assert_eq!(parsed.tags, metadata.tags);
+    }
+
+    #[test]
+    fn test_list_roles_result_serialization_roundtrip() {
+        let result = ListRolesResult {
+            roles: vec![RoleSummary {
+                id: "admin".to_string(),
+                name: "Admin".to_string(),
+                description: "Full access".to_string(),
+                server_count: 5,
+                tool_count: 20,
+                skills: vec!["admin-skill".to_string()],
+                is_active: true,
+                is_current: true,
+            }],
+            current_role: Some("admin".to_string()),
+            default_role: "guest".to_string(),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: ListRolesResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.roles.len(), 1);
+        assert_eq!(parsed.current_role, result.current_role);
+    }
 }
