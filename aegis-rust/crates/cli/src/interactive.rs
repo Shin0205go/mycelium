@@ -111,3 +111,195 @@ impl Default for InteractiveCli {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ============== Basic Creation Tests ==============
+
+    #[test]
+    fn test_new_cli() {
+        let cli = InteractiveCli::new();
+        assert!(cli.current_role.is_none());
+        assert!(cli.model.contains("claude"));
+    }
+
+    #[test]
+    fn test_default_cli() {
+        let cli = InteractiveCli::default();
+        assert!(cli.current_role.is_none());
+    }
+
+    #[test]
+    fn test_default_model() {
+        let cli = InteractiveCli::new();
+        assert!(cli.model.contains("sonnet"));
+    }
+
+    // ============== Command Handling Tests ==============
+
+    #[test]
+    fn test_handle_quit_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/quit");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_exit_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/exit");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_q_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/q");
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_help_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/help");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_h_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/h");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_roles_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/roles");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_tools_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/tools");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_status_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/status");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_model_command_no_arg() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/model");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_handle_model_command_with_arg() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/model claude-opus-4-20250514");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+        assert_eq!(cli.model, "claude-opus-4-20250514");
+    }
+
+    #[test]
+    fn test_handle_unknown_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/unknown");
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    // ============== Edge Cases ==============
+
+    #[test]
+    fn test_model_change_preserves_role() {
+        let mut cli = InteractiveCli::new();
+        cli.current_role = Some("admin".to_string());
+
+        cli.handle_command("/model new-model").unwrap();
+
+        assert_eq!(cli.model, "new-model");
+        assert_eq!(cli.current_role, Some("admin".to_string()));
+    }
+
+    #[test]
+    fn test_empty_command() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/");
+        assert!(result.is_ok());
+        // Should be treated as unknown command
+    }
+
+    #[test]
+    fn test_command_with_extra_whitespace() {
+        let mut cli = InteractiveCli::new();
+        let result = cli.handle_command("/model   claude-haiku-4-5-20251201");
+        assert!(result.is_ok());
+        // Only first arg after command should be used
+        assert_eq!(cli.model, "claude-haiku-4-5-20251201");
+    }
+
+    #[test]
+    fn test_multiple_model_changes() {
+        let mut cli = InteractiveCli::new();
+
+        cli.handle_command("/model model1").unwrap();
+        assert_eq!(cli.model, "model1");
+
+        cli.handle_command("/model model2").unwrap();
+        assert_eq!(cli.model, "model2");
+
+        cli.handle_command("/model model3").unwrap();
+        assert_eq!(cli.model, "model3");
+    }
+
+    #[test]
+    fn test_model_with_special_chars() {
+        let mut cli = InteractiveCli::new();
+        cli.handle_command("/model claude-3.5-sonnet@beta").unwrap();
+        assert_eq!(cli.model, "claude-3.5-sonnet@beta");
+    }
+
+    // ============== State Tests ==============
+
+    #[test]
+    fn test_initial_state() {
+        let cli = InteractiveCli::new();
+        assert!(cli.current_role.is_none());
+        assert!(!cli.model.is_empty());
+    }
+
+    #[test]
+    fn test_role_can_be_set() {
+        let mut cli = InteractiveCli::new();
+        cli.current_role = Some("developer".to_string());
+        assert_eq!(cli.current_role, Some("developer".to_string()));
+    }
+
+    #[test]
+    fn test_role_can_be_cleared() {
+        let mut cli = InteractiveCli::new();
+        cli.current_role = Some("admin".to_string());
+        cli.current_role = None;
+        assert!(cli.current_role.is_none());
+    }
+}
