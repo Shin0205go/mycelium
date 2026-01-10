@@ -405,6 +405,178 @@ export interface ToolCallContext {
 }
 
 // ============================================================================
+// Capability-Based Security Types
+// ============================================================================
+
+/**
+ * Capability scope definition
+ * Defines what actions are permitted by a capability
+ */
+export interface CapabilityScope {
+  /** Scope type (e.g., 'db-access', 'file-read', 'api-call') */
+  type: string;
+
+  /** Scope level (e.g., 'read-only', 'write', 'admin') */
+  level: 'read-only' | 'write' | 'admin';
+
+  /** Optional: specific resources this scope applies to (e.g., file paths, table names) */
+  resources?: string[];
+}
+
+/**
+ * Capability declaration in skill definition
+ * Defines what capability tokens a skill can issue
+ */
+export interface CapabilityDeclaration {
+  /** Capability type identifier (e.g., 'db-access', 'file-operation') */
+  type: string;
+
+  /** Scope level for this capability */
+  scope: string;
+
+  /** Token expiration time (e.g., '5m', '1h', '24h') */
+  expiresIn?: string;
+
+  /** Maximum number of uses for this token (optional) */
+  maxUses?: number;
+
+  /** Whether child tokens (attenuated) can be issued from this */
+  attenuationAllowed?: boolean;
+
+  /** Context constraints that must be satisfied */
+  contextConstraints?: CapabilityContextConstraints;
+}
+
+/**
+ * Context constraints for capability tokens
+ * Binds a capability to specific runtime context
+ */
+export interface CapabilityContextConstraints {
+  /** Task ID this capability is bound to */
+  taskId?: string;
+
+  /** Parent capability required (token must be derived from this) */
+  parentCapability?: string;
+
+  /** Specific tools this capability grants access to */
+  allowedTools?: string[];
+
+  /** Specific servers this capability grants access to */
+  allowedServers?: string[];
+
+  /** Custom constraints for application-specific logic */
+  custom?: Record<string, unknown>;
+}
+
+/**
+ * Capability token payload (JWT-like structure)
+ * The actual content of a capability token
+ */
+export interface CapabilityTokenPayload {
+  /** Issuer: skill ID that issued this token */
+  iss: string;
+
+  /** Subject: agent/session ID this token is for */
+  sub: string;
+
+  /** Scope string (e.g., 'db-access:read-only') */
+  scope: string;
+
+  /** Expiration timestamp (Unix seconds) */
+  exp: number;
+
+  /** Issued at timestamp (Unix seconds) */
+  iat: number;
+
+  /** Not before timestamp (Unix seconds) */
+  nbf: number;
+
+  /** Unique token ID (for revocation/tracking) */
+  jti: string;
+
+  /** Remaining uses (decremented on each use) */
+  usesLeft?: number;
+
+  /** Parent token ID (if this is an attenuated token) */
+  parentJti?: string;
+
+  /** Context constraints */
+  context?: CapabilityContextConstraints;
+
+  /** Whether attenuation is allowed */
+  attenuationAllowed?: boolean;
+}
+
+/**
+ * Capability token with both payload and signed string
+ */
+export interface CapabilityToken {
+  /** Decoded payload */
+  payload: CapabilityTokenPayload;
+
+  /** Signed token string (for transmission) */
+  token: string;
+
+  /** Token metadata */
+  metadata?: {
+    /** When this token was created */
+    createdAt: Date;
+
+    /** How many times this token has been used */
+    useCount: number;
+
+    /** Last used timestamp */
+    lastUsedAt?: Date;
+  };
+}
+
+/**
+ * Result of capability verification
+ */
+export interface CapabilityVerificationResult {
+  /** Whether the capability is valid */
+  valid: boolean;
+
+  /** Reason for invalidity (if valid=false) */
+  reason?: string;
+
+  /** Decoded payload (if valid) */
+  payload?: CapabilityTokenPayload;
+
+  /** Remaining uses after this verification */
+  usesRemaining?: number;
+}
+
+/**
+ * Capability attenuation request
+ * Used when deriving a weaker capability from a parent
+ */
+export interface CapabilityAttenuationRequest {
+  /** Parent token to attenuate from */
+  parentToken: string;
+
+  /** New (weaker) scope - must be subset of parent */
+  newScope: string;
+
+  /** New expiration (must be <= parent expiration) */
+  newExpiresIn?: string;
+
+  /** New max uses (must be <= parent remaining uses) */
+  newMaxUses?: number;
+
+  /** Additional context constraints */
+  additionalContext?: CapabilityContextConstraints;
+}
+
+/**
+ * Extended skill definition with capability issuance
+ */
+export interface CapabilitySkillDefinition extends BaseSkillDefinition {
+  /** Capabilities this skill can issue */
+  issuesCapability?: CapabilityDeclaration;
+}
+
+// ============================================================================
 // MCP Server Configuration Types
 // ============================================================================
 

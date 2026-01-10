@@ -18,7 +18,16 @@ export type {
   MemoryPolicy,
   SkillGrants,
   SkillMetadata,
-  BaseSkillDefinition
+  BaseSkillDefinition,
+  // Capability types
+  CapabilityScope,
+  CapabilityDeclaration,
+  CapabilityContextConstraints,
+  CapabilityTokenPayload,
+  CapabilityToken,
+  CapabilityVerificationResult,
+  CapabilityAttenuationRequest,
+  CapabilitySkillDefinition
 } from '@aegis/shared';
 
 // Role Manager
@@ -44,3 +53,10 @@ export {
   type MemorySearchOptions,
   type SaveMemoryOptions
 } from './role-memory.js';
+
+// Capability Manager
+export {
+  CapabilityManager,
+  createCapabilityManager,
+  type CapabilityManagerConfig
+} from './capability-manager.js';
