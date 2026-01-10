@@ -1,0 +1,51 @@
+# Decoy-AI Outlook Integration
+# Handle email and calendar as the user
+
+name: decoy-outlook
+displayName: Decoy Outlook Handler
+description: |
+  Microsoft Outlook integration for Decoy-AI. Manages email responses,
+  calendar scheduling, and meeting coordination in the user's style.
+  Use this skill for all email and calendar operations.
+
+# AEGIS RBAC
+allowedRoles:
+  - decoy
+  - decoy-admin
+
+allowedTools:
+  # Email tools
+  - outlook__list_mail
+  - outlook__read_mail
+  - outlook__send_mail
+  - outlook__reply_mail
+  - outlook__search_mail
+  # Calendar tools
+  - outlook__list_events
+  - outlook__get_event
+  - outlook__create_event
+  - outlook__accept_event
+  - outlook__decline_event
+  - outlook__find_free_time
+  # Memory for persona
+  - aegis__recall_memory
+
+version: "1.0.0"
+category: communication
+tags:
+  - decoy-ai
+  - outlook
+  - email
+  - calendar
+  - microsoft-365
+
+# Capability token for email operations
+issuesCapability:
+  type: outlook-access
+  scope: write
+  expiresIn: "1h"
+  maxUses: 100
+  contextConstraints:
+    allowedServers:
+      - outlook
+      - ms365

@@ -1,0 +1,40 @@
+# Decoy-AI Escalation Handler
+# Know when to defer to the real human
+
+name: decoy-escalation
+displayName: Decoy Escalation Manager
+description: |
+  Escalation and handoff logic for Decoy-AI. Determines when a situation
+  requires the real human's attention and manages the notification process.
+  This skill is consulted before any response is sent.
+
+# AEGIS RBAC
+allowedRoles:
+  - decoy
+  - decoy-admin
+
+allowedTools:
+  # Notification tools
+  - notification__send_push
+  - notification__send_sms
+  - notification__send_email
+  # Memory for escalation history
+  - aegis__save_memory
+  - aegis__recall_memory
+  # Audit for tracking
+  - aegis__log_escalation
+
+version: "1.0.0"
+category: control
+tags:
+  - decoy-ai
+  - escalation
+  - safety
+  - handoff
+
+# This skill grants escalation capability
+issuesCapability:
+  type: escalation-control
+  scope: admin
+  expiresIn: "24h"
+  attenuationAllowed: false  # Cannot delegate escalation authority

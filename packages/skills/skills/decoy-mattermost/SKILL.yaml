@@ -1,0 +1,44 @@
+# Decoy-AI Mattermost Integration
+# Read and respond to Mattermost messages as the user
+
+name: decoy-mattermost
+displayName: Decoy Mattermost Handler
+description: |
+  Mattermost integration for Decoy-AI. Monitors channels and DMs,
+  generates responses in the user's style, and handles team communication.
+  Use this skill for all Mattermost-related operations.
+
+# AEGIS RBAC
+allowedRoles:
+  - decoy
+  - decoy-admin
+
+allowedTools:
+  # Mattermost MCP tools
+  - mattermost__get_posts
+  - mattermost__get_post_thread
+  - mattermost__create_post
+  - mattermost__search_posts
+  - mattermost__get_channel_info
+  - mattermost__get_user_info
+  - mattermost__add_reaction
+  # Memory for persona
+  - aegis__recall_memory
+
+version: "1.0.0"
+category: communication
+tags:
+  - decoy-ai
+  - mattermost
+  - chat
+  - team-communication
+
+# Capability token for sub-operations
+issuesCapability:
+  type: mattermost-access
+  scope: write
+  expiresIn: "30m"
+  maxUses: 50
+  contextConstraints:
+    allowedServers:
+      - mattermost

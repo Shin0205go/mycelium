@@ -1,0 +1,38 @@
+# Decoy-AI Persona Skill
+# Core skill for mimicking the user's communication style
+
+name: decoy-persona
+displayName: Decoy Persona Engine
+description: |
+  Core personality engine for Decoy-AI. Analyzes and replicates the user's
+  communication style, tone, and decision-making patterns. Use this skill
+  when generating any response that should sound like the user.
+
+# AEGIS RBAC
+allowedRoles:
+  - decoy
+  - decoy-admin
+
+allowedTools:
+  # Memory access for persona patterns
+  - aegis__save_memory
+  - aegis__recall_memory
+  - aegis__list_memories
+
+version: "1.0.0"
+category: persona
+tags:
+  - decoy-ai
+  - persona
+  - style-matching
+
+# Capability grants
+grants:
+  memory: isolated
+
+# Capability token issuance (for sub-agent delegation)
+issuesCapability:
+  type: persona-access
+  scope: read-only
+  expiresIn: "1h"
+  attenuationAllowed: true
