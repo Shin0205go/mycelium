@@ -222,3 +222,102 @@ export interface MCPServerConfig {
   args?: string[];
   env?: Record<string, string>;
 }
+
+// ============================================================================
+// MCP Resource Subscription Types (2025 Spec)
+// ============================================================================
+
+/**
+ * Resource subscription request
+ * Client subscribes to a specific resource URI
+ */
+export interface ResourceSubscribeRequest extends MCPRequest {
+  method: 'resources/subscribe';
+  params: {
+    uri: string;
+  };
+}
+
+/**
+ * Resource unsubscribe request
+ */
+export interface ResourceUnsubscribeRequest extends MCPRequest {
+  method: 'resources/unsubscribe';
+  params: {
+    uri: string;
+  };
+}
+
+/**
+ * Resource updated notification (server → client)
+ */
+export interface ResourceUpdatedNotification {
+  jsonrpc: '2.0';
+  method: 'notifications/resources/updated';
+  params: {
+    uri: string;
+  };
+}
+
+/**
+ * Resource list changed notification (server → client)
+ */
+export interface ResourceListChangedNotification {
+  jsonrpc: '2.0';
+  method: 'notifications/resources/list_changed';
+  params?: Record<string, never>;
+}
+
+/**
+ * Subscription state for tracking active subscriptions
+ */
+export interface ResourceSubscription {
+  /** Resource URI being subscribed to */
+  uri: string;
+
+  /** Server that owns this resource */
+  serverName: string;
+
+  /** When the subscription was created */
+  subscribedAt: Date;
+
+  /** Last time an update was received */
+  lastUpdateAt?: Date;
+
+  /** Number of updates received */
+  updateCount: number;
+
+  /** Handler to call when resource updates */
+  onUpdate?: (uri: string, content: ResourceReadResult) => void | Promise<void>;
+
+  /** Error handler */
+  onError?: (uri: string, error: Error) => void;
+}
+
+/**
+ * Event handler registration for resource events
+ */
+export interface ResourceEventHandler {
+  /** Pattern to match URIs (supports wildcards) */
+  pattern: string;
+
+  /** Handler function */
+  handler: (uri: string, content: ResourceReadResult) => void | Promise<void>;
+
+  /** Priority (higher = called first) */
+  priority?: number;
+
+  /** Whether to continue to next handler after this one */
+  propagate?: boolean;
+}
+
+/**
+ * Server capabilities for resources
+ */
+export interface ResourceServerCapabilities {
+  /** Whether the server supports subscriptions */
+  subscribe?: boolean;
+
+  /** Whether the server emits list_changed notifications */
+  listChanged?: boolean;
+}

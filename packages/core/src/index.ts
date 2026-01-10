@@ -14,6 +14,26 @@ export * from '@aegis/audit';
 
 export const CORE_VERSION = '1.0.0';
 
+// Event-Driven Handler for MCP Resource Subscriptions
+export {
+  EventDrivenHandler,
+  createEventDrivenHandler,
+  type EventDrivenHandlerConfig,
+  type EventDrivenHandlerEvents,
+  type MCPRouter
+} from './event-driven-handler.js';
+
+// MCP Types including Resource Subscription
+export type {
+  ResourceSubscription,
+  ResourceEventHandler,
+  ResourceSubscribeRequest,
+  ResourceUnsubscribeRequest,
+  ResourceUpdatedNotification,
+  ResourceListChangedNotification,
+  ResourceServerCapabilities
+} from './types/mcp-types.js';
+
 // Will export:
 // - AegisCore (formerly AegisRouterCore)
 // - RoleMemoryStore
