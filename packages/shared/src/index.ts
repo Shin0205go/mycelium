@@ -429,3 +429,9 @@ export interface MCPServerConfig {
 export interface DesktopConfig {
   mcpServers: Record<string, MCPServerConfig>;
 }
+
+// ============================================================================
+// Re-export Enterprise MCP Types
+// ============================================================================
+
+export * from './enterprise-mcp.js';
