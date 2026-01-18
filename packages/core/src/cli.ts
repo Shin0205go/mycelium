@@ -6,9 +6,22 @@ import * as readline from 'readline';
 import chalk from 'chalk';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult } from './mcp-client.js';
-import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig } from './agent.js';
-import type { SDKMessage, ApiKeySource } from '@anthropic-ai/claude-agent-sdk';
+import { MCPClient, AgentManifest } from './mcp-client.js';
+import { createQuery, isToolUseMessage, getToolUseInfo } from './agent.js';
+import {
+  createSpinner,
+  createBanner,
+  createRolesTable,
+  createToolsTable,
+  createHelpTable,
+  statusBox,
+  errorBox,
+  usageBox,
+  suggestCommand,
+  icons,
+  type RoleInfo,
+  type ToolInfo,
+} from './utils/ui.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -31,6 +44,7 @@ export class MyceliumCLI {
   private isProcessing: boolean = false;
   private authSource: string = 'unknown';
   private useApiKey: boolean = false; // フォールバックでAPIキーを使うか
+  private queryCount: number = 0;
 
   // Commands for auto-completion
   private readonly commands = [
@@ -52,7 +66,8 @@ export class MyceliumCLI {
 
   constructor() {
     this.mcp = new MCPClient('node', [MYCELIUM_ROUTER_PATH], {
-      MYCELIUM_CONFIG_PATH
+      MYCELIUM_CONFIG_PATH,
+      MYCELIUM_EXPOSE_SET_ROLE: 'true', // Enable set_role for interactive CLI
     });
   }
 
@@ -117,7 +132,6 @@ export class MyceliumCLI {
       }
 
       this.authSource = authSource;
-      console.log(chalk.green(`✓ Auth: ${this.formatAuthSource(this.authSource)}`));
       return true;
     } catch (error: any) {
       return false;
@@ -138,32 +152,46 @@ export class MyceliumCLI {
   }
 
   async run(): Promise<void> {
-    console.log(chalk.cyan.bold('\n🍄 Mycelium CLI - Agent Router Client\n'));
+    // Show banner
+    console.log(createBanner());
 
     // Check Claude Code auth first
-    console.log(chalk.gray('Checking authentication...'));
+    const authSpinner = createSpinner('Checking authentication...');
+    authSpinner.start();
+
     const authOk = await this.checkAuth();
     if (!authOk) {
+      authSpinner.fail('Authentication failed');
+      console.log(errorBox('Authentication failed', [
+        'Run: claude login',
+        'Set: export ANTHROPIC_API_KEY=...',
+      ]));
       return;
     }
+    authSpinner.succeed(`Auth: ${this.formatAuthSource(this.authSource)}`);
 
     // Connect to Mycelium Router
-    console.log(chalk.gray('Connecting to Mycelium Router...'));
+    const connectSpinner = createSpinner('Connecting to Mycelium Router...');
+    connectSpinner.start();
 
-    this.mcp.on('log', (msg) => {
+    this.mcp.on('log', () => {
       // Suppress logs during normal operation
     });
 
     this.mcp.on('toolsChanged', () => {
-      console.log(chalk.yellow('\n📢 Tools list updated'));
+      console.log(chalk.yellow(`\n${icons.info} Tools list updated`));
       this.showPrompt();
     });
 
     try {
       await this.mcp.connect();
-      console.log(chalk.green('✓ Connected to Mycelium Router\n'));
+      connectSpinner.succeed('Connected to Mycelium Router');
     } catch (error) {
-      console.error(chalk.red('Failed to connect:'), error);
+      connectSpinner.fail('Failed to connect');
+      console.log(errorBox('Connection failed', [
+        'Check if MCP server is running',
+        'Verify config.json settings',
+      ]));
       process.exit(1);
     }
 
@@ -172,7 +200,7 @@ export class MyceliumCLI {
     if (roleFromEnv) {
       // Role already set by router, just update local state
       this.currentRole = roleFromEnv;
-      console.log(chalk.green(`✓ Role: ${chalk.bold(roleFromEnv)} (pre-configured)\n`));
+      console.log(chalk.green(`${icons.success} Role: ${chalk.bold(roleFromEnv)} (pre-configured)\n`));
     } else {
       // Load orchestrator role via set_role
       await this.switchRole('orchestrator');
@@ -183,17 +211,19 @@ export class MyceliumCLI {
   }
 
   private async switchRole(roleId: string): Promise<void> {
+    const spinner = createSpinner(`Switching to role: ${roleId}...`);
+    spinner.start();
+
     try {
-      console.log(chalk.gray(`Switching to role: ${roleId}...`));
       this.manifest = await this.mcp.switchRole(roleId);
       this.currentRole = roleId;
 
-      console.log(chalk.green(`\n✓ Role: ${chalk.bold(this.manifest.role.name)}`));
-      console.log(chalk.gray(`  ${this.manifest.role.description}`));
-      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount}`));
-      console.log(chalk.gray(`  Servers: ${this.manifest.availableServers.join(', ')}\n`));
+      spinner.succeed(`Role: ${chalk.bold(this.manifest.role.name)}`);
+      console.log(chalk.gray(`  ${icons.skill} Skills: ${this.manifest.role.description}`));
+      console.log(chalk.gray(`  ${icons.tool} Tools: ${this.manifest.metadata.toolCount}`));
+      console.log(chalk.gray(`  ${icons.server} Servers: ${this.manifest.availableServers.join(', ')}\n`));
     } catch (error: any) {
-      console.error(chalk.red(`Failed to switch role: ${error.message}`));
+      spinner.fail(`Failed to switch role: ${error.message}`);
     }
   }
 
@@ -330,39 +360,22 @@ export class MyceliumCLI {
       return;
     }
 
-    console.log(chalk.cyan(`\nTools for ${chalk.bold(this.manifest.role.name)}:\n`));
+    console.log(chalk.cyan(`\n${icons.tool} Tools for ${chalk.bold(this.manifest.role.name)}:\n`));
 
-    // Group by source
-    const bySource: Record<string, typeof this.manifest.availableTools> = {};
-    for (const tool of this.manifest.availableTools) {
-      if (!bySource[tool.source]) {
-        bySource[tool.source] = [];
-      }
-      bySource[tool.source].push(tool);
-    }
+    // Convert to ToolInfo format
+    const tools: ToolInfo[] = this.manifest.availableTools.map(t => ({
+      name: t.name,
+      description: t.description || '',
+      server: t.source,
+    }));
 
-    for (const [source, tools] of Object.entries(bySource)) {
-      console.log(chalk.yellow(`  [${source}]`));
-      for (const tool of tools) {
-        const shortName = tool.name.replace(`${source}__`, '');
-        console.log(`    • ${chalk.bold(shortName)}`);
-        if (tool.description) {
-          const desc = tool.description.substring(0, 60);
-          console.log(chalk.gray(`      ${desc}${tool.description.length > 60 ? '...' : ''}`));
-        }
-      }
-      console.log();
-    }
+    console.log(createToolsTable(tools));
+    console.log();
   }
 
   private showHelp(): void {
-    console.log(chalk.cyan('\nCommands:\n'));
-    console.log('  ' + chalk.bold('/roles') + '         Select and switch roles');
-    console.log('  ' + chalk.bold('/tools') + '         List available tools');
-    console.log('  ' + chalk.bold('/model <name>') + '  Change model');
-    console.log('  ' + chalk.bold('/status') + '        Show current status');
-    console.log('  ' + chalk.bold('/help') + '          Show this help');
-    console.log('  ' + chalk.bold('/quit') + '          Exit');
+    console.log();
+    console.log(createHelpTable());
     console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
   }
 
@@ -375,13 +388,16 @@ export class MyceliumCLI {
     // Format auth source display
     const authDisplay = this.formatAuthSource(this.authSource);
 
-    console.log(chalk.cyan('\nCurrent Status:\n'));
-    console.log(`  Role:    ${chalk.bold(this.manifest.role.name)} (${this.currentRole})`);
-    console.log(`  Model:   ${chalk.bold(this.currentModel)}`);
-    console.log(`  Auth:    ${authDisplay}`);
-    console.log(`  Tools:   ${this.manifest.metadata.toolCount}`);
-    console.log(`  Servers: ${this.manifest.availableServers.join(', ')}`);
-    console.log();
+    const content = [
+      `${icons.role} Role:    ${chalk.bold(this.manifest.role.name)} (${this.currentRole})`,
+      `${icons.model} Model:   ${chalk.bold(this.currentModel)}`,
+      `${icons.auth} Auth:    ${authDisplay}`,
+      `${icons.tool} Tools:   ${this.manifest.metadata.toolCount}`,
+      `${icons.server} Servers: ${this.manifest.availableServers.join(', ')}`,
+      `${icons.session} Queries: ${this.queryCount}`,
+    ].join('\n');
+
+    console.log(statusBox(content, 'Status'));
   }
 
   private formatAuthSource(source: string): string {
@@ -429,13 +445,16 @@ export class MyceliumCLI {
     }
 
     this.isProcessing = true;
+    this.queryCount++;
 
     // Get system prompt from manifest
     const systemPrompt = this.manifest?.systemInstruction;
 
-    try {
-      console.log(); // Empty line before response
+    // Start thinking spinner
+    const spinner = createSpinner('Thinking...');
+    spinner.start();
 
+    try {
       const queryResult = createQuery(message, {
         model: this.currentModel,
         systemPrompt,
@@ -444,7 +463,6 @@ export class MyceliumCLI {
         useApiKey: this.useApiKey
       });
 
-      let currentText = '';
       let hasStartedOutput = false;
       let pendingRoleSwitch: string | null = null;
 
@@ -461,11 +479,12 @@ export class MyceliumCLI {
             const delta = event.delta;
             if ('text' in delta) {
               if (!hasStartedOutput) {
+                spinner.stop();
+                console.log(); // Empty line
                 process.stdout.write(chalk.green('Claude: '));
                 hasStartedOutput = true;
               }
               process.stdout.write(delta.text);
-              currentText += delta.text;
             }
           }
         }
@@ -476,7 +495,7 @@ export class MyceliumCLI {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
               const shortName = tool.name.replace('mcp__mycelium-router__', '');
-              console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
+              spinner.text = `Using: ${shortName}`;
               // Track role switch attempts
               if (shortName === 'set_role') {
                 const input = tool.input as { role_id?: string };
@@ -494,13 +513,16 @@ export class MyceliumCLI {
           for (const block of content) {
             if (block.type === 'tool_result') {
               if (block.is_error) {
-                console.log(chalk.red(`\n  ❌ Tool error: ${JSON.stringify(block.content).substring(0, 200)}`));
+                spinner.stop();
+                console.log(chalk.red(`\n${icons.error} Tool error: ${JSON.stringify(block.content).substring(0, 200)}`));
+                spinner.start('Continuing...');
                 pendingRoleSwitch = null;
               } else if (pendingRoleSwitch) {
                 // Role switch succeeded - update CLI state and manifest
                 this.currentRole = pendingRoleSwitch;
                 this.rl?.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
-                console.log(chalk.green(`\n  ✓ Role switched to: ${this.currentRole}`));
+                spinner.succeed(`Role switched to: ${this.currentRole}`);
+                spinner.start('Continuing...');
                 // Sync MCP client state (async, fire and forget)
                 this.mcp.switchRole(pendingRoleSwitch).then(manifest => {
                   this.manifest = manifest;
@@ -513,42 +535,37 @@ export class MyceliumCLI {
 
         // Handle result
         if (msg.type === 'result') {
+          spinner.stop();
           if (hasStartedOutput) {
             console.log(); // Newline after streamed text
           }
 
           if (msg.subtype === 'success') {
-            // Show usage
-            const cost = msg.total_cost_usd.toFixed(4);
+            // Show usage with box
             const input = msg.usage.input_tokens;
             const output = msg.usage.output_tokens;
+            const cost = msg.total_cost_usd;
 
-            if (this.useApiKey) {
-              // APIキー使用時は実コスト
-              console.log(chalk.yellow(`\n  📊 Tokens: ${input} in / ${output} out | Cost: $${cost}`));
-            } else {
-              // Claude Code認証時は参考値
-              console.log(chalk.gray(`\n  📊 Tokens: ${input} in / ${output} out | 参考: $${cost}`));
-            }
+            console.log(usageBox(input, output, cost, this.currentModel));
           } else {
-            console.log(chalk.red(`\nError: ${msg.errors?.join(', ') || msg.subtype}`));
+            console.log(errorBox(msg.errors?.join(', ') || msg.subtype));
           }
         }
       }
-
-      console.log(); // Empty line after response
     } catch (error: any) {
+      spinner.stop();
       const errorMsg = error.message || String(error);
 
       // Check for auth-related errors
       if (errorMsg.includes('Invalid API key') ||
           errorMsg.includes('/login') ||
           errorMsg.includes('exited with code 1')) {
-        console.error(chalk.red('\n⚠️  認証エラー: Claude Codeにログインしていません'));
-        console.log(chalk.yellow('  以下のコマンドでログインしてください:'));
-        console.log(chalk.cyan('    claude login\n'));
+        console.log(errorBox('Authentication failed', [
+          'Run: claude login',
+          'Set: export ANTHROPIC_API_KEY=...',
+        ]));
       } else {
-        console.error(chalk.red(`\nError: ${errorMsg}\n`));
+        console.log(errorBox(errorMsg));
       }
     } finally {
       this.isProcessing = false;
@@ -625,7 +642,13 @@ export class MyceliumCLI {
 
           default:
             console.log(chalk.yellow(`Unknown command: /${cmd}`));
-            console.log(chalk.gray('Type /help for available commands'));
+            // Fuzzy command suggestion
+            const suggestions = suggestCommand(`/${cmd}`, this.commands);
+            if (suggestions.length > 0) {
+              console.log(chalk.cyan(`Did you mean: ${suggestions.join(' or ')}?`));
+            } else {
+              console.log(chalk.gray('Type /help for available commands'));
+            }
         }
       } else {
         // Send to Claude via Agent SDK

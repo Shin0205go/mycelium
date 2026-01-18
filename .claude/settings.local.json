@@ -25,7 +25,8 @@
       "Bash(npm run build:all:*)",
       "Bash(npm run:*)",
       "Bash(gh repo view:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm search ora cli-table3 boxen ink blessed-contrib log-update listr2)"
     ]
   },
   "enableAllProjectMcpServers": true,
