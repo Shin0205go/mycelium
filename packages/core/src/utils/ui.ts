@@ -269,12 +269,13 @@ export function createHelpTable(): string {
 
 export function createBanner(): string {
   const art = `
-${chalk.cyan('    ╭──────────────────────────────────────────────────────────────╮')}
-${chalk.cyan('    │')}  ${chalk.red('  ,--.')}                                                      ${chalk.cyan('│')}
-${chalk.cyan('    │')}  ${chalk.red(' ( ○ ○)')}  ${chalk.bold.cyan('MYCELIUM')} ${chalk.gray('- Agent Router Client')}                   ${chalk.cyan('│')}
-${chalk.cyan('    │')}  ${chalk.yellow('   ║')}     ${chalk.gray('Connecting agents like fungal networks')}            ${chalk.cyan('│')}
-${chalk.cyan('    │')}  ${chalk.yellow('  ╱╲╱╲')}                                                     ${chalk.cyan('│')}
-${chalk.cyan('    ╰──────────────────────────────────────────────────────────────╯')}
+${chalk.cyan('    ╭─────────────────────────────────────────────────────╮')}
+${chalk.cyan('    │')}  ${chalk.yellow('    ●───●───●')}                                      ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('     ╲ ╱ ╲ ╱')}                                       ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('  ●───●───●───●')}  ${chalk.bold.cyan('MYCELIUM')}                       ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('     ╱ ╲ ╱ ╲')}     ${chalk.gray('Agent Router Client')}             ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('    ●───●───●')}                                      ${chalk.cyan('│')}
+${chalk.cyan('    ╰─────────────────────────────────────────────────────╯')}
 `;
   return art;
 }
