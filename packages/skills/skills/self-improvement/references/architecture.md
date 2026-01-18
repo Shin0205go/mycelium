@@ -1,4 +1,4 @@
-# Aegis-CLI Architecture Overview
+# Mycelium Architecture Overview
 
 ## Core Principles
 
@@ -41,14 +41,14 @@ packages/
 ## Data Flow
 
 ```
-User Request → CLI → AegisRouterCore → RoleManager → ToolVisibilityManager → MCP Server
+User Request → CLI → MyceliumRouterCore → RoleManager → ToolVisibilityManager → MCP Server
                                     ↓
                               SkillsMCPServer
 ```
 
 ## Self-Improvement Targets
 
-When improving Aegis-CLI, focus on these areas:
+When improving Mycelium, focus on these areas:
 
 1. **Performance** - Tool registration, role switching, skill loading
 2. **Usability** - CLI commands, error messages, help text
