@@ -177,8 +177,8 @@ describe('SubAgent', () => {
       };
 
       // Set env var
-      const originalEnv = process.env.Mycelium_CURRENT_ROLE;
-      process.env.Mycelium_CURRENT_ROLE = 'meta-developer';
+      const originalEnv = process.env.MYCELIUM_CURRENT_ROLE;
+      process.env.MYCELIUM_CURRENT_ROLE = 'meta-developer';
 
       const mockQueryResult = {
         [Symbol.asyncIterator]: async function* () {
@@ -205,9 +205,9 @@ describe('SubAgent', () => {
 
       // Restore env var
       if (originalEnv === undefined) {
-        delete process.env.Mycelium_CURRENT_ROLE;
+        delete process.env.MYCELIUM_CURRENT_ROLE;
       } else {
-        process.env.Mycelium_CURRENT_ROLE = originalEnv;
+        process.env.MYCELIUM_CURRENT_ROLE = originalEnv;
       }
     });
 

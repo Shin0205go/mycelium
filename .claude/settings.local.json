@@ -24,7 +24,8 @@
       "Bash(curl:*)",
       "Bash(npm run build:all:*)",
       "Bash(npm run:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(git push:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

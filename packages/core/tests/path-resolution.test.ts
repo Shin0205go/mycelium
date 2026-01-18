@@ -24,7 +24,7 @@ describe('Path Resolution', () => {
   describe('PROJECT_ROOT calculation', () => {
     it('should resolve to monorepo root from test file', () => {
       // PROJECT_ROOT should end with the repo name or be a valid monorepo root
-      expect(basename(PROJECT_ROOT)).toBe('mycelium-cli');
+      expect(basename(PROJECT_ROOT)).toBe('mycelium');
     });
 
     it('should contain package.json with workspaces', async () => {
