@@ -268,31 +268,13 @@ export function createHelpTable(): string {
 // ============================================================================
 
 export function createBanner(): string {
-  const mushroom = `
-${chalk.red('                            ██████████')}
-${chalk.red('                       ████')}${chalk.white('░░░░░░░░░░')}${chalk.red('████')}
-${chalk.red('                     ██')}${chalk.white('░░')}${chalk.red('██')}${chalk.white('░░░░░░░░░░░░░░')}${chalk.red('██')}
-${chalk.red('                   ██')}${chalk.white('░░░░░░')}${chalk.red('██')}${chalk.white('░░░░░░░░░░░░░░')}${chalk.red('██')}
-${chalk.red('                  ██')}${chalk.white('░░░░░░░░░░')}${chalk.red('████')}${chalk.white('░░░░')}${chalk.red('██')}${chalk.white('░░░░')}${chalk.red('██')}
-${chalk.red('                 ██')}${chalk.white('░░░░░░░░░░░░░░░░░░░░░░░░░░░░')}${chalk.red('██')}
-${chalk.red('                 ██')}${chalk.white('░░░░░░░░░░░░░░░░░░░░░░░░░░░░')}${chalk.red('██')}
-${chalk.red('                  ██')}${chalk.white('░░░░░░░░░░░░░░░░░░░░░░░░░░')}${chalk.red('██')}
-${chalk.red('                   ████')}${chalk.white('░░░░░░░░░░░░░░░░░░░░░░')}${chalk.red('████')}
-${chalk.yellow('                       ████████████████████')}
-${chalk.yellow('                           ██')}${chalk.white('░░░░░░')}${chalk.yellow('██')}
-${chalk.yellow('                           ██')}${chalk.white('░░░░░░')}${chalk.yellow('██')}
-${chalk.yellow('                           ██')}${chalk.white('░░░░░░')}${chalk.yellow('██')}
-${chalk.yellow('                         ████')}${chalk.white('░░░░░░')}${chalk.yellow('████')}
+  const art = `
+${chalk.cyan('    ╭──────────────────────────────────────────────────────────────╮')}
+${chalk.cyan('    │')}  ${chalk.red('  ,--.')}                                                      ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.red(' ( ○ ○)')}  ${chalk.bold.cyan('MYCELIUM')} ${chalk.gray('- Agent Router Client')}                   ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('   ║')}     ${chalk.gray('Connecting agents like fungal networks')}            ${chalk.cyan('│')}
+${chalk.cyan('    │')}  ${chalk.yellow('  ╱╲╱╲')}                                                     ${chalk.cyan('│')}
+${chalk.cyan('    ╰──────────────────────────────────────────────────────────────╯')}
 `;
-
-  const text = `
-${chalk.cyan('  ███╗   ███╗██╗   ██╗ ██████╗███████╗██╗     ██╗██╗   ██╗███╗   ███╗')}
-${chalk.cyan('  ████╗ ████║╚██╗ ██╔╝██╔════╝██╔════╝██║     ██║██║   ██║████╗ ████║')}
-${chalk.cyan('  ██╔████╔██║ ╚████╔╝ ██║     █████╗  ██║     ██║██║   ██║██╔████╔██║')}
-${chalk.cyan('  ██║╚██╔╝██║  ╚██╔╝  ██║     ██╔══╝  ██║     ██║██║   ██║██║╚██╔╝██║')}
-${chalk.cyan('  ██║ ╚═╝ ██║   ██║   ╚██████╗███████╗███████╗██║╚██████╔╝██║ ╚═╝ ██║')}
-${chalk.cyan('  ╚═╝     ╚═╝   ╚═╝    ╚═════╝╚══════╝╚══════╝╚═╝ ╚═════╝ ╚═╝     ╚═╝')}
-${chalk.gray('                       Agent Router Client v1.0.0')}
-`;
-  return mushroom + text;
+  return art;
 }
