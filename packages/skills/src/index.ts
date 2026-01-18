@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// AEGIS Skills - MCP Server for Skill Definitions
+// Mycelium Skills - MCP Server for Skill Definitions
 // Provides skill manifests with declarative role permissions
 // ============================================================================
 
@@ -25,7 +25,7 @@ const __dirname = path.dirname(__filename);
  * - name: Skill identifier (required, max 64 chars, lowercase/numbers/hyphens)
  * - description: What the skill does and when to use it (required, max 1024 chars)
  *
- * AEGIS RBAC extensions:
+ * Mycelium RBAC extensions:
  * - allowedRoles: Roles that can use this skill
  * - allowedTools: MCP tools this skill grants access to
  */
@@ -34,8 +34,8 @@ interface SkillDefinition {
   name: string;         // Official: skill name
   displayName: string;  // Human-readable name
   description: string;  // Official: skill description
-  allowedRoles: string[];  // AEGIS: roles that can use this skill
-  allowedTools: string[];  // AEGIS: tools this skill grants
+  allowedRoles: string[];  // Mycelium: roles that can use this skill
+  allowedTools: string[];  // Mycelium: tools this skill grants
   version?: string;
   category?: string;
   tags?: string[];
@@ -43,14 +43,14 @@ interface SkillDefinition {
 }
 
 /**
- * Raw YAML structure (supports official + AEGIS formats)
+ * Raw YAML structure (supports official + Mycelium formats)
  */
 interface RawSkillYaml {
   // Official Claude Skills fields
   name?: string;           // Required in official format
   description?: string;    // Required in official format
 
-  // AEGIS RBAC fields
+  // Mycelium RBAC fields
   id?: string;             // Optional, defaults to name
   displayName?: string;    // Optional, defaults to name
   allowedRoles?: string[];
@@ -150,14 +150,14 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
           }
         }
 
-        // Normalize field names (support official + AEGIS formats)
+        // Normalize field names (support official + Mycelium formats)
         const skillName = manifest.name || manifest.id;
         const skillId = manifest.id || manifest.name;
         const allowedRoles = manifest.allowedRoles || manifest['allowed-roles'] || [];
         const allowedTools = manifest.allowedTools || manifest['allowed-tools'] || [];
 
         // Official format requires name and description
-        // AEGIS format requires allowedRoles
+        // Mycelium format requires allowedRoles
         if (skillName && allowedRoles.length > 0) {
           skills.push({
             id: skillId!,
@@ -185,7 +185,7 @@ async function main() {
   // Get skills directory from args or default
   const skillsDir = process.argv[2] || path.join(__dirname, '..', 'skills');
 
-  console.error(`AEGIS Skills Server starting...`);
+  console.error(`Mycelium Skills Server starting...`);
   console.error(`Skills directory: ${skillsDir}`);
 
   // Load skills
@@ -195,7 +195,7 @@ async function main() {
   // Create MCP Server
   const server = new Server(
     {
-      name: 'aegis-skills',
+      name: 'mycelium-skills',
       version: '1.0.0',
     },
     {
@@ -427,7 +427,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('AEGIS Skills Server running on stdio');
+  console.error('Mycelium Skills Server running on stdio');
 }
 
 main().catch((error) => {

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { RateLimiter, createRateLimiter, type RoleQuota } from '../src/router/rate-limiter.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 
 // Silent test logger
 const createTestLogger = (): Logger => ({

@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS RBAC - Tool Visibility Manager
+// Mycelium RBAC - Tool Visibility Manager
 // Manages tool discovery and role-based visibility filtering
 // ============================================================================
 
-import type { Logger, Role, ToolInfo, MemoryPolicy } from '@aegis/shared';
+import type { Logger, Role, ToolInfo, MemoryPolicy } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { RoleManager } from './role-manager.js';
 
@@ -225,7 +225,7 @@ export class ToolVisibilityManager {
       // Register set_role (visible when not in A2A mode)
       const setRoleInfo: ToolInfo = {
         tool: setRoleTool,
-        sourceServer: 'aegis-router',
+        sourceServer: 'mycelium-router',
         prefixedName: 'set_role',
         visible: true,
         visibilityReason: 'system_tool'
@@ -353,7 +353,7 @@ export class ToolVisibilityManager {
     for (const { tool, name } of memoryTools) {
       const toolInfo: ToolInfo = {
         tool,
-        sourceServer: 'aegis-router',
+        sourceServer: 'mycelium-router',
         prefixedName: name,
         visible: true,
         visibilityReason: `memory_granted:${memoryPermission.policy}`
@@ -499,8 +499,8 @@ export class ToolVisibilityManager {
    *
    * Claude Agent SDK prefixes all MCP tools with `mcp__<server_name>__`.
    * For example:
-   * - `mcp__aegis-router__filesystem__read_file` → `filesystem__read_file`
-   * - `mcp__aegis-router__set_role` → `set_role`
+   * - `mcp__mycelium-router__filesystem__read_file` → `filesystem__read_file`
+   * - `mcp__mycelium-router__set_role` → `set_role`
    * - `filesystem__read_file` → `filesystem__read_file` (unchanged)
    *
    * This allows skill definitions to use simple names like `filesystem__read_file`
@@ -511,8 +511,8 @@ export class ToolVisibilityManager {
     // We want to strip the first two segments if it starts with 'mcp__'
     if (toolName.startsWith('mcp__')) {
       const parts = toolName.split('__');
-      // mcp__aegis-router__filesystem__read_file
-      // parts = ['mcp', 'aegis-router', 'filesystem', 'read_file']
+      // mcp__mycelium-router__filesystem__read_file
+      // parts = ['mcp', 'mycelium-router', 'filesystem', 'read_file']
       // We want: filesystem__read_file
       if (parts.length >= 3) {
         return parts.slice(2).join('__');

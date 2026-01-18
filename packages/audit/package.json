@@ -1,7 +1,7 @@
 {
-  "name": "@aegis/audit",
+  "name": "@mycelium/audit",
   "version": "1.0.0",
-  "description": "AEGIS Audit - Logging and Rate Limiting",
+  "description": "Mycelium Audit - Logging and Rate Limiting",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -10,14 +10,14 @@
     "test": "vitest run"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "audit",
     "logging",
     "rate-limit"
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/shared": "*"
+    "@mycelium/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

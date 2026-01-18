@@ -196,7 +196,7 @@ describe('showHelp', () => {
 
     expect(mockLog).toHaveBeenCalled();
     const output = mockLog.mock.calls[0][0];
-    expect(output).toContain('AEGIS CLI');
+    expect(output).toContain('Mycelium CLI');
     expect(output).toContain('Usage:');
     expect(output).toContain('--role');
     expect(output).toContain('--prompt');
@@ -219,6 +219,6 @@ describe('showVersion', () => {
   it('should print version', () => {
     showVersion();
 
-    expect(mockLog).toHaveBeenCalledWith('aegis-cli v1.0.0');
+    expect(mockLog).toHaveBeenCalledWith('mycelium-cli v1.0.0');
   });
 });

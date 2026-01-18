@@ -1,21 +1,21 @@
 {
-  "name": "aegis",
+  "name": "mycelium",
   "version": "1.0.0",
   "private": true,
-  "description": "AEGIS - Skill-Driven RBAC for the Agentic AI Era",
+  "description": "Mycelium - Skill-Driven RBAC for the Agentic AI Era",
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
-    "dev": "npm run dev --workspace=@aegis/core",
-    "dev:mcp": "npm run dev:mcp --workspace=@aegis/core",
-    "start": "npm run start --workspace=@aegis/core",
-    "start:mcp": "npm run start:mcp --workspace=@aegis/core"
+    "dev": "npm run dev --workspace=@mycelium/core",
+    "dev:mcp": "npm run dev:mcp --workspace=@mycelium/core",
+    "start": "npm run start --workspace=@mycelium/core",
+    "start:mcp": "npm run start:mcp --workspace=@mycelium/core"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "mcp",
     "rbac",
     "skill-driven",

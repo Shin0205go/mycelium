@@ -23,11 +23,11 @@ function runCli(args: string, cwd?: string): string {
   }
 }
 
-describe('AEGIS CLI', () => {
+describe('Mycelium CLI', () => {
   describe('Main', () => {
     it('should show help with --help', () => {
       const output = runCli('--help');
-      expect(output).toContain('AEGIS CLI');
+      expect(output).toContain('Mycelium CLI');
       expect(output).toContain('init');
       expect(output).toContain('skill');
       expect(output).toContain('policy');
@@ -40,11 +40,11 @@ describe('AEGIS CLI', () => {
     });
   });
 
-  describe('aegis init', () => {
+  describe('mycelium init', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-test-'));
     });
 
     afterAll(() => {
@@ -55,7 +55,7 @@ describe('AEGIS CLI', () => {
 
     it('should initialize a project with default skills', () => {
       const output = runCli('init', testDir);
-      expect(output).toContain('Initializing AEGIS project');
+      expect(output).toContain('Initializing Mycelium project');
       expect(output).toContain('Created config.json');
       expect(output).toContain('Created skills/ directory');
     });
@@ -66,7 +66,7 @@ describe('AEGIS CLI', () => {
 
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       expect(config).toHaveProperty('mcpServers');
-      expect(config.mcpServers).toHaveProperty('aegis-skills');
+      expect(config.mcpServers).toHaveProperty('mycelium-skills');
     });
 
     it('should create default skills', () => {
@@ -88,11 +88,11 @@ describe('AEGIS CLI', () => {
     });
   });
 
-  describe('aegis skill', () => {
+  describe('mycelium skill', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-skill-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-skill-test-'));
       runCli('init', testDir);
     });
 
@@ -137,11 +137,11 @@ describe('AEGIS CLI', () => {
     });
   });
 
-  describe('aegis policy', () => {
+  describe('mycelium policy', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-policy-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-policy-test-'));
       runCli('init', testDir);
     });
 

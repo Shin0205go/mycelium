@@ -1,4 +1,4 @@
-# Aegis-CLI Coding Standards
+# Mycelium-CLI Coding Standards
 
 ## TypeScript Guidelines
 
@@ -16,7 +16,7 @@
 // 1. Imports (organized: node built-ins → external → internal)
 import { join } from 'path';
 import chalk from 'chalk';
-import { Logger } from '@aegis/shared';
+import { Logger } from '@mycelium/shared';
 
 // 2. Types and interfaces
 interface MyInterface {

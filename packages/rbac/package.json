@@ -1,7 +1,7 @@
 {
-  "name": "@aegis/rbac",
+  "name": "@mycelium/rbac",
   "version": "1.0.0",
-  "description": "AEGIS RBAC - Role-Based Access Control",
+  "description": "Mycelium RBAC - Role-Based Access Control",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -11,14 +11,14 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "rbac",
     "role",
     "access-control"
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/shared": "*",
+    "@mycelium/shared": "*",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {

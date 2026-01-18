@@ -8,12 +8,12 @@
  * 4. Default role fallback
  * 5. Reject unknown mode
  * 6. Trusted prefix detection
- * 7. Loading from Aegis skills
+ * 7. Loading from Mycelium skills
  */
 
 import { describe, it, expect } from 'vitest';
 import { IdentityResolver, createIdentityResolver } from '../src/identity-resolver.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type { AgentIdentity, SkillDefinition } from '../src/types.js';
 
 // Mock logger for tests
@@ -294,13 +294,13 @@ describe('IdentityResolver', () => {
   describe('Trusted Prefix Detection', () => {
     it('should detect trusted agents by name prefix', () => {
       const resolver = createIdentityResolver(testLogger);
-      // Default trusted prefixes include 'claude-' and 'aegis-'
+      // Default trusted prefixes include 'claude-' and 'mycelium-'
 
       const claudeResult = resolver.resolve({ name: 'claude-code', skills: [] });
       expect(claudeResult.isTrusted).toBe(true);
 
-      const aegisResult = resolver.resolve({ name: 'aegis-frontend-1', skills: [] });
-      expect(aegisResult.isTrusted).toBe(true);
+      const myceliumResult = resolver.resolve({ name: 'mycelium-frontend-1', skills: [] });
+      expect(myceliumResult.isTrusted).toBe(true);
     });
 
     it('should mark untrusted agents', () => {
@@ -854,7 +854,7 @@ describe('Edge Cases', () => {
   });
 });
 
-describe('Skill-Based Identity Loading from Aegis Skills', () => {
+describe('Skill-Based Identity Loading from Mycelium Skills', () => {
   describe('loadFromSkills', () => {
     it('should load skill matching rules from skills', () => {
       const resolver = createIdentityResolver(testLogger);
@@ -1100,7 +1100,7 @@ describe('Skill-Based Identity Loading from Aegis Skills', () => {
               { role: 'admin', requiredSkills: ['admin_access'], priority: 100 },
               { role: 'admin', anySkills: ['system_management'], priority: 50 }
             ],
-            trustedPrefixes: ['claude-', 'aegis-']
+            trustedPrefixes: ['claude-', 'mycelium-']
           }
         },
         {
@@ -1126,7 +1126,7 @@ describe('Skill-Based Identity Loading from Aegis Skills', () => {
         frontend: 1
       });
       expect(stats.trustedPrefixes).toContain('claude-');
-      expect(stats.trustedPrefixes).toContain('aegis-');
+      expect(stats.trustedPrefixes).toContain('mycelium-');
     });
   });
 
@@ -1153,7 +1153,7 @@ describe('Skill-Based Identity Loading from Aegis Skills', () => {
                 description: 'Full admin access requires both skills'
               }
             ],
-            trustedPrefixes: ['claude-', 'aegis-']
+            trustedPrefixes: ['claude-', 'mycelium-']
           }
         },
         {

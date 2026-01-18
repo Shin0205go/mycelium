@@ -2,7 +2,7 @@
 name: common
 description: 全ロール共通で使用できる基本ツール。スキル情報の取得やリソースへのアクセスを提供。
 
-# AEGIS RBAC extensions
+# Mycelium RBAC extensions
 # Note: Add specific roles that need these tools
 allowedRoles:
   - orchestrator
@@ -10,6 +10,6 @@ allowedRoles:
   - developer
   - analyst
 allowedTools:
-  - aegis-skills__get_skill
-  - aegis-skills__get_resource
-  - aegis-skills__run_script
+  - mycelium-skills__get_skill
+  - mycelium-skills__get_resource
+  - mycelium-skills__run_script

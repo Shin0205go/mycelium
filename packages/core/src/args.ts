@@ -1,5 +1,5 @@
 /**
- * Command-line argument parsing for aegis-cli
+ * Command-line argument parsing for mycelium-cli
  */
 
 export interface CliArgs {
@@ -95,12 +95,12 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 
 export function showHelp(): void {
   console.log(`
-AEGIS CLI - Agent Router Client
+Mycelium CLI - Agent Router Client
 
 Usage:
-  aegis-cli [options]                    # Interactive mode
-  aegis-cli [options] <prompt>           # Sub-agent mode
-  aegis-cli serve [options]              # HTTP server mode
+  mycelium-cli [options]                    # Interactive mode
+  mycelium-cli [options] <prompt>           # Sub-agent mode
+  mycelium-cli serve [options]              # HTTP server mode
 
 Options:
   -r, --role <role>     Specify role (orchestrator, mentor, frontend, etc.)
@@ -118,28 +118,28 @@ Server Options (for serve command):
 
 Examples:
   # Interactive mode
-  aegis-cli
+  mycelium-cli
 
   # Sub-agent mode - simple query
-  aegis-cli "What is 2+2?"
+  mycelium-cli "What is 2+2?"
 
   # Sub-agent mode - with specific role
-  aegis-cli --role mentor "Review this code pattern"
+  mycelium-cli --role mentor "Review this code pattern"
 
   # Sub-agent mode - JSON output for orchestration
-  aegis-cli --role frontend --json "Create a button component"
+  mycelium-cli --role frontend --json "Create a button component"
 
   # HTTP server mode (for Apple Watch, etc.)
-  aegis-cli serve --port 3000
+  mycelium-cli serve --port 3000
 
   # HTTP server with Bearer token auth
-  aegis-cli serve --port 3000 --token mysecrettoken
+  mycelium-cli serve --port 3000 --token mysecrettoken
 
   # HTTP server with API key and token
-  aegis-cli serve --port 3000 --api-key --token mysecrettoken
+  mycelium-cli serve --port 3000 --api-key --token mysecrettoken
 `);
 }
 
 export function showVersion(): void {
-  console.log('aegis-cli v1.0.0');
+  console.log('mycelium-cli v1.0.0');
 }

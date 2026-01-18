@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS Gateway - MCP Proxy Layer
+// Mycelium Gateway - MCP Proxy Layer
 // Manages connections to upstream MCP servers
 // ============================================================================
 
-// TODO: Migrate StdioRouter from @aegis/router
+// TODO: Migrate StdioRouter from @mycelium/router
 // For now, re-export placeholder
 
 export const GATEWAY_VERSION = '1.0.0';

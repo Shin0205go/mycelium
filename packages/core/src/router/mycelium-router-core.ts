@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Router Core - Central Routing and Role Management
+// Mycelium Router Core - Central Routing and Role Management
 // The "司令塔" (command center) for multi-server MCP routing
 // ============================================================================
 
@@ -7,13 +7,13 @@ import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
 import { StdioRouter, UpstreamServerInfo } from '../mcp/stdio-router.js';
 import type { MCPServerConfig } from '../types/mcp-types.js';
-import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@aegis/rbac';
-import { IdentityResolver, createIdentityResolver } from '@aegis/a2a';
+import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@mycelium/rbac';
+import { IdentityResolver, createIdentityResolver } from '@mycelium/a2a';
 import { AuditLogger, createAuditLogger } from './audit-logger.js';
 import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
 import type {
   Role,
-  AegisRouterState,
+  MyceliumRouterState,
   SubServerInfo,
   ToolInfo,
   AgentManifest,
@@ -33,11 +33,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Router-level tool definitions
- * These are tools provided by aegis-router itself (not backend MCP servers)
+ * These are tools provided by mycelium-router itself (not backend MCP servers)
  */
 export const ROUTER_TOOLS: Tool[] = [
   {
-    name: 'aegis-router__list_roles',
+    name: 'mycelium-router__list_roles',
     description: 'Get a list of available roles with their skills and capabilities',
     inputSchema: {
       type: 'object',
@@ -45,7 +45,7 @@ export const ROUTER_TOOLS: Tool[] = [
     },
   },
   {
-    name: 'aegis-router__spawn_sub_agent',
+    name: 'mycelium-router__spawn_sub_agent',
     description: 'Spawn a sub-agent with a specific role to handle a task. The sub-agent runs independently with its own tools and capabilities based on the role. Use this to delegate specialized tasks to role-specific agents.',
     inputSchema: {
       type: 'object',
@@ -73,7 +73,7 @@ export const ROUTER_TOOLS: Tool[] = [
 ];
 
 /**
- * AegisRouterCore - Central routing system for AEGIS
+ * MyceliumRouterCore - Central routing system for Mycelium
  *
  * This class serves as the "司令塔" (command center) that:
  * 1. Manages connections to multiple sub-MCP servers
@@ -81,7 +81,7 @@ export const ROUTER_TOOLS: Tool[] = [
  * 3. Handles role switching via set_role
  * 4. Emits notifications when tools change
  */
-export class AegisRouterCore extends EventEmitter {
+export class MyceliumRouterCore extends EventEmitter {
   private logger: Logger;
   private stdioRouter: StdioRouter;
   private roleManager: RoleManager;
@@ -92,7 +92,7 @@ export class AegisRouterCore extends EventEmitter {
   private identityResolver: IdentityResolver;
 
   // Router state
-  private state: AegisRouterState;
+  private state: MyceliumRouterState;
 
   // Current identity resolution result
   private currentIdentity: IdentityResolution | null = null;
@@ -158,7 +158,7 @@ export class AegisRouterCore extends EventEmitter {
       }
     };
 
-    this.logger.debug('AegisRouterCore created', {
+    this.logger.debug('MyceliumRouterCore created', {
       sessionId: this.state.metadata.sessionId,
       a2aMode: this.a2aMode
     });
@@ -183,7 +183,7 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   private async _doInitialize(): Promise<void> {
-    this.logger.info('Initializing AEGIS Router Core...');
+    this.logger.info('Initializing Mycelium Router Core...');
 
     try {
       // Initialize role configuration
@@ -208,7 +208,7 @@ export class AegisRouterCore extends EventEmitter {
       }
 
       this.initialized = true;
-      this.logger.info('AEGIS Router Core initialized successfully');
+      this.logger.info('Mycelium Router Core initialized successfully');
 
     } catch (error) {
       this.logger.error('Failed to initialize router core:', error);
@@ -347,20 +347,20 @@ export class AegisRouterCore extends EventEmitter {
   }
 
   /**
-   * Load roles dynamically from aegis-skills MCP server
+   * Load roles dynamically from mycelium-skills MCP server
    * Calls list_skills and generates roles from skill definitions
    */
   async loadRolesFromSkillsServer(): Promise<boolean> {
-    this.logger.info('🔄 Loading roles from aegis-skills server...');
+    this.logger.info('🔄 Loading roles from mycelium-skills server...');
 
     try {
-      // Call aegis-skills list_skills tool
+      // Call mycelium-skills list_skills tool
       const request = {
         jsonrpc: '2.0' as const,
         id: Date.now(),
         method: 'tools/call',
         params: {
-          name: 'aegis-skills__list_skills',
+          name: 'mycelium-skills__list_skills',
           arguments: {}
         }
       };
@@ -370,7 +370,7 @@ export class AegisRouterCore extends EventEmitter {
       // Parse the response
       const result = response?.result;
       if (!result?.content?.[0]?.text) {
-        this.logger.warn('No skills returned from aegis-skills server');
+        this.logger.warn('No skills returned from mycelium-skills server');
         return false;
       }
 
@@ -399,7 +399,7 @@ export class AegisRouterCore extends EventEmitter {
         tool => this.roleManager.isToolDefinedInAnySkill(tool.name)
       );
       if (skillDefinedRouterTools.length > 0) {
-        this.toolVisibility.registerTools(skillDefinedRouterTools, 'aegis-router');
+        this.toolVisibility.registerTools(skillDefinedRouterTools, 'mycelium-router');
         this.logger.info(`Registered ${skillDefinedRouterTools.length} router tools after skill loading`);
       }
 
@@ -432,13 +432,13 @@ export class AegisRouterCore extends EventEmitter {
       return true;
 
     } catch (error) {
-      this.logger.error('Failed to load roles from aegis-skills server:', error);
+      this.logger.error('Failed to load roles from mycelium-skills server:', error);
       return false;
     }
   }
 
   /**
-   * Transform skills data from aegis-skills to SkillDefinition format
+   * Transform skills data from mycelium-skills to SkillDefinition format
    * Filters allowedTools to only include tools that actually exist in backend servers
    */
   private transformSkillsToDefinitions(skillsData: any[]): SkillDefinition[] {
@@ -520,14 +520,14 @@ export class AegisRouterCore extends EventEmitter {
     return {
       routeRequest: async (request: any): Promise<any> => {
         // Check if this is a targeted request (for a specific backend)
-        const targetServer = request._aegis_target_server;
+        const targetServer = request._mycelium_target_server;
 
         if (targetServer) {
           // Route to specific server
           this.logger.debug(`Routing prompts/get to server: ${targetServer}`);
 
-          // Strip the _aegis_target_server and modify request for specific server
-          const { _aegis_target_server, ...cleanRequest } = request;
+          // Strip the _mycelium_target_server and modify request for specific server
+          const { _mycelium_target_server, ...cleanRequest } = request;
 
           // Route through stdioRouter with server prefix
           return await this.stdioRouter.routeToServer(targetServer, cleanRequest);
@@ -657,7 +657,7 @@ export class AegisRouterCore extends EventEmitter {
           tool => this.roleManager.isToolDefinedInAnySkill(tool.name)
         );
         if (skillDefinedRouterTools.length > 0) {
-          this.toolVisibility.registerTools(skillDefinedRouterTools, 'aegis-router');
+          this.toolVisibility.registerTools(skillDefinedRouterTools, 'mycelium-router');
           this.logger.debug(`Registered ${skillDefinedRouterTools.length}/${ROUTER_TOOLS.length} router tools (skill-defined)`);
         }
 
@@ -692,9 +692,9 @@ export class AegisRouterCore extends EventEmitter {
    *
    * Flow for agent with remote skill:
    * 1. Client requests role switch
-   * 2. AEGIS fetches SKILL.md from backend server via prompts/get
-   * 3. AEGIS combines its persona definition with the skill instruction
-   * 4. AEGIS sends tools/list_changed to client
+   * 2. Mycelium fetches SKILL.md from backend server via prompts/get
+   * 3. Mycelium combines its persona definition with the skill instruction
+   * 4. Mycelium sends tools/list_changed to client
    * 5. Client receives combined instruction + available tools
    */
   async setRole(options: SetRoleOptions): Promise<AgentManifest> {
@@ -888,11 +888,11 @@ export class AegisRouterCore extends EventEmitter {
     if (method === 'tools/call' && params?.name) {
       this.checkToolAccess(params.name);
 
-      // Handle skill filtering for agent-skills tools
-      if (params.name === 'agent-skills__list_skills') {
+      // Handle skill filtering for mycelium-skills tools
+      if (params.name === 'mycelium-skills__list_skills') {
         return await this.handleListSkillsWithFiltering(request);
       }
-      if (params.name === 'agent-skills__get_skill') {
+      if (params.name === 'mycelium-skills__get_skill') {
         return await this.handleGetSkillWithFiltering(request, params.arguments);
       }
     }
@@ -1251,6 +1251,11 @@ export class AegisRouterCore extends EventEmitter {
     const toolInfo = this.toolVisibility.getToolInfo(toolName);
     const sourceServer = toolInfo?.sourceServer || 'unknown';
 
+    // ROUTER_TOOLS are always accessible (list_roles, spawn_sub_agent)
+    if (ROUTER_TOOLS.some(t => t.name === toolName)) {
+      return;
+    }
+
     // Check rate limit first
     const rateLimitResult = this.rateLimiter.check(roleId, sessionId, toolName);
     if (!rateLimitResult.allowed) {
@@ -1375,7 +1380,7 @@ export class AegisRouterCore extends EventEmitter {
   /**
    * Get router state metadata
    */
-  getStateMetadata(): AegisRouterState['metadata'] {
+  getStateMetadata(): MyceliumRouterState['metadata'] {
     return { ...this.state.metadata };
   }
 
@@ -1392,7 +1397,7 @@ export class AegisRouterCore extends EventEmitter {
   async reloadRoles(): Promise<void> {
     this.logger.info('Reloading roles from skill server...');
 
-    // Reload from aegis-skills server
+    // Reload from mycelium-skills server
     await this.loadRolesFromSkillsServer();
 
     // Update visible tools (via ToolVisibilityManager)
@@ -1517,7 +1522,7 @@ export class AegisRouterCore extends EventEmitter {
 }
 
 // Export factory function
-export function createAegisRouterCore(
+export function createMyceliumRouterCore(
   logger: Logger,
   options?: {
     rolesDir?: string;
@@ -1527,6 +1532,8 @@ export function createAegisRouterCore(
     a2aMode?: boolean;
     cwd?: string;
   }
-): AegisRouterCore {
-  return new AegisRouterCore(logger, options);
+): MyceliumRouterCore {
+  return new MyceliumRouterCore(logger, options);
 }
+
+// Backward compatibility aliases

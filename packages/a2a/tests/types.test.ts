@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/a2a types
+ * Unit tests for @mycelium/a2a types
  * Verifies type exports and interface structures
  */
 
@@ -15,7 +15,7 @@ import type {
   IdentityStats,
 } from '../src/types.js';
 
-describe('@aegis/a2a types', () => {
+describe('@mycelium/a2a types', () => {
   describe('A2AAgentSkill', () => {
     it('should accept minimal skill definition', () => {
       const skill: A2AAgentSkill = {
@@ -129,7 +129,7 @@ describe('@aegis/a2a types', () => {
           { role: 'admin', requiredSkills: ['admin'] },
           { role: 'user', anySkills: ['basic'] },
         ],
-        trustedPrefixes: ['claude-', 'aegis-'],
+        trustedPrefixes: ['claude-', 'mycelium-'],
       };
 
       expect(config.skillMatching).toHaveLength(2);
@@ -169,7 +169,7 @@ describe('@aegis/a2a types', () => {
               priority: 100,
             },
           ],
-          trustedPrefixes: ['claude-', 'aegis-'],
+          trustedPrefixes: ['claude-', 'mycelium-'],
         },
         metadata: {
           version: '1.0.0',
@@ -276,7 +276,7 @@ describe('@aegis/a2a types', () => {
           frontend: 2,
           backend: 2,
         },
-        trustedPrefixes: ['claude-', 'aegis-', 'internal-'],
+        trustedPrefixes: ['claude-', 'mycelium-', 'internal-'],
       };
 
       expect(stats.totalRules).toBe(5);

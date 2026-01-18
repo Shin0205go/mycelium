@@ -10,13 +10,25 @@
       "WebSearch",
       "Bash(npx vitest:*)",
       "Bash(cat:*)",
-      "Bash(AEGIS_CONFIG_PATH=config.json node:*)",
-      "Bash(AEGIS_CONFIG_PATH=config.json timeout 60 node:*)",
-      "Bash(AEGIS_CONFIG_PATH=config.json timeout 30 node:*)",
-      "Bash(AEGIS_CONFIG_PATH=config.json AEGIS_CURRENT_ROLE=orchestrator node packages/core/dist/cli-entry.js:*)",
-      "Bash(AEGIS_CONFIG_PATH=config.json AEGIS_CURRENT_ROLE=orchestrator DEBUG=1 node:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json node:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json timeout 60 node:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json timeout 30 node:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json MYCELIUM_CURRENT_ROLE=orchestrator node packages/core/dist/cli-entry.js:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json MYCELIUM_CURRENT_ROLE=orchestrator DEBUG=1 node:*)",
       "Bash(grep:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat\\(cli\\): SDK-only sub-agents with terminal reuse and session persistence\n\n- Remove MCPClient from SubAgent, use Claude Agent SDK directly\n- Add per-role session persistence \\(persistSession, continueSession\\)\n- Make spawn_sub_agent default to interactive mode \\(terminal window\\)\n- Implement terminal window reuse per role \\(AEGIS: <role> title\\)\n- Send Ctrl+C to interrupt existing session when reusing terminal\n- Add enhanced debug output for session tracking:\n  - Query counter and session continuation status\n  - Session ID and file path tracking in /status\n  - Visual debug boxes with session state\n- Skip set_role when AEGIS_CURRENT_ROLE env var is set\n- Fix tool duplication in router \\(list_roles, spawn_sub_agent\\)\n- Update skill YAML files to use consistent format\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git push)",
+      "Bash(npm install:*)",
+      "Bash(MYCELIUM_CONFIG_PATH=config.json timeout 5 node:*)",
+      "Bash(git commit:*)",
+      "Bash(openssl rand:*)",
+      "Bash(curl:*)",
+      "Bash(npm run build:all:*)",
+      "Bash(npm run:*)",
+      "Bash(gh repo view:*)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "mycelium-router"
+  ]
 }

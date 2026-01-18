@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Router - MCP Module Exports
+// Mycelium Router - MCP Module Exports
 // ============================================================================
 
 export * from './stdio-router.js';

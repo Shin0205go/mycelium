@@ -1,7 +1,7 @@
 name: self-improvement
-description: Analyze and improve the Aegis-CLI codebase itself through recursive self-modification. Use when you need to refactor, optimize, review, or add features to Aegis-CLI's own code.
+description: Analyze and improve the Mycelium-CLI codebase itself through recursive self-modification. Use when you need to refactor, optimize, review, or add features to Mycelium-CLI's own code.
 
-# AEGIS RBAC
+# Mycelium RBAC
 allowedRoles:
   - meta-developer
 
@@ -13,7 +13,7 @@ allowedTools:
   - filesystem__directory_tree
   - filesystem__search_files
   - filesystem__get_file_info
-  - aegis-skills__list_skills
-  - aegis-skills__get_skill
+  - mycelium-skills__list_skills
+  - mycelium-skills__get_skill
 grants:
   memory: isolated

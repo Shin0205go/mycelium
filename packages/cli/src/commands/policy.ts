@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis policy - Policy verification and testing
+// mycelium policy - Policy verification and testing
 // ============================================================================
 
 import { Command } from 'commander';
@@ -127,7 +127,7 @@ async function loadSkills(skillsDir: string): Promise<SkillFrontmatter[]> {
 export const policyCommand = new Command('policy')
   .description('Policy verification and testing');
 
-// aegis policy check --role <role>
+// mycelium policy check --role <role>
 policyCommand
   .command('check')
   .description('Check effective permissions for a role')
@@ -144,7 +144,7 @@ policyCommand
 
       if (skills.length === 0) {
         console.log(chalk.yellow('No skills found.'));
-        console.log(chalk.cyan('Initialize project: ') + chalk.white('aegis init'));
+        console.log(chalk.cyan('Initialize project: ') + chalk.white('mycelium init'));
         return;
       }
 
@@ -166,7 +166,7 @@ policyCommand
       // Dynamic import to avoid build-time dependency
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const rbacModule = await importDynamic('@aegis/rbac');
+      const rbacModule = await importDynamic('@mycelium/rbac');
       const RoleManager = rbacModule.RoleManager;
 
       // Create role manager and load skills
@@ -262,7 +262,7 @@ policyCommand
     }
   });
 
-// aegis policy test --agent <name> [--skills <skills>] [--time <datetime>]
+// mycelium policy test --agent <name> [--skills <skills>] [--time <datetime>]
 policyCommand
   .command('test')
   .description('Test A2A identity resolution')
@@ -281,14 +281,14 @@ policyCommand
 
       if (skills.length === 0) {
         console.log(chalk.yellow('No skills found.'));
-        console.log(chalk.cyan('Initialize project: ') + chalk.white('aegis init'));
+        console.log(chalk.cyan('Initialize project: ') + chalk.white('mycelium init'));
         return;
       }
 
       // Dynamic import to avoid build-time dependency
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const a2aModule = await importDynamic('@aegis/a2a');
+      const a2aModule = await importDynamic('@mycelium/a2a');
       const createIdentityResolver = a2aModule.createIdentityResolver;
 
       // Create identity resolver
@@ -365,7 +365,7 @@ policyCommand
     }
   });
 
-// aegis policy roles
+// mycelium policy roles
 policyCommand
   .command('roles')
   .description('List all available roles')

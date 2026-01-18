@@ -37,12 +37,12 @@ describe('createAgentOptions', () => {
   });
 
   describe('default configuration', () => {
-    it('should return options with AEGIS Router as MCP server', () => {
+    it('should return options with Mycelium Router as MCP server', () => {
       const options = createAgentOptions();
 
       expect(options.mcpServers).toBeDefined();
-      expect(options.mcpServers!['aegis-router']).toBeDefined();
-      expect(options.mcpServers!['aegis-router'].command).toBe('node');
+      expect(options.mcpServers!['mycelium-router']).toBeDefined();
+      expect(options.mcpServers!['mycelium-router'].command).toBe('node');
     });
 
     it('should disable built-in tools', () => {

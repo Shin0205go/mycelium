@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuditLogger, createAuditLogger } from '../src/router/audit-logger.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 
 // Silent test logger
 const createTestLogger = (): Logger => ({

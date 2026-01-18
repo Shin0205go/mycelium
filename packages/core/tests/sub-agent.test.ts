@@ -165,7 +165,7 @@ describe('SubAgent', () => {
       );
     });
 
-    it('should prefer AEGIS_CURRENT_ROLE env var over args.role', async () => {
+    it('should prefer Mycelium_CURRENT_ROLE env var over args.role', async () => {
       const args: CliArgs = {
         interactive: false,
         json: false,
@@ -177,8 +177,8 @@ describe('SubAgent', () => {
       };
 
       // Set env var
-      const originalEnv = process.env.AEGIS_CURRENT_ROLE;
-      process.env.AEGIS_CURRENT_ROLE = 'meta-developer';
+      const originalEnv = process.env.Mycelium_CURRENT_ROLE;
+      process.env.Mycelium_CURRENT_ROLE = 'meta-developer';
 
       const mockQueryResult = {
         [Symbol.asyncIterator]: async function* () {
@@ -205,9 +205,9 @@ describe('SubAgent', () => {
 
       // Restore env var
       if (originalEnv === undefined) {
-        delete process.env.AEGIS_CURRENT_ROLE;
+        delete process.env.Mycelium_CURRENT_ROLE;
       } else {
-        process.env.AEGIS_CURRENT_ROLE = originalEnv;
+        process.env.Mycelium_CURRENT_ROLE = originalEnv;
       }
     });
 
@@ -351,8 +351,8 @@ describe('SubAgent', () => {
 
       mockIsToolUse.mockReturnValueOnce(true).mockReturnValue(false);
       mockGetToolUseInfo.mockReturnValueOnce([
-        { name: 'mcp__aegis-router__read_file', input: {} },
-        { name: 'mcp__aegis-router__write_file', input: {} }
+        { name: 'mcp__mycelium-router__read_file', input: {} },
+        { name: 'mcp__mycelium-router__write_file', input: {} }
       ]).mockReturnValue([]);
 
       const mockQueryResult = {

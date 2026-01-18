@@ -2,7 +2,7 @@
 name: browser-testing
 description: ブラウザ自動化とE2Eテストを行うスキル。Playwrightを使用してWebページのナビゲーション、要素操作、スクリーンショット撮影などを実行。
 
-# AEGIS RBAC extensions
+# Mycelium RBAC extensions
 allowedRoles:
   - developer
   - senior-developer

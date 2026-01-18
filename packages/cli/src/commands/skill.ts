@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis skill - Manage skills
+// mycelium skill - Manage skills
 // ============================================================================
 
 import { Command } from 'commander';
@@ -30,13 +30,13 @@ function getDefaultSkillsDir(): string {
   return './skills';
 }
 
-// Skill templates (Official Claude Skills format with AEGIS RBAC extensions)
+// Skill templates (Official Claude Skills format with Mycelium RBAC extensions)
 const SKILL_TEMPLATES: Record<string, string> = {
   'basic': `---
 name: {{name}}
 description: Basic skill template for filesystem operations
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - developer
 allowedTools:
@@ -74,7 +74,7 @@ ls -la ./src
 name: browser-limited
 description: Read-only browser access for web research. Use when analyzing web content or gathering information from websites.
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - researcher
   - analyst
@@ -121,7 +121,7 @@ playwright__browser_take_screenshot
 name: code-reviewer
 description: Code review and analysis tools with git integration and team memory access. Use for pull requests, code audits, and knowledge sharing.
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - reviewer
   - senior
@@ -186,7 +186,7 @@ git blame src/auth.ts
 name: data-analyst
 description: Read-only database access for data analysis. Execute SELECT queries, explore schemas, and analyze patterns.
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - analyst
   - data-scientist
@@ -255,7 +255,7 @@ LIMIT 30;
 name: flight-booking
 description: Flight search and booking capabilities with time-based access control. Use for travel planning and reservations.
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - travel-agent
   - assistant
@@ -317,7 +317,7 @@ calendar__create_event --title "Flight to LAX" --date "2024-06-15"
 name: personal-assistant
 description: Calendar and email management for personal assistance tasks. Schedule meetings, read emails, and coordinate events.
 
-# AEGIS RBAC Extensions
+# Mycelium RBAC Extensions
 allowedRoles:
   - assistant
   - secretary
@@ -385,8 +385,8 @@ function splitTemplate(template: string): { yaml: string; markdown: string } {
   let yaml = frontmatterMatch[1];
   const markdown = frontmatterMatch[2].trim();
 
-  // Remove "# AEGIS RBAC Extensions" comment from YAML (it's documentation)
-  yaml = yaml.replace(/^# AEGIS RBAC Extensions\n/m, '');
+  // Remove "# Mycelium RBAC Extensions" comment from YAML (it's documentation)
+  yaml = yaml.replace(/^# Mycelium RBAC Extensions\n/m, '');
 
   return { yaml, markdown };
 }
@@ -429,7 +429,7 @@ async function createSkillInteractive(skillName: string): Promise<{ yaml: string
     const yamlContent = `name: ${skillName}
 description: ${description}
 
-# AEGIS RBAC
+# Mycelium RBAC
 allowedRoles:
 ${allowedRoles.map(r => `  - ${r}`).join('\n')}
 allowedTools:
@@ -504,7 +504,7 @@ For detailed reference material or complex workflows:
   }
 }
 
-// aegis skill add <name>
+// mycelium skill add <name>
 skillCommand
   .command('add')
   .description('Create a new skill (interactive by default, or use --template for non-interactive)')
@@ -651,7 +651,7 @@ Delete this README when you add your first asset.
     }
   });
 
-// aegis skill list
+// mycelium skill list
 skillCommand
   .command('list')
   .description('List all skills')
@@ -667,7 +667,7 @@ skillCommand
 
       if (dirs.length === 0) {
         console.log(chalk.yellow('\nNo skills found.\n'));
-        console.log(chalk.cyan('Add a skill: ') + chalk.white('aegis skill add <name>'));
+        console.log(chalk.cyan('Add a skill: ') + chalk.white('mycelium skill add <name>'));
         return;
       }
 
@@ -736,7 +736,7 @@ skillCommand
     }
   });
 
-// aegis skill templates
+// mycelium skill templates
 skillCommand
   .command('templates')
   .description('List available skill templates')
@@ -764,7 +764,7 @@ skillCommand
     }
 
     console.log(chalk.cyan('Create a new skill from template:'));
-    console.log(chalk.white('  aegis skill add my-skill --template basic'));
+    console.log(chalk.white('  mycelium skill add my-skill --template basic'));
     console.log();
     console.log(chalk.gray('This will create: skills/my-skill/SKILL.md'));
     console.log(chalk.gray('Then edit the file to customize roles, tools, and permissions.'));

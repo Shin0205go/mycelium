@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolVisibilityManager } from '../src/tool-visibility-manager.js';
 import { RoleManager } from '../src/role-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 // Mock logger for tests
@@ -249,7 +249,7 @@ describe('ToolVisibilityManager', () => {
       };
       await roleManager.loadFromSkillManifest(manifest);
 
-      // Register tools as they appear in aegis-router (without mcp__ prefix)
+      // Register tools as they appear in mycelium-router (without mcp__ prefix)
       const tools: Tool[] = [
         { name: 'filesystem__read_file', description: 'Read file', inputSchema: { type: 'object' } },
         { name: 'filesystem__search_files', description: 'Search files', inputSchema: { type: 'object' } },
@@ -262,8 +262,8 @@ describe('ToolVisibilityManager', () => {
     });
 
     describe('normalizeToolName', () => {
-      it('should strip mcp__aegis-router__ prefix', () => {
-        expect(toolVisibility.normalizeToolName('mcp__aegis-router__filesystem__read_file'))
+      it('should strip mcp__mycelium-router__ prefix', () => {
+        expect(toolVisibility.normalizeToolName('mcp__mycelium-router__filesystem__read_file'))
           .toBe('filesystem__read_file');
       });
 
@@ -290,46 +290,46 @@ describe('ToolVisibilityManager', () => {
     });
 
     describe('isVisible with SDK prefix', () => {
-      it('should recognize tools with mcp__aegis-router__ prefix', () => {
+      it('should recognize tools with mcp__mycelium-router__ prefix', () => {
         // Both formats should work
         expect(toolVisibility.isVisible('filesystem__read_file')).toBe(true);
-        expect(toolVisibility.isVisible('mcp__aegis-router__filesystem__read_file')).toBe(true);
+        expect(toolVisibility.isVisible('mcp__mycelium-router__filesystem__read_file')).toBe(true);
       });
 
       it('should deny tools not in allowedTools (with SDK prefix)', () => {
         expect(toolVisibility.isVisible('database__query')).toBe(false);
-        expect(toolVisibility.isVisible('mcp__aegis-router__database__query')).toBe(false);
+        expect(toolVisibility.isVisible('mcp__mycelium-router__database__query')).toBe(false);
       });
 
       it('should recognize set_role with SDK prefix', () => {
         expect(toolVisibility.isVisible('set_role')).toBe(true);
-        expect(toolVisibility.isVisible('mcp__aegis-router__set_role')).toBe(true);
+        expect(toolVisibility.isVisible('mcp__mycelium-router__set_role')).toBe(true);
       });
     });
 
     describe('checkAccess with SDK prefix', () => {
       it('should not throw for allowed tools with SDK prefix', () => {
         expect(() => toolVisibility.checkAccess('filesystem__read_file')).not.toThrow();
-        expect(() => toolVisibility.checkAccess('mcp__aegis-router__filesystem__read_file')).not.toThrow();
+        expect(() => toolVisibility.checkAccess('mcp__mycelium-router__filesystem__read_file')).not.toThrow();
       });
 
       it('should throw for denied tools with SDK prefix', () => {
         expect(() => toolVisibility.checkAccess('database__query'))
           .toThrow(/not accessible for role/);
-        expect(() => toolVisibility.checkAccess('mcp__aegis-router__database__query'))
+        expect(() => toolVisibility.checkAccess('mcp__mycelium-router__database__query'))
           .toThrow(/not accessible for role/);
       });
 
       it('should allow set_role with SDK prefix', () => {
         expect(() => toolVisibility.checkAccess('set_role')).not.toThrow();
-        expect(() => toolVisibility.checkAccess('mcp__aegis-router__set_role')).not.toThrow();
+        expect(() => toolVisibility.checkAccess('mcp__mycelium-router__set_role')).not.toThrow();
       });
     });
 
     describe('getToolInfo with SDK prefix', () => {
       it('should return tool info with SDK prefix', () => {
         const info1 = toolVisibility.getToolInfo('filesystem__read_file');
-        const info2 = toolVisibility.getToolInfo('mcp__aegis-router__filesystem__read_file');
+        const info2 = toolVisibility.getToolInfo('mcp__mycelium-router__filesystem__read_file');
 
         expect(info1).toBeDefined();
         expect(info2).toBeDefined();
@@ -339,7 +339,7 @@ describe('ToolVisibilityManager', () => {
 
     describe('parseToolName with SDK prefix', () => {
       it('should parse tool names after normalization', () => {
-        const result = toolVisibility.parseToolName('mcp__aegis-router__filesystem__read_file');
+        const result = toolVisibility.parseToolName('mcp__mycelium-router__filesystem__read_file');
         expect(result.serverName).toBe('filesystem');
         expect(result.originalName).toBe('read_file');
       });

@@ -1,12 +1,12 @@
 /**
- * Unit tests for @aegis/audit
+ * Unit tests for @mycelium/audit
  * Tests audit logging and rate limiting constants
  */
 
 import { describe, it, expect } from 'vitest';
 import { AUDIT_VERSION } from '../src/index.js';
 
-describe('@aegis/audit', () => {
+describe('@mycelium/audit', () => {
   describe('AUDIT_VERSION', () => {
     it('should be defined', () => {
       expect(AUDIT_VERSION).toBeDefined();
@@ -23,7 +23,7 @@ describe('@aegis/audit', () => {
 
   describe('Future exports (placeholder)', () => {
     it('should document planned AuditLogger export', () => {
-      // AuditLogger will be migrated from @aegis/router
+      // AuditLogger will be migrated from @mycelium/router
       // Expected interface:
       // - log(entry: AuditLogEntry): void
       // - getStats(): AuditStats
@@ -34,7 +34,7 @@ describe('@aegis/audit', () => {
     });
 
     it('should document planned RateLimiter export', () => {
-      // RateLimiter will be migrated from @aegis/router
+      // RateLimiter will be migrated from @mycelium/router
       // Expected interface:
       // - setQuota(roleId: string, quota: RoleQuota): void
       // - checkLimit(roleId: string, toolName: string): boolean

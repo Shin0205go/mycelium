@@ -1,6 +1,6 @@
 // ============================================================================
-// AEGIS Shared Types
-// Common types used across all AEGIS packages
+// Mycelium Shared Types
+// Common types used across all Mycelium packages
 // ============================================================================
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -278,7 +278,7 @@ export interface ListRolesResult {
 
 /**
  * Skill definition from Skill MCP Server (base type)
- * Extended by @aegis/a2a with identity configuration
+ * Extended by @mycelium/a2a with identity configuration
  */
 export interface BaseSkillDefinition {
   /** Unique skill identifier */

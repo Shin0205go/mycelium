@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis mcp - MCP server management commands
+// mycelium mcp - MCP server management commands
 // ============================================================================
 
 import { Command } from 'commander';
@@ -11,17 +11,17 @@ import chalk from 'chalk';
 export const mcpCommand = new Command('mcp')
   .description('MCP server management');
 
-// aegis mcp start
+// mycelium mcp start
 mcpCommand
   .command('start')
-  .description('Start the AEGIS MCP server')
+  .description('Start the Mycelium MCP server')
   .option('-c, --config <path>', 'Config file path', './config.json')
   .option('--background', 'Run in background')
   .option('--dev', 'Run in development mode (with tsx)')
   .action(async (options: { config: string; background?: boolean; dev?: boolean }) => {
     const configPath = join(process.cwd(), options.config);
 
-    console.log(chalk.blue('🚀 Starting AEGIS MCP Server...'));
+    console.log(chalk.blue('🚀 Starting Mycelium MCP Server...'));
     console.log();
 
     try {
@@ -30,7 +30,7 @@ mcpCommand
         await access(configPath);
       } catch {
         console.error(chalk.red(`❌ Config file not found: ${configPath}`));
-        console.log(chalk.cyan('Initialize project: ') + chalk.white('aegis init'));
+        console.log(chalk.cyan('Initialize project: ') + chalk.white('mycelium init'));
         process.exit(1);
       }
 
@@ -38,7 +38,7 @@ mcpCommand
       const possiblePaths = [
         join(process.cwd(), 'dist', 'mcp-server.js'),
         join(process.cwd(), 'src', 'mcp-server.ts'),
-        join(process.cwd(), 'node_modules', '@aegis', 'core', 'dist', 'mcp-server.js')
+        join(process.cwd(), 'node_modules', '@mycelium', 'core', 'dist', 'mcp-server.js')
       ];
 
       let serverPath: string | null = null;
@@ -77,7 +77,7 @@ mcpCommand
       // Set environment
       const env = {
         ...process.env,
-        AEGIS_CONFIG_PATH: configPath
+        MYCELIUM_CONFIG_PATH: configPath
       };
 
       if (options.background) {
@@ -121,7 +121,7 @@ mcpCommand
     }
   });
 
-// aegis mcp status
+// mycelium mcp status
 mcpCommand
   .command('status')
   .description('Check MCP server status')
@@ -129,6 +129,6 @@ mcpCommand
     console.log(chalk.blue('📊 MCP Server Status'));
     console.log();
     console.log(chalk.gray('  Status checking not yet implemented.'));
-    console.log(chalk.gray('  Use `ps aux | grep aegis` to check running servers.'));
+    console.log(chalk.gray('  Use `ps aux | grep mycelium` to check running servers.'));
     console.log();
   });

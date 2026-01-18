@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * AEGIS CLI - Skill-driven RBAC for AI Agents
+ * Mycelium CLI - Skill-driven RBAC for AI Agents
  *
  * Usage:
- *   aegis                 - Start interactive chat mode
- *   aegis init            - Initialize a new project
- *   aegis skill add/list  - Manage skills
- *   aegis policy check    - Verify policies
- *   aegis mcp start       - Start MCP server
+ *   mycelium                 - Start interactive chat mode
+ *   mycelium init            - Initialize a new project
+ *   mycelium skill add/list  - Manage skills
+ *   mycelium policy check    - Verify policies
+ *   mycelium mcp start       - Start MCP server
  */
 
 import { Command } from 'commander';
@@ -20,8 +20,8 @@ import { InteractiveCLI } from './lib/interactive-cli.js';
 const program = new Command();
 
 program
-  .name('aegis')
-  .description('AEGIS CLI - Skill-driven RBAC for AI Agents')
+  .name('mycelium')
+  .description('Mycelium CLI - Skill-driven RBAC for AI Agents')
   .version('1.0.0')
   .option('-r, --role <role>', 'Initial role for interactive mode')
   .option('-m, --model <model>', 'Model to use')

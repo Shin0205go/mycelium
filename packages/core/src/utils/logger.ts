@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS - ロガーユーティリティ
+// Mycelium - ロガーユーティリティ
 // ============================================================================
 
 import winston from 'winston';
@@ -23,7 +23,7 @@ export class Logger {
         winston.format.errors({ stack: true }),
         winston.format.json()
       ),
-      defaultMeta: { service: 'aegis' },
+      defaultMeta: { service: 'mycelium' },
       transports: [
         // コンソール出力（サイレントモードでは完全に無効化）
         new winston.transports.Console({
@@ -91,13 +91,13 @@ export class Logger {
     }
     
     if (isStdioMode) {
-      console.error(`[AEGIS CRITICAL] ${message}`, metadata ? JSON.stringify(metadata) : '');
+      console.error(`[Mycelium CRITICAL] ${message}`, metadata ? JSON.stringify(metadata) : '');
     } else {
       this.error(message, metadata);
     }
   }
 
-  // AEGIS専用ログメソッド
+  // Mycelium専用ログメソッド
   decision(agentId: string, decision: string, resource: string, reason: string) {
     this.info('Access Decision', {
       type: 'DECISION',

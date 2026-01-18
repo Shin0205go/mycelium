@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { RoleMemoryStore } from '../src/role-memory.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -29,7 +29,7 @@ describe('RoleMemoryStore', () => {
 
   beforeEach(async () => {
     // Create a unique temp directory for each test
-    testMemoryDir = join(tmpdir(), `aegis-memory-test-${Date.now()}`);
+    testMemoryDir = join(tmpdir(), `mycelium-memory-test-${Date.now()}`);
     memoryStore = new RoleMemoryStore(testMemoryDir, testLogger);
     await memoryStore.initialize();
   });

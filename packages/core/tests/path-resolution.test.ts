@@ -24,7 +24,7 @@ describe('Path Resolution', () => {
   describe('PROJECT_ROOT calculation', () => {
     it('should resolve to monorepo root from test file', () => {
       // PROJECT_ROOT should end with the repo name or be a valid monorepo root
-      expect(basename(PROJECT_ROOT)).toBe('aegis-cli');
+      expect(basename(PROJECT_ROOT)).toBe('mycelium-cli');
     });
 
     it('should contain package.json with workspaces', async () => {
@@ -83,7 +83,7 @@ describe('Path Resolution', () => {
   });
 
   describe('Skills package path resolution', () => {
-    it('should find @aegis/skills dist', async () => {
+    it('should find @mycelium/skills dist', async () => {
       const skillsPath = join(PROJECT_ROOT, 'packages', 'skills', 'dist', 'index.js');
       await expect(access(skillsPath, constants.R_OK)).resolves.toBeUndefined();
     });
@@ -123,38 +123,38 @@ describe('Path Resolution', () => {
 describe('Environment Variable Fallbacks', () => {
   it('should use environment variable when set', () => {
     const customPath = '/custom/path/to/router.js';
-    const originalEnv = process.env.AEGIS_ROUTER_PATH;
+    const originalEnv = process.env.Mycelium_ROUTER_PATH;
 
     try {
-      process.env.AEGIS_ROUTER_PATH = customPath;
+      process.env.Mycelium_ROUTER_PATH = customPath;
 
       // Simulate the path resolution logic
-      const resolvedPath = process.env.AEGIS_ROUTER_PATH ||
+      const resolvedPath = process.env.Mycelium_ROUTER_PATH ||
         join(PROJECT_ROOT, 'packages', 'core', 'dist', 'mcp-server.js');
 
       expect(resolvedPath).toBe(customPath);
     } finally {
       if (originalEnv !== undefined) {
-        process.env.AEGIS_ROUTER_PATH = originalEnv;
+        process.env.Mycelium_ROUTER_PATH = originalEnv;
       } else {
-        delete process.env.AEGIS_ROUTER_PATH;
+        delete process.env.Mycelium_ROUTER_PATH;
       }
     }
   });
 
   it('should fall back to calculated path when env var not set', () => {
-    const originalEnv = process.env.AEGIS_ROUTER_PATH;
+    const originalEnv = process.env.Mycelium_ROUTER_PATH;
 
     try {
-      delete process.env.AEGIS_ROUTER_PATH;
+      delete process.env.Mycelium_ROUTER_PATH;
 
-      const resolvedPath = process.env.AEGIS_ROUTER_PATH ||
+      const resolvedPath = process.env.Mycelium_ROUTER_PATH ||
         join(PROJECT_ROOT, 'packages', 'core', 'dist', 'mcp-server.js');
 
       expect(resolvedPath).toBe(join(PROJECT_ROOT, 'packages', 'core', 'dist', 'mcp-server.js'));
     } finally {
       if (originalEnv !== undefined) {
-        process.env.AEGIS_ROUTER_PATH = originalEnv;
+        process.env.Mycelium_ROUTER_PATH = originalEnv;
       }
     }
   });

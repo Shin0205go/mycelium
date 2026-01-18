@@ -1,5 +1,5 @@
 /**
- * AEGIS Interactive CLI - REPL with role switching
+ * Mycelium Interactive CLI - REPL with role switching
  * SDK-only version: Uses Claude Agent SDK session persistence
  */
 
@@ -146,7 +146,7 @@ export class InteractiveCLI {
   private updateToolsFromInit(initMsg: SDKMessage): void {
     if (initMsg.tools) {
       this.availableTools = initMsg.tools.map((name: string) => {
-        // Parse tool name like "mcp__aegis-router__filesystem__read_file"
+        // Parse tool name like "mcp__mycelium-router__filesystem__read_file"
         const withoutMcp = name.replace(/^mcp__[^_]+__/, '');
         const parts = withoutMcp.split('__');
         return {
@@ -172,11 +172,12 @@ export class InteractiveCLI {
 
   private showBanner(): void {
     const banner = `
-    ${chalk.cyan('    ___    _______________  _____')}
-    ${chalk.cyan('   /   |  / ____/ ____/  _// ___/')}
-    ${chalk.cyan('  / /| | / __/ / / __ / /  \\__ \\ ')}
-    ${chalk.cyan(' / ___ |/ /___/ /_/ // /  ___/ / ')}
-    ${chalk.cyan('/_/  |_/_____/\\____/___/ /____/  ')}
+    ${chalk.cyan('  __  __                _ _                 ')}
+    ${chalk.cyan(' |  \\/  |_   _  ___ ___| (_)_   _ _ __ ___  ')}
+    ${chalk.cyan(' | |\\/| | | | |/ __/ _ \\ | | | | | \'_ \` _ \\ ')}
+    ${chalk.cyan(' | |  | | |_| | (_|  __/ | | |_| | | | | | |')}
+    ${chalk.cyan(' |_|  |_|\\__, |\\___\\___|_|_|\\__,_|_| |_| |_|')}
+    ${chalk.cyan('         |___/                              ')}
     ${chalk.gray('Role-Based Access Control Router')}
 `;
     console.log(banner);
@@ -410,7 +411,7 @@ export class InteractiveCLI {
               console.log(chalk.gray(`│ Available Tools (${msg.tools.length}):`));
               const toolCount = Math.min(5, msg.tools.length);
               msg.tools.slice(0, toolCount).forEach((tool: string) => {
-                const shortName = tool.replace('mcp__aegis-router__', '');
+                const shortName = tool.replace('mcp__mycelium-router__', '');
                 console.log(chalk.gray(`│   • ${shortName}`));
               });
               if (msg.tools.length > 5) {
@@ -436,7 +437,7 @@ export class InteractiveCLI {
           if (isToolUseMessage(msg)) {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
-              const shortName = tool.name.replace('mcp__aegis-router__', '');
+              const shortName = tool.name.replace('mcp__mycelium-router__', '');
               console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
               if (shortName === 'set_role') {
                 const input = tool.input as { role_id?: string };

@@ -1,6 +1,6 @@
 /**
- * Agent SDK integration for AEGIS CLI
- * Routes all tool calls through AEGIS Router, excluding built-in tools
+ * Agent SDK integration for Mycelium CLI
+ * Routes all tool calls through Mycelium Router, excluding built-in tools
  */
 
 import { query, type SDKMessage, type Query, type Options } from '@anthropic-ai/claude-agent-sdk';
@@ -15,9 +15,9 @@ const __dirname = dirname(__filename);
 // When running from src/ (tsx), __dirname is packages/core/src
 // Either way, go up to packages/core, then to packages/, then to monorepo root
 const projectRoot = join(__dirname, '..', '..', '..');
-const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
+const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
   join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
   join(projectRoot, 'config.json');
 
 export interface AgentConfig {
@@ -46,7 +46,7 @@ export interface AgentResult {
 }
 
 /**
- * Create agent options with AEGIS Router as the only tool source
+ * Create agent options with Mycelium Router as the only tool source
  */
 export function createAgentOptions(config: AgentConfig = {}): Options {
   // Determine which env to use based on useApiKey flag
@@ -61,6 +61,17 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     envToUse = envWithoutApiKey as Record<string, string>;
   }
 
+  // Build MCP server environment
+  const mcpEnv: Record<string, string> = {
+    MYCELIUM_CONFIG_PATH,
+  };
+
+  // If currentRole is specified, pass it to MCP server
+  // MCP server will auto-switch to this role on startup
+  if (config.currentRole) {
+    mcpEnv.MYCELIUM_CURRENT_ROLE = config.currentRole;
+  }
+
   return {
     // Disable all built-in tools
     tools: [],
@@ -68,15 +79,12 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     // Use appropriate auth
     env: envToUse,
 
-    // Route everything through AEGIS Router
+    // Route everything through Mycelium Router
     mcpServers: {
-      'aegis-router': {
+      'mycelium-router': {
         command: 'node',
-        args: [AEGIS_ROUTER_PATH],
-        env: {
-          AEGIS_CONFIG_PATH,
-          ...(config.currentRole ? { AEGIS_CURRENT_ROLE: config.currentRole } : {})
-        }
+        args: [MYCELIUM_ROUTER_PATH],
+        env: mcpEnv
       }
     },
 
@@ -84,7 +92,7 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     model: config.model || 'claude-sonnet-4-5-20250929',
     cwd: config.cwd || process.cwd(),
     systemPrompt: config.systemPrompt,
-    // Use bypassPermissions for MCP tools - AEGIS Router handles access control
+    // Use bypassPermissions for MCP tools - Mycelium Router handles access control
     permissionMode: config.permissionMode || 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
     maxTurns: config.maxTurns || 50,

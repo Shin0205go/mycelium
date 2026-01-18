@@ -1,5 +1,5 @@
 /**
- * AEGIS HTTP Server - REST API for Apple Watch and other HTTP clients
+ * Mycelium HTTP Server - REST API for Apple Watch and other HTTP clients
  *
  * Endpoints:
  * - GET  /health     - Health check
@@ -45,13 +45,9 @@ interface RolesResponse {
   }>;
 }
 
-// Default roles - in future could be fetched from aegis-router
-const DEFAULT_ROLES = [
+// Fallback roles if mycelium-router is unavailable
+const FALLBACK_ROLES = [
   { id: 'orchestrator', name: 'Orchestrator', description: 'Default role with full access' },
-  { id: 'developer', name: 'Developer', description: 'Development tasks' },
-  { id: 'assistant', name: 'Assistant', description: 'General assistance' },
-  { id: 'reviewer', name: 'Reviewer', description: 'Code review tasks' },
-  { id: 'mentor', name: 'Mentor', description: 'Teaching and guidance' },
 ];
 
 /**
@@ -121,12 +117,38 @@ export function createHttpApp(config: HttpServerConfig) {
     });
   });
 
-  // List available roles
-  app.get('/api/roles', (_req: Request, res: Response) => {
-    const response: RolesResponse = {
-      roles: DEFAULT_ROLES,
-    };
-    res.json(response);
+  // List available roles from mycelium-router
+  app.get('/api/roles', async (_req: Request, res: Response) => {
+    try {
+      console.log('[Roles] Fetching roles from mycelium-router...');
+      const result = await runQuery(
+        'Use the mycelium-router__list_roles tool to get available roles. Return ONLY the JSON array from the tool result, nothing else.',
+        {
+          model: 'claude-3-5-haiku-20241022',
+          useApiKey: config.useApiKey ?? false,
+          maxTurns: 3,
+        }
+      );
+
+      console.log('[Roles] Result:', JSON.stringify(result, null, 2));
+
+      if (result.success && result.result) {
+        // Parse roles from result
+        const jsonMatch = result.result.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const roles = JSON.parse(jsonMatch[0]);
+          console.log('[Roles] Parsed roles:', roles.length);
+          res.json({ roles });
+          return;
+        }
+      }
+      // Fallback
+      console.log('[Roles] Using fallback roles');
+      res.json({ roles: FALLBACK_ROLES });
+    } catch (error) {
+      console.error('[Roles Error]', error);
+      res.json({ roles: FALLBACK_ROLES });
+    }
   });
 
   // Chat endpoint
@@ -210,7 +232,7 @@ export function startHttpServer(config: HttpServerConfig): Promise<void> {
         : 'None (open access)';
       console.log(`
 ╔════════════════════════════════════════════════════════╗
-║           AEGIS HTTP Server                            ║
+║           Mycelium HTTP Server                            ║
 ╠════════════════════════════════════════════════════════╣
 ║  URL:    http://${host}:${config.port}
 ║  Model:  ${config.model || 'claude-3-5-haiku-20241022'}

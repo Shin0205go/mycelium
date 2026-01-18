@@ -1,4 +1,4 @@
-# AEGIS RBAC extensions for Anthropic skill
+# Mycelium RBAC extensions for Anthropic skill
 allowedRoles:
   - analyst
   - data-scientist

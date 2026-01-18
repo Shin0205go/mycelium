@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS A2A Types
+// Mycelium A2A Types
 // Agent-to-Agent Zero-Trust Identity Resolution
 // ============================================================================
 
-import type { SkillGrants, SkillMetadata } from '@aegis/shared';
+import type { SkillGrants, SkillMetadata } from '@mycelium/shared';
 
 // ============================================================================
 // A2A Agent Card Types (Google A2A Protocol)

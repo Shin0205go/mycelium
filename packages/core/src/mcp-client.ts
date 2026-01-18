@@ -1,5 +1,5 @@
 /**
- * MCP Client for AEGIS Router
+ * MCP Client for Mycelium Router
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -173,7 +173,7 @@ export class MCPClient extends EventEmitter {
     const result = await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       clientInfo: {
-        name: 'aegis-cli',
+        name: 'mycelium-cli',
         version: '1.0.0'
       },
       capabilities: {}

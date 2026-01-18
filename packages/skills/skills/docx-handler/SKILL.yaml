@@ -2,7 +2,7 @@
 name: docx-handler
 description: Word文書の読み取り、編集、作成を行うスキル。文書のフォーマット変換や内容抽出に対応。
 
-# AEGIS RBAC extensions
+# Mycelium RBAC extensions
 allowedRoles:
   - editor
 allowedTools:

@@ -2,9 +2,9 @@
 name: skill-admin
 description: スキル一覧とリソース管理。管理者専用。
 
-# AEGIS RBAC extensions
+# Mycelium RBAC extensions
 allowedRoles:
 
 allowedTools:
-  - aegis-skills__list_skills
-  - aegis-skills__list_resources
+  - mycelium-skills__list_skills
+  - mycelium-skills__list_resources

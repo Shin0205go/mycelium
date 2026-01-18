@@ -1,11 +1,11 @@
 // ============================================================================
-// AEGIS A2A - Identity Resolver
+// Mycelium A2A - Identity Resolver
 // A2A Zero-Trust identity resolution based on Agent Card skills
 // ============================================================================
 
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type {
   IdentityConfig,
   IdentityResolution,
@@ -24,7 +24,7 @@ const DEFAULT_IDENTITY_CONFIG: IdentityConfig = {
   defaultRole: 'guest',
   skillRules: [],
   rejectUnknown: false,
-  trustedPrefixes: ['claude-', 'aegis-']
+  trustedPrefixes: ['claude-', 'mycelium-']
 };
 
 /**
@@ -434,7 +434,7 @@ export class IdentityResolver {
   }
 
   // ============================================================================
-  // Skill-Based Identity Loading from Aegis Skills
+  // Skill-Based Identity Loading from Mycelium Skills
   // ============================================================================
 
   /**

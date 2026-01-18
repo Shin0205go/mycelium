@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis init - Initialize a new AEGIS project
+// mycelium init - Initialize a new Mycelium project
 // ============================================================================
 
 import { Command } from 'commander';
@@ -9,9 +9,9 @@ import chalk from 'chalk';
 
 const DEFAULT_CONFIG = {
   mcpServers: {
-    'aegis-skills': {
+    'mycelium-skills': {
       command: 'node',
-      args: ['node_modules/@aegis/skills/dist/index.js', './skills'],
+      args: ['node_modules/@mycelium/skills/dist/index.js', './skills'],
       env: {}
     }
   }
@@ -94,7 +94,7 @@ identity:
       description: Full admin requires both skills
   trustedPrefixes:
     - claude-
-    - aegis-
+    - mycelium-
 ---
 
 # Admin Access
@@ -108,11 +108,11 @@ This skill provides full administrative access with all capabilities.
 
 ## Security
 - Requires both admin_access AND system_management skills
-- Only trusted prefixes (claude-, aegis-) are marked as trusted
+- Only trusted prefixes (claude-, mycelium-) are marked as trusted
 `;
 
 export const initCommand = new Command('init')
-  .description('Initialize a new AEGIS project')
+  .description('Initialize a new Mycelium project')
   .argument('[directory]', 'Project directory', '.')
   .option('--minimal', 'Create minimal setup without example skills')
   .action(async (directory: string, options: { minimal?: boolean }) => {
@@ -120,7 +120,7 @@ export const initCommand = new Command('init')
     const skillsDir = join(projectDir, 'skills');
     const configPath = join(projectDir, 'config.json');
 
-    console.log(chalk.blue('🛡️  Initializing AEGIS project...'));
+    console.log(chalk.blue('🍄 Initializing Mycelium project...'));
     console.log();
 
     try {
@@ -167,12 +167,12 @@ export const initCommand = new Command('init')
       }
 
       console.log();
-      console.log(chalk.green('✅ AEGIS project initialized!'));
+      console.log(chalk.green('✅ Mycelium project initialized!'));
       console.log();
       console.log(chalk.cyan('Next steps:'));
-      console.log(chalk.white('  1. Add more skills:     ') + chalk.yellow('aegis skill add <name>'));
-      console.log(chalk.white('  2. Check policies:      ') + chalk.yellow('aegis policy check --role developer'));
-      console.log(chalk.white('  3. Start the server:    ') + chalk.yellow('aegis start'));
+      console.log(chalk.white('  1. Add more skills:     ') + chalk.yellow('mycelium skill add <name>'));
+      console.log(chalk.white('  2. Check policies:      ') + chalk.yellow('mycelium policy check --role developer'));
+      console.log(chalk.white('  3. Start the server:    ') + chalk.yellow('mycelium start'));
       console.log();
 
     } catch (error) {

@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS A2A - Agent-to-Agent Identity Resolution
+// Mycelium A2A - Agent-to-Agent Identity Resolution
 // Zero-Trust identity resolution based on A2A Agent Card skills
 // ============================================================================
 

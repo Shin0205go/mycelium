@@ -1,5 +1,5 @@
 /**
- * MCP Client for AEGIS Router
+ * MCP Client for Mycelium Router
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -189,7 +189,7 @@ export class MCPClient extends EventEmitter {
     const result = await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       clientInfo: {
-        name: 'aegis-cli',
+        name: 'mycelium-cli',
         version: '1.0.0'
       },
       capabilities: {}
@@ -207,7 +207,7 @@ export class MCPClient extends EventEmitter {
 
   async listRoles(): Promise<ListRolesResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'aegis-router__list_roles',
+      name: 'mycelium-router__list_roles',
       arguments: {}
     }) as { content?: Array<{ text?: string }> };
 
@@ -246,7 +246,7 @@ export class MCPClient extends EventEmitter {
 
   async listSkills(role?: string): Promise<ListSkillsResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'aegis-skills__list_skills',
+      name: 'mycelium-skills__list_skills',
       arguments: role ? { role } : {}
     }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
 

@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Router - Rate Limiter
+// Mycelium Router - Rate Limiter
 // Provides quota and rate limiting per role/session
 // ============================================================================
 

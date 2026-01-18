@@ -100,7 +100,7 @@ describe('Logger', () => {
     });
   });
 
-  describe('AEGIS-specific log methods', () => {
+  describe('Mycelium-specific log methods', () => {
     let log: Logger;
 
     beforeEach(() => {

@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS - MCP stdio ルーター
+// Mycelium - MCP stdio ルーター
 // 複数の上流MCPサーバーをstdio経由で管理し、ルーティングする
 // ============================================================================
 
@@ -58,8 +58,8 @@ export class StdioRouter extends EventEmitter {
    */
   loadServersFromDesktopConfig(config: { mcpServers: Record<string, MCPServerConfig> }): void {
     Object.entries(config.mcpServers).forEach(([name, serverConfig]) => {
-      // AEGISプロキシ自身は除外
-      if (name !== 'aegis-proxy' && name !== 'aegis') {
+      // Myceliumプロキシ自身は除外
+      if (name !== 'mycelium-proxy' && name !== 'mycelium') {
         this.addServerFromConfig(name, serverConfig);
       }
     });
@@ -251,7 +251,7 @@ export class StdioRouter extends EventEmitter {
                 params: {
                   protocolVersion: LATEST_PROTOCOL_VERSION,
                   clientInfo: {
-                    name: 'AEGIS Policy Enforcement Proxy',
+                    name: 'Mycelium Policy Enforcement Proxy',
                     version: '1.0.0'
                   },
                   capabilities: {} // 空のcapabilitiesオブジェクトを追加

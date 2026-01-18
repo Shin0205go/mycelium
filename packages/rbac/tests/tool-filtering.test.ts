@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 
 // Mock tools from backend servers
 const MOCK_FILESYSTEM_TOOLS = [
@@ -159,7 +159,7 @@ describe('Tool Filtering by Role (Skill-Driven)', () => {
     });
 
     it('should allow set_role system tool', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'mycelium-router')).toBe(true);
     });
   });
 
@@ -318,7 +318,7 @@ describe('Pattern Matching (Skill-Driven)', () => {
     it('should always allow set_role regardless of role', () => {
       const allRoles = ['orchestrator', 'frontend', 'security', 'guest', 'devops', 'db_admin', 'formatter'];
       for (const role of allRoles) {
-        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'aegis-router')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'mycelium-router')).toBe(true);
       }
     });
   });

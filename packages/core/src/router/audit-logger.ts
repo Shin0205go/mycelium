@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Router - Audit Logger
+// Mycelium Router - Audit Logger
 // Records all tool access attempts for compliance and debugging
 // ============================================================================
 

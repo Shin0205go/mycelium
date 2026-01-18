@@ -1,5 +1,5 @@
 /**
- * SubAgent - Non-interactive mode for aegis-cli
+ * SubAgent - Non-interactive mode for mycelium-cli
  * Used when spawned as a child process by an orchestrator agent
  *
  * SDK-only version: Uses Claude Agent SDK directly, no MCPClient
@@ -43,7 +43,7 @@ export class SubAgent {
 
     try {
       // Determine role - prefer env var (set by parent orchestrator) over args
-      const roleFromEnv = process.env.AEGIS_CURRENT_ROLE;
+      const roleFromEnv = process.env.MYCELIUM_CURRENT_ROLE || process.env.MYCELIUM_CURRENT_ROLE;
       const roleId = roleFromEnv || this.args.role || 'orchestrator';
 
       // Run the query using SDK directly
@@ -109,7 +109,7 @@ export class SubAgent {
         if (msg.type === 'assistant' && isToolUseMessage(msg)) {
           const tools = getToolUseInfo(msg);
           for (const tool of tools) {
-            const shortName = tool.name.replace('mcp__aegis-router__', '');
+            const shortName = tool.name.replace('mcp__mycelium-router__', '');
             toolsUsed.push(shortName);
 
             // Output progress to stderr in JSON mode

@@ -1,12 +1,12 @@
 /**
- * Unit tests for @aegis/gateway
+ * Unit tests for @mycelium/gateway
  * Tests MCP gateway/proxy constants
  */
 
 import { describe, it, expect } from 'vitest';
 import { GATEWAY_VERSION } from '../src/index.js';
 
-describe('@aegis/gateway', () => {
+describe('@mycelium/gateway', () => {
   describe('GATEWAY_VERSION', () => {
     it('should be defined', () => {
       expect(GATEWAY_VERSION).toBeDefined();
@@ -23,7 +23,7 @@ describe('@aegis/gateway', () => {
 
   describe('Future exports (placeholder)', () => {
     it('should document planned StdioRouter export', () => {
-      // StdioRouter will be migrated from @aegis/router
+      // StdioRouter will be migrated from @mycelium/router
       // Expected interface:
       // - addServerFromConfig(name: string, config: MCPServerConfig): void
       // - loadServersFromDesktopConfig(config: object): void
