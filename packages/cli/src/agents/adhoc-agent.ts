@@ -91,8 +91,8 @@ function createAdhocMcpConfig(): Record<string, unknown> {
       args: [routerPath],
       env: {
         AEGIS_CONFIG_PATH: configPath,
-        // Use a role with full access for adhoc operations
-        AEGIS_CURRENT_ROLE: 'admin',
+        // Use adhoc role - has filesystem, git, shell access for investigation
+        AEGIS_CURRENT_ROLE: 'adhoc',
       },
     },
   };

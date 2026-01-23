@@ -55,23 +55,26 @@ When a user asks you to perform a task:
 If a script fails, provide clear error information and suggest the user run "aegis adhoc" to investigate.`;
 
 /**
- * Create MCP server config for aegis-skills only
+ * Create MCP server config via aegis-router with orchestrator role
+ * This ensures RBAC is applied - only aegis-skills tools are accessible
  */
-function createWorkflowMcpConfig(config: WorkflowAgentConfig): Record<string, unknown> {
+function createWorkflowMcpConfig(): Record<string, unknown> {
   const projectRoot = process.cwd();
 
-  // Try multiple paths for monorepo and installed package scenarios
-  const skillsServerPath = process.env.AEGIS_SKILLS_PATH ||
-    join(projectRoot, 'packages', 'skills', 'dist', 'index.js');
-
-  const skillsDir = config.skillsDir ||
-    process.env.AEGIS_SKILLS_DIR ||
-    join(projectRoot, 'skills');
+  const routerPath = process.env.AEGIS_ROUTER_PATH ||
+    join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
+  const configPath = process.env.AEGIS_CONFIG_PATH ||
+    join(projectRoot, 'config.json');
 
   return {
-    'aegis-skills': {
+    'aegis-router': {
       command: 'node',
-      args: [skillsServerPath, skillsDir],
+      args: [routerPath],
+      env: {
+        AEGIS_CONFIG_PATH: configPath,
+        // Use orchestrator role - restricted to aegis-skills tools only
+        AEGIS_CURRENT_ROLE: 'orchestrator',
+      },
     },
   };
 }
@@ -93,7 +96,7 @@ export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Re
   return {
     tools: [],
     env: envToUse,
-    mcpServers: createWorkflowMcpConfig(config),
+    mcpServers: createWorkflowMcpConfig(),
     model: config.model || 'claude-sonnet-4-5-20250929',
     cwd: process.cwd(),
     systemPrompt: config.systemPrompt || WORKFLOW_SYSTEM_PROMPT,
