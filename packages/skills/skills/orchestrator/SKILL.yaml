@@ -11,4 +11,4 @@ allowedTools:
   - aegis-skills__list_skills
   - aegis-skills__get_skill
   - aegis-skills__get_resource
-  - aegis-skills__run_script
+  # Note: run_script はサブエージェント側で実行
