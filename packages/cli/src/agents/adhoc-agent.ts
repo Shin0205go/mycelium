@@ -27,22 +27,8 @@ export interface AdhocAgentConfig {
   useApiKey?: boolean;
 }
 
-// System prompt for Adhoc agent with investigation focus
-const ADHOC_SYSTEM_PROMPT = `You are an Adhoc Agent with full tool access for investigation and fixes.
-
-Your capabilities include:
-- Reading and writing files
-- Running shell commands
-- Git operations
-- Analyzing logs and errors
-
-You are typically invoked after a Workflow Agent script has failed.
-Your job is to:
-1. Investigate the root cause of the failure
-2. Propose and implement fixes
-3. Verify the fix works
-
-Be thorough in your investigation but concise in your explanations.`;
+// Minimal system prompt - RBAC handles tool restrictions
+const ADHOC_SYSTEM_PROMPT = `You are an Adhoc Agent. Use the available tools to complete user requests.`;
 
 // System prompt when context is provided
 function createContextSystemPrompt(context: WorkflowContext): string {
