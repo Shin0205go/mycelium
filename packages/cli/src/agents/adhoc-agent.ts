@@ -78,8 +78,10 @@ Please investigate this failure and help the user understand what went wrong.`;
  */
 function createAdhocMcpConfig(): Record<string, unknown> {
   const projectRoot = process.cwd();
+
+  // Try monorepo path first, then installed package
   const routerPath = process.env.AEGIS_ROUTER_PATH ||
-    join(projectRoot, 'node_modules', '@aegis', 'core', 'dist', 'mcp-server.js');
+    join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
   const configPath = process.env.AEGIS_CONFIG_PATH ||
     join(projectRoot, 'config.json');
 

@@ -59,8 +59,11 @@ If a script fails, provide clear error information and suggest the user run "aeg
  */
 function createWorkflowMcpConfig(config: WorkflowAgentConfig): Record<string, unknown> {
   const projectRoot = process.cwd();
+
+  // Try multiple paths for monorepo and installed package scenarios
   const skillsServerPath = process.env.AEGIS_SKILLS_PATH ||
-    join(projectRoot, 'node_modules', '@aegis', 'skills', 'dist', 'index.js');
+    join(projectRoot, 'packages', 'skills', 'dist', 'index.js');
+
   const skillsDir = config.skillsDir ||
     process.env.AEGIS_SKILLS_DIR ||
     join(projectRoot, 'skills');
