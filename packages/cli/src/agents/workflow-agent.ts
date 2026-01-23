@@ -33,28 +33,8 @@ interface ScriptResult {
   stderr: string;
 }
 
-// System prompt that constrains the agent to workflow operations only
-const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator that coordinates tasks by spawning specialized sub-agents.
-
-Your capabilities are LIMITED to:
-1. list_skills - View available skills and their descriptions
-2. get_skill - Get detailed information about a specific skill
-3. list_roles - View available roles
-4. spawn_sub_agent - Spawn a sub-agent with a specific role to execute tasks
-
-You CANNOT:
-- Access the filesystem directly
-- Run scripts directly
-- Run arbitrary shell commands
-- Use any tools other than those listed above
-
-When a user asks you to perform a task:
-1. First check available skills with list_skills
-2. Find the appropriate skill for the task
-3. Use spawn_sub_agent to create a sub-agent with the skill's role
-4. The sub-agent will have access to run_script and other tools defined in the skill
-
-If a sub-agent fails, provide clear error information and suggest the user run "aegis adhoc" to investigate.`;
+// Minimal system prompt - RBAC handles tool restrictions
+const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator. Use the available tools to complete user requests.`;
 
 /**
  * Create MCP server config via aegis-router with orchestrator role
