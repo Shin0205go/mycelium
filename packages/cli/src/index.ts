@@ -4,6 +4,8 @@
  *
  * Usage:
  *   aegis                 - Start interactive chat mode
+ *   aegis workflow        - Workflow agent (skill scripts only)
+ *   aegis adhoc           - Adhoc agent (full tool access)
  *   aegis init            - Initialize a new project
  *   aegis skill add/list  - Manage skills
  *   aegis policy check    - Verify policies
@@ -15,6 +17,8 @@ import { initCommand } from './commands/init.js';
 import { skillCommand } from './commands/skill.js';
 import { policyCommand } from './commands/policy.js';
 import { mcpCommand } from './commands/mcp.js';
+import { workflowCommand } from './commands/workflow.js';
+import { adhocCommand } from './commands/adhoc.js';
 import { InteractiveCLI } from './lib/interactive-cli.js';
 
 const program = new Command();
@@ -32,6 +36,8 @@ program.addCommand(initCommand);
 program.addCommand(skillCommand);
 program.addCommand(policyCommand);
 program.addCommand(mcpCommand);
+program.addCommand(workflowCommand);
+program.addCommand(adhocCommand);
 
 // Default action: run interactive mode when no subcommand is provided
 program.action(async () => {
