@@ -13,7 +13,16 @@ import {
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 import yaml from 'js-yaml';
+
+/** Supported script extensions and their runners */
+const SCRIPT_RUNNERS: Record<string, string[]> = {
+  '.py': ['python3'],
+  '.sh': ['bash'],
+  '.js': ['node'],
+  '.ts': ['npx', 'tsx'],
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -276,6 +285,29 @@ async function main() {
             properties: {},
           },
         },
+        {
+          name: 'run_script',
+          description: 'Execute a script file within a skill directory. Supports Python (.py), Shell (.sh), Node.js (.js), and TypeScript (.ts) scripts.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              skill: {
+                type: 'string',
+                description: 'The skill ID containing the script',
+              },
+              path: {
+                type: 'string',
+                description: 'Relative path to the script file within the skill directory',
+              },
+              args: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional arguments to pass to the script',
+              },
+            },
+            required: ['skill', 'path'],
+          },
+        },
       ],
     };
   });
@@ -413,6 +445,104 @@ async function main() {
             },
           ],
         };
+      }
+
+      case 'run_script': {
+        const skillId = (args as any)?.skill;
+        const scriptPath = (args as any)?.path;
+        const scriptArgs = (args as any)?.args || [];
+
+        if (!skillId || !scriptPath) {
+          return {
+            content: [{ type: 'text', text: 'Missing skill or path parameter' }],
+            isError: true,
+          };
+        }
+
+        // Verify skill exists
+        const skill = skills.find(s => s.id === skillId);
+        if (!skill) {
+          return {
+            content: [{ type: 'text', text: `Skill not found: ${skillId}` }],
+            isError: true,
+          };
+        }
+
+        // Security: prevent path traversal
+        const normalizedPath = path.normalize(scriptPath);
+        if (normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath)) {
+          return {
+            content: [{ type: 'text', text: 'Invalid script path: path traversal not allowed' }],
+            isError: true,
+          };
+        }
+
+        // Check file extension
+        const ext = path.extname(normalizedPath).toLowerCase();
+        const runner = SCRIPT_RUNNERS[ext];
+        if (!runner) {
+          return {
+            content: [{ type: 'text', text: `Unsupported script type: ${ext}. Supported: ${Object.keys(SCRIPT_RUNNERS).join(', ')}` }],
+            isError: true,
+          };
+        }
+
+        const fullPath = path.join(skillsDir, skillId, normalizedPath);
+
+        // Verify file exists
+        try {
+          await fs.access(fullPath);
+        } catch {
+          return {
+            content: [{ type: 'text', text: `Script not found: ${scriptPath}` }],
+            isError: true,
+          };
+        }
+
+        // Execute script
+        try {
+          const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
+            const [cmd, ...cmdArgs] = runner;
+            const proc = spawn(cmd, [...cmdArgs, fullPath, ...scriptArgs], {
+              cwd: path.join(skillsDir, skillId),
+              env: { ...process.env, SKILL_ID: skillId, SKILL_DIR: path.join(skillsDir, skillId) },
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            proc.stdout.on('data', (data) => { stdout += data.toString(); });
+            proc.stderr.on('data', (data) => { stderr += data.toString(); });
+
+            proc.on('close', (code) => {
+              resolve({ stdout, stderr, exitCode: code ?? 0 });
+            });
+
+            proc.on('error', (err) => {
+              resolve({ stdout: '', stderr: err.message, exitCode: 1 });
+            });
+          });
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  success: result.exitCode === 0,
+                  exitCode: result.exitCode,
+                  stdout: result.stdout,
+                  stderr: result.stderr,
+                }, null, 2),
+              },
+            ],
+            isError: result.exitCode !== 0,
+          };
+        } catch (err) {
+          return {
+            content: [{ type: 'text', text: `Failed to execute script: ${err}` }],
+            isError: true,
+          };
+        }
       }
 
       default:
