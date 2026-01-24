@@ -5,7 +5,7 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult } from './mcp-client.js';
+import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig, type SDKMessage } from './agent.js';
 import { SessionStore, createSessionStore, type Session, type SessionSummary } from '@mycelium/session';
 
@@ -29,7 +29,11 @@ export class InteractiveCLI {
   private sessionStore: SessionStore;
   private currentSession: Session | null = null;
 
-  private readonly commands = [
+  // Dynamic commands loaded from skills
+  private skillCommands: Map<string, SkillCommandInfo> = new Map();
+
+  // Built-in commands (always available)
+  private readonly builtInCommands = [
     '/roles',
     '/skills',
     '/tools',
@@ -193,13 +197,141 @@ export class InteractiveCLI {
     // Initialize session store
     try {
       await this.sessionStore.initialize();
-      console.log(chalk.green('✓ Session store initialized\n'));
+      console.log(chalk.green('✓ Session store initialized'));
     } catch (error) {
       console.error(chalk.yellow('Warning: Session store failed to initialize'), error);
     }
 
+    // Load dynamic commands from skills
+    await this.loadSkillCommands();
+
     await this.switchRole(this.currentRole);
     this.startREPL();
+  }
+
+  /**
+   * Load dynamic slash commands from skill definitions
+   */
+  private async loadSkillCommands(): Promise<void> {
+    try {
+      const result = await this.mcp.listCommands();
+      this.skillCommands.clear();
+
+      for (const cmd of result.commands) {
+        this.skillCommands.set(cmd.command, cmd);
+      }
+
+      if (this.skillCommands.size > 0) {
+        console.log(chalk.green(`✓ Loaded ${this.skillCommands.size} skill commands\n`));
+      } else {
+        console.log(chalk.gray('  No skill commands available\n'));
+      }
+    } catch (error) {
+      // Skills server may not be available
+      console.log(chalk.gray('  Skill commands: unavailable\n'));
+    }
+  }
+
+  /**
+   * Execute a dynamic skill command
+   */
+  private async executeSkillCommand(cmd: SkillCommandInfo, args: string[]): Promise<void> {
+    try {
+      if (cmd.handlerType === 'tool') {
+        // Execute via MCP tool call
+        if (!cmd.toolName) {
+          console.log(chalk.red(`Command /${cmd.command} has no toolName configured`));
+          return;
+        }
+
+        // Build arguments from command args
+        const toolArgs: Record<string, unknown> = {};
+        if (cmd.arguments && args.length > 0) {
+          for (let i = 0; i < cmd.arguments.length && i < args.length; i++) {
+            toolArgs[cmd.arguments[i].name] = args[i];
+          }
+        } else if (args.length > 0) {
+          // Default: pass first arg as 'name' or 'id'
+          toolArgs['name'] = args[0];
+        }
+
+        console.log(chalk.gray(`\n  Executing ${cmd.toolName}...`));
+
+        // Call tool via MCP (tool may be prefixed with server name)
+        const toolName = cmd.toolName.includes('__')
+          ? cmd.toolName
+          : `aegis-skills__${cmd.toolName}`;
+
+        const result = await this.mcp.callTool(toolName, toolArgs) as {
+          content?: Array<{ type?: string; text?: string }>;
+          isError?: boolean;
+        };
+
+        if (result?.isError) {
+          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+        } else {
+          const text = result?.content?.[0]?.text;
+          if (text) {
+            try {
+              const json = JSON.parse(text);
+              console.log(chalk.green(`\n  ✓ Success`));
+              console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
+            } catch {
+              console.log(chalk.green(`\n  ✓ ${text}\n`));
+            }
+          } else {
+            console.log(chalk.green(`\n  ✓ Command executed\n`));
+          }
+        }
+      } else if (cmd.handlerType === 'script') {
+        // Execute via run_script
+        if (!cmd.scriptPath) {
+          console.log(chalk.red(`Command /${cmd.command} has no scriptPath configured`));
+          return;
+        }
+
+        console.log(chalk.gray(`\n  Running script ${cmd.scriptPath}...`));
+
+        const result = await this.mcp.callTool('aegis-skills__run_script', {
+          skill: cmd.skillId,
+          path: cmd.scriptPath,
+          args: args,
+        }) as {
+          content?: Array<{ type?: string; text?: string }>;
+          isError?: boolean;
+        };
+
+        if (result?.isError) {
+          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+        } else {
+          const text = result?.content?.[0]?.text;
+          if (text) {
+            try {
+              const json = JSON.parse(text);
+              if (json.success) {
+                console.log(chalk.green(`\n  ✓ Script completed`));
+                if (json.stdout) {
+                  console.log(json.stdout);
+                }
+              } else {
+                console.log(chalk.red(`\n  ✗ Script failed (exit code: ${json.exitCode})`));
+                if (json.stderr) {
+                  console.log(chalk.red(json.stderr));
+                }
+              }
+            } catch {
+              console.log(text);
+            }
+          }
+          console.log();
+        }
+      } else {
+        console.log(chalk.yellow(`Unknown handler type: ${cmd.handlerType}`));
+      }
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log(chalk.red(`Failed to execute /${cmd.command}: ${err.message}\n`));
+    }
   }
 
   private async switchRole(roleId: string): Promise<void> {
@@ -316,7 +448,12 @@ export class InteractiveCLI {
         const matches = this.models.filter(m => m.startsWith(partial));
         return [matches.map(m => `/model ${m}`), line];
       }
-      const matches = this.commands.filter(c => c.startsWith(line));
+      // Combine built-in commands with dynamic skill commands
+      const allCommands = [
+        ...this.builtInCommands,
+        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`)
+      ];
+      const matches = allCommands.filter(c => c.startsWith(line));
       return [matches, line];
     }
     return [[], line];
@@ -479,6 +616,32 @@ export class InteractiveCLI {
     console.log('  ' + chalk.bold('/status') + '          Show current status');
     console.log('  ' + chalk.bold('/help') + '            Show this help');
     console.log('  ' + chalk.bold('/quit') + '            Exit');
+
+    // Show dynamic skill commands (excluding session commands which are built-in)
+    const sessionCommands = new Set(['save', 'sessions', 'resume', 'compress']);
+    const dynamicCommands = Array.from(this.skillCommands.values())
+      .filter(cmd => !sessionCommands.has(cmd.command));
+
+    if (dynamicCommands.length > 0) {
+      // Group commands by skill
+      const bySkill = new Map<string, SkillCommandInfo[]>();
+      for (const cmd of dynamicCommands) {
+        const existing = bySkill.get(cmd.skillName) || [];
+        existing.push(cmd);
+        bySkill.set(cmd.skillName, existing);
+      }
+
+      console.log();
+      console.log(chalk.gray('  Skill Commands:'));
+      for (const [skillName, cmds] of bySkill) {
+        for (const cmd of cmds) {
+          const usage = cmd.usage || `/${cmd.command}`;
+          const paddedUsage = usage.padEnd(16);
+          console.log('  ' + chalk.bold(paddedUsage) + ' ' + cmd.description + chalk.gray(` [${skillName}]`));
+        }
+      }
+    }
+
     console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
   }
 
@@ -957,6 +1120,23 @@ export class InteractiveCLI {
             }
             break;
 
+          // Built-in session commands (using local SessionStore)
+          case 'save':
+            await this.saveSession(args[0]);
+            break;
+
+          case 'sessions':
+            await this.listSessions();
+            break;
+
+          case 'resume':
+            await this.resumeSession(args[0]);
+            break;
+
+          case 'compress':
+            await this.compressSession();
+            break;
+
           case 'help':
             this.showHelp();
             break;
@@ -970,8 +1150,14 @@ export class InteractiveCLI {
             break;
 
           default:
-            console.log(chalk.yellow(`Unknown command: /${cmd}`));
-            console.log(chalk.gray('Type /help for available commands'));
+            // Check if it's a dynamic skill command
+            const skillCmd = this.skillCommands.get(cmd.toLowerCase());
+            if (skillCmd) {
+              await this.executeSkillCommand(skillCmd, args);
+            } else {
+              console.log(chalk.yellow(`Unknown command: /${cmd}`));
+              console.log(chalk.gray('Type /help for available commands'));
+            }
         }
       } else {
         await this.chat(input);

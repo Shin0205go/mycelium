@@ -59,6 +59,27 @@ export interface ListSkillsResult {
   skills: SkillInfo[];
 }
 
+export interface SkillCommandInfo {
+  command: string;
+  description: string;
+  skillId: string;
+  skillName: string;
+  handlerType: 'tool' | 'script';
+  toolName?: string;
+  scriptPath?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+    default?: string;
+  }>;
+  usage?: string;
+}
+
+export interface ListCommandsResult {
+  commands: SkillCommandInfo[];
+}
+
 export class MCPClient extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer: string = '';
@@ -265,6 +286,29 @@ export class MCPClient extends EventEmitter {
       }
     }
     throw new Error('Empty response from list_skills');
+  }
+
+  async listCommands(role?: string): Promise<ListCommandsResult> {
+    const result = await this.sendRequest('tools/call', {
+      name: 'aegis-skills__list_commands',
+      arguments: role ? { role } : {}
+    }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
+
+    // Check for error response
+    if (result?.isError) {
+      const errorText = result?.content?.[0]?.text || 'Unknown error';
+      throw new Error(errorText);
+    }
+
+    const text = result?.content?.[0]?.text;
+    if (text) {
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Failed to parse response: ${text.substring(0, 100)}`);
+      }
+    }
+    throw new Error('Empty response from list_commands');
   }
 
   disconnect(): void {
