@@ -1,5 +1,5 @@
 /**
- * AEGIS CLI - Main CLI interface
+ * MYCELIUM CLI - Main CLI interface
  */
 
 import * as readline from 'readline';
@@ -18,12 +18,12 @@ const __dirname = dirname(__filename);
 // When running from src/ (tsx), __dirname is packages/core/src
 // Either way, go up to packages/core, then to packages/, then to monorepo root
 const projectRoot = join(__dirname, '..', '..', '..');
-const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
+const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
   join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
   join(projectRoot, 'config.json');
 
-export class AegisCLI {
+export class MyceliumCLI {
   private mcp: MCPClient;
   private currentRole: string = 'orchestrator';
   private manifest: AgentManifest | null = null;
@@ -51,8 +51,8 @@ export class AegisCLI {
   private currentModel: string = 'claude-3-5-haiku-20241022'; // Default to cheapest
 
   constructor() {
-    this.mcp = new MCPClient('node', [AEGIS_ROUTER_PATH], {
-      AEGIS_CONFIG_PATH
+    this.mcp = new MCPClient('node', [MYCELIUM_ROUTER_PATH], {
+      MYCELIUM_CONFIG_PATH
     });
   }
 
@@ -138,7 +138,7 @@ export class AegisCLI {
   }
 
   async run(): Promise<void> {
-    console.log(chalk.cyan.bold('\n🛡️  AEGIS CLI - Agent Router Client\n'));
+    console.log(chalk.cyan.bold('\n🛡️  MYCELIUM CLI - Agent Router Client\n'));
 
     // Check Claude Code auth first
     console.log(chalk.gray('Checking authentication...'));
@@ -147,8 +147,8 @@ export class AegisCLI {
       return;
     }
 
-    // Connect to AEGIS Router
-    console.log(chalk.gray('Connecting to AEGIS Router...'));
+    // Connect to MYCELIUM Router
+    console.log(chalk.gray('Connecting to MYCELIUM Router...'));
 
     this.mcp.on('log', (msg) => {
       // Suppress logs during normal operation
@@ -161,7 +161,7 @@ export class AegisCLI {
 
     try {
       await this.mcp.connect();
-      console.log(chalk.green('✓ Connected to AEGIS Router\n'));
+      console.log(chalk.green('✓ Connected to MYCELIUM Router\n'));
     } catch (error) {
       console.error(chalk.red('Failed to connect:'), error);
       process.exit(1);
@@ -432,7 +432,7 @@ export class AegisCLI {
       const queryResult = createQuery(message, {
         model: this.currentModel,
         systemPrompt,
-        // bypassPermissions: AEGIS Router handles access control
+        // bypassPermissions: MYCELIUM Router handles access control
         includePartialMessages: true,
         useApiKey: this.useApiKey
       });
@@ -468,7 +468,7 @@ export class AegisCLI {
           if (isToolUseMessage(msg)) {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
-              const shortName = tool.name.replace('mcp__aegis-router__', '');
+              const shortName = tool.name.replace('mcp__mycelium-router__', '');
               console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
               // Track role switch attempts
               if (shortName === 'set_role') {

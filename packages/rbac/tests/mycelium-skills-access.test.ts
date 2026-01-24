@@ -1,5 +1,5 @@
 /**
- * Aegis-Skills Access Control Tests
+ * Mycelium-Skills Access Control Tests
  *
  * Tests for skill-based tool access control:
  * - list_skills: only orchestrator
@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
 import { ToolVisibilityManager } from '../src/tool-visibility-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 // Mock logger for tests
@@ -21,7 +21,7 @@ const testLogger: Logger = {
   error: () => {}
 };
 
-// Skill manifest matching actual aegis-skills configuration
+// Skill manifest matching actual mycelium-skills configuration
 const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
   skills: [
     {
@@ -30,8 +30,8 @@ const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
       description: 'Task coordination and role delegation',
       allowedRoles: ['orchestrator'],
       allowedTools: [
-        'aegis-skills__list_skills',
-        'aegis-skills__list_resources'
+        'mycelium-skills__list_skills',
+        'mycelium-skills__list_resources'
       ]
     },
     {
@@ -40,9 +40,9 @@ const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
       description: 'Tools available to specified roles',
       allowedRoles: ['orchestrator', 'developer', 'senior-developer', 'admin', 'analyst', 'data-scientist'],
       allowedTools: [
-        'aegis-skills__get_skill',
-        'aegis-skills__get_resource',
-        'aegis-skills__run_script'
+        'mycelium-skills__get_skill',
+        'mycelium-skills__get_resource',
+        'mycelium-skills__run_script'
       ]
     },
     {
@@ -71,16 +71,16 @@ const aegisSkillsManifest: SkillManifest<BaseSkillDefinition> = {
   generatedAt: new Date()
 };
 
-// Mock tools from aegis-skills server
-const AEGIS_SKILLS_TOOLS: Tool[] = [
-  { name: 'aegis-skills__list_skills', description: 'List all skills', inputSchema: { type: 'object' } },
-  { name: 'aegis-skills__get_skill', description: 'Get skill details', inputSchema: { type: 'object' } },
-  { name: 'aegis-skills__list_resources', description: 'List skill resources', inputSchema: { type: 'object' } },
-  { name: 'aegis-skills__get_resource', description: 'Get resource content', inputSchema: { type: 'object' } },
-  { name: 'aegis-skills__run_script', description: 'Run skill script', inputSchema: { type: 'object' } },
+// Mock tools from mycelium-skills server
+const MYCELIUM_SKILLS_TOOLS: Tool[] = [
+  { name: 'mycelium-skills__list_skills', description: 'List all skills', inputSchema: { type: 'object' } },
+  { name: 'mycelium-skills__get_skill', description: 'Get skill details', inputSchema: { type: 'object' } },
+  { name: 'mycelium-skills__list_resources', description: 'List skill resources', inputSchema: { type: 'object' } },
+  { name: 'mycelium-skills__get_resource', description: 'Get resource content', inputSchema: { type: 'object' } },
+  { name: 'mycelium-skills__run_script', description: 'Run skill script', inputSchema: { type: 'object' } },
 ];
 
-describe('Aegis-Skills Tool Access Control', () => {
+describe('Mycelium-Skills Tool Access Control', () => {
   let roleManager: RoleManager;
   let toolVisibility: ToolVisibilityManager;
 
@@ -90,7 +90,7 @@ describe('Aegis-Skills Tool Access Control', () => {
     await roleManager.loadFromSkillManifest(aegisSkillsManifest);
 
     toolVisibility = new ToolVisibilityManager(testLogger, roleManager);
-    toolVisibility.registerToolsFromList(AEGIS_SKILLS_TOOLS);
+    toolVisibility.registerToolsFromList(MYCELIUM_SKILLS_TOOLS);
   });
 
   describe('list_skills Access', () => {
@@ -99,7 +99,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       expect(role).not.toBeNull();
 
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__list_skills')).toBe(true);
+      expect(toolVisibility.isVisible('mycelium-skills__list_skills')).toBe(true);
     });
 
     it('should deny developer access to list_skills', () => {
@@ -107,7 +107,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       expect(role).not.toBeNull();
 
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__list_skills')).toBe(false);
+      expect(toolVisibility.isVisible('mycelium-skills__list_skills')).toBe(false);
     });
 
     it('should deny data-scientist access to list_skills', () => {
@@ -115,7 +115,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       expect(role).not.toBeNull();
 
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__list_skills')).toBe(false);
+      expect(toolVisibility.isVisible('mycelium-skills__list_skills')).toBe(false);
     });
 
     it('should deny admin access to list_skills', () => {
@@ -123,7 +123,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       expect(role).not.toBeNull();
 
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__list_skills')).toBe(false);
+      expect(toolVisibility.isVisible('mycelium-skills__list_skills')).toBe(false);
     });
   });
 
@@ -131,7 +131,7 @@ describe('Aegis-Skills Tool Access Control', () => {
     it('should allow orchestrator to access list_resources', () => {
       const role = roleManager.getRole('orchestrator');
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__list_resources')).toBe(true);
+      expect(toolVisibility.isVisible('mycelium-skills__list_resources')).toBe(true);
     });
 
     it('should deny non-orchestrator roles access to list_resources', () => {
@@ -141,7 +141,7 @@ describe('Aegis-Skills Tool Access Control', () => {
         const role = roleManager.getRole(roleId);
         if (role) {
           toolVisibility.setCurrentRole(role);
-          expect(toolVisibility.isVisible('aegis-skills__list_resources')).toBe(false);
+          expect(toolVisibility.isVisible('mycelium-skills__list_resources')).toBe(false);
         }
       }
     });
@@ -149,9 +149,9 @@ describe('Aegis-Skills Tool Access Control', () => {
 
   describe('Common Tools Access (get_skill, get_resource, run_script)', () => {
     const commonTools = [
-      'aegis-skills__get_skill',
-      'aegis-skills__get_resource',
-      'aegis-skills__run_script'
+      'mycelium-skills__get_skill',
+      'mycelium-skills__get_resource',
+      'mycelium-skills__run_script'
     ];
 
     it('should allow all roles to access common tools', () => {
@@ -169,13 +169,13 @@ describe('Aegis-Skills Tool Access Control', () => {
     it('should allow developer to access get_skill', () => {
       const role = roleManager.getRole('developer');
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__get_skill')).toBe(true);
+      expect(toolVisibility.isVisible('mycelium-skills__get_skill')).toBe(true);
     });
 
     it('should allow orchestrator to access get_skill', () => {
       const role = roleManager.getRole('orchestrator');
       toolVisibility.setCurrentRole(role!);
-      expect(toolVisibility.isVisible('aegis-skills__get_skill')).toBe(true);
+      expect(toolVisibility.isVisible('mycelium-skills__get_skill')).toBe(true);
     });
   });
 
@@ -185,7 +185,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       toolVisibility.setCurrentRole(role!);
 
       expect(() => {
-        toolVisibility.checkAccess('aegis-skills__list_skills');
+        toolVisibility.checkAccess('mycelium-skills__list_skills');
       }).toThrow();
     });
 
@@ -194,7 +194,7 @@ describe('Aegis-Skills Tool Access Control', () => {
       toolVisibility.setCurrentRole(role!);
 
       expect(() => {
-        toolVisibility.checkAccess('aegis-skills__get_skill');
+        toolVisibility.checkAccess('mycelium-skills__get_skill');
       }).not.toThrow();
     });
 
@@ -240,9 +240,9 @@ describe('Aegis-Skills Tool Access Control', () => {
 
       for (const roleId of allRoleIds) {
         // Common skill tools should be accessible
-        expect(roleManager.isToolAllowedForRole(roleId, 'aegis-skills__get_skill', 'aegis-skills')).toBe(true);
-        expect(roleManager.isToolAllowedForRole(roleId, 'aegis-skills__get_resource', 'aegis-skills')).toBe(true);
-        expect(roleManager.isToolAllowedForRole(roleId, 'aegis-skills__run_script', 'aegis-skills')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(roleId, 'mycelium-skills__get_skill', 'mycelium-skills')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(roleId, 'mycelium-skills__get_resource', 'mycelium-skills')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(roleId, 'mycelium-skills__run_script', 'mycelium-skills')).toBe(true);
       }
     });
 

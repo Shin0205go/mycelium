@@ -196,7 +196,7 @@ describe('showHelp', () => {
 
     expect(mockLog).toHaveBeenCalled();
     const output = mockLog.mock.calls[0][0];
-    expect(output).toContain('AEGIS CLI');
+    expect(output).toContain('MYCELIUM CLI');
     expect(output).toContain('Usage:');
     expect(output).toContain('--role');
     expect(output).toContain('--prompt');

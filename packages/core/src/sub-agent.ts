@@ -17,9 +17,9 @@ const __dirname = dirname(__filename);
 // When running from src/ (tsx), __dirname is packages/core/src
 // Either way, go up to packages/core, then to packages/, then to monorepo root
 const projectRoot = join(__dirname, '..', '..', '..');
-const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
+const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
   join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
   join(projectRoot, 'config.json');
 
 export interface SubAgentResult {
@@ -41,8 +41,8 @@ export class SubAgent {
 
   constructor(args: CliArgs) {
     this.args = args;
-    this.mcp = new MCPClient('node', [AEGIS_ROUTER_PATH], {
-      AEGIS_CONFIG_PATH
+    this.mcp = new MCPClient('node', [MYCELIUM_ROUTER_PATH], {
+      MYCELIUM_CONFIG_PATH
     });
   }
 
@@ -60,7 +60,7 @@ export class SubAgent {
     }
 
     try {
-      // Connect to AEGIS Router
+      // Connect to MYCELIUM Router
       await this.mcp.connect();
 
       // Switch to specified role
@@ -130,7 +130,7 @@ export class SubAgent {
         if (msg.type === 'assistant' && isToolUseMessage(msg)) {
           const tools = getToolUseInfo(msg);
           for (const tool of tools) {
-            const shortName = tool.name.replace('mcp__aegis-router__', '');
+            const shortName = tool.name.replace('mcp__mycelium-router__', '');
             toolsUsed.push(shortName);
 
             // Output progress to stderr in JSON mode

@@ -1,12 +1,12 @@
 {
-  "name": "@aegis/cli",
+  "name": "@mycelium/cli",
   "version": "1.0.0",
   "description": "AEGIS CLI - Command-line interface for AEGIS RBAC",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "aegis": "./dist/index.js"
+    "mycelium": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,7 +14,7 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "cli",
     "rbac",
     "mcp",
@@ -22,10 +22,11 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/a2a": "*",
-    "@aegis/core": "*",
-    "@aegis/rbac": "*",
-    "@aegis/shared": "*",
+    "@mycelium/a2a": "*",
+    "@mycelium/core": "*",
+    "@mycelium/rbac": "*",
+    "@mycelium/session": "*",
+    "@mycelium/shared": "*",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@inquirer/prompts": "^8.1.0",
     "chalk": "^5.3.0",

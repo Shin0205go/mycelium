@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Gateway - MCP Proxy Layer
+// MYCELIUM Gateway - MCP Proxy Layer
 // Manages connections to upstream MCP servers
 // ============================================================================
 
@@ -12,4 +12,4 @@ export { StdioRouter, type UpstreamServerInfo } from './stdio-router.js';
 export { TIMEOUTS, SERVER } from './constants.js';
 
 // Re-export shared types for convenience
-export type { MCPServerConfig, DesktopConfig } from '@aegis/shared';
+export type { MCPServerConfig, DesktopConfig } from '@mycelium/shared';

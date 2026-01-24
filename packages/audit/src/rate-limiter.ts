@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS Audit - Rate Limiter
+// MYCELIUM Audit - Rate Limiter
 // Provides quota and rate limiting per role/session
 // ============================================================================
 
-import { Logger } from '@aegis/shared';
+import { Logger } from '@mycelium/shared';
 import { EventEmitter } from 'events';
 
 /**

@@ -8,12 +8,12 @@
  * 4. Default role fallback
  * 5. Reject unknown mode
  * 6. Trusted prefix detection
- * 7. Loading from Aegis skills
+ * 7. Loading from Mycelium skills
  */
 
 import { describe, it, expect } from 'vitest';
 import { IdentityResolver, createIdentityResolver } from '../src/identity-resolver.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type { AgentIdentity, SkillDefinition } from '../src/types.js';
 
 // Mock logger for tests
@@ -854,7 +854,7 @@ describe('Edge Cases', () => {
   });
 });
 
-describe('Skill-Based Identity Loading from Aegis Skills', () => {
+describe('Skill-Based Identity Loading from Mycelium Skills', () => {
   describe('loadFromSkills', () => {
     it('should load skill matching rules from skills', () => {
       const resolver = createIdentityResolver(testLogger);

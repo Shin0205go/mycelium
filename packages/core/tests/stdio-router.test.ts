@@ -1,10 +1,10 @@
 /**
- * Unit tests for StdioRouter (from @aegis/gateway)
+ * Unit tests for StdioRouter (from @mycelium/gateway)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StdioRouter, type UpstreamServerInfo } from '@aegis/gateway';
-import type { Logger } from '@aegis/shared';
+import { StdioRouter, type UpstreamServerInfo } from '@mycelium/gateway';
+import type { Logger } from '@mycelium/shared';
 import { EventEmitter } from 'events';
 
 // Mock child_process

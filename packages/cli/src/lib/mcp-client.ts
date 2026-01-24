@@ -1,5 +1,5 @@
 /**
- * MCP Client for AEGIS Router
+ * MCP Client for MYCELIUM Router
  */
 
 import { spawn, ChildProcess } from 'child_process';
@@ -57,6 +57,27 @@ export interface SkillInfo {
 
 export interface ListSkillsResult {
   skills: SkillInfo[];
+}
+
+export interface SkillCommandInfo {
+  command: string;
+  description: string;
+  skillId: string;
+  skillName: string;
+  handlerType: 'tool' | 'script';
+  toolName?: string;
+  scriptPath?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+    default?: string;
+  }>;
+  usage?: string;
+}
+
+export interface ListCommandsResult {
+  commands: SkillCommandInfo[];
 }
 
 export class MCPClient extends EventEmitter {
@@ -189,7 +210,7 @@ export class MCPClient extends EventEmitter {
     const result = await this.sendRequest('initialize', {
       protocolVersion: '2024-11-05',
       clientInfo: {
-        name: 'aegis-cli',
+        name: 'mycelium-cli',
         version: '1.0.0'
       },
       capabilities: {}
@@ -207,7 +228,7 @@ export class MCPClient extends EventEmitter {
 
   async listRoles(): Promise<ListRolesResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'aegis-router__list_roles',
+      name: 'mycelium-router__list_roles',
       arguments: {}
     }) as { content?: Array<{ text?: string }> };
 
@@ -246,7 +267,7 @@ export class MCPClient extends EventEmitter {
 
   async listSkills(role?: string): Promise<ListSkillsResult> {
     const result = await this.sendRequest('tools/call', {
-      name: 'aegis-skills__list_skills',
+      name: 'mycelium-skills__list_skills',
       arguments: role ? { role } : {}
     }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
 
@@ -265,6 +286,29 @@ export class MCPClient extends EventEmitter {
       }
     }
     throw new Error('Empty response from list_skills');
+  }
+
+  async listCommands(role?: string): Promise<ListCommandsResult> {
+    const result = await this.sendRequest('tools/call', {
+      name: 'mycelium-skills__list_commands',
+      arguments: role ? { role } : {}
+    }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
+
+    // Check for error response
+    if (result?.isError) {
+      const errorText = result?.content?.[0]?.text || 'Unknown error';
+      throw new Error(errorText);
+    }
+
+    const text = result?.content?.[0]?.text;
+    if (text) {
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(`Failed to parse response: ${text.substring(0, 100)}`);
+      }
+    }
+    throw new Error('Empty response from list_commands');
   }
 
   disconnect(): void {

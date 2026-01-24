@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuditLogger, createAuditLogger } from '@aegis/audit';
-import type { Logger } from '@aegis/shared';
+import { AuditLogger, createAuditLogger } from '@mycelium/audit';
+import type { Logger } from '@mycelium/shared';
 
 // Silent test logger
 const createTestLogger = (): Logger => ({

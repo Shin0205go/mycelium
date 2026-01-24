@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS RBAC - Role-Based Access Control
+// MYCELIUM RBAC - Role-Based Access Control
 // Skill-driven role and tool permission management
 // ============================================================================
 
@@ -19,7 +19,7 @@ export type {
   SkillGrants,
   SkillMetadata,
   BaseSkillDefinition
-} from '@aegis/shared';
+} from '@mycelium/shared';
 
 // Role Manager
 export {

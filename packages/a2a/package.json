@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/a2a",
+  "name": "@mycelium/a2a",
   "version": "1.0.0",
   "description": "AEGIS A2A - Agent-to-Agent Identity Resolution",
   "main": "dist/index.js",
@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "a2a",
     "agent",
     "identity",
@@ -19,7 +19,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/shared": "*"
+    "@mycelium/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

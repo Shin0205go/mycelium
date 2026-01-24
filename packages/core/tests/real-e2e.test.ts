@@ -1,18 +1,18 @@
 /**
  * Real E2E Tests with Actual Server
  *
- * These tests use the actual aegis-skills MCP server.
+ * These tests use the actual mycelium-skills MCP server.
  * Run with: npm run test:e2e
  *
- * Requires: @aegis/skills package to be built (packages/skills/dist)
+ * Requires: @mycelium/skills package to be built (packages/skills/dist)
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { RoleManager } from '@aegis/rbac';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import { RoleManager } from '@mycelium/rbac';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 
 // Get __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -26,9 +26,9 @@ const testLogger: Logger = {
   error: () => {}
 };
 
-// Path to @aegis/skills package in monorepo (relative to this test file)
+// Path to @mycelium/skills package in monorepo (relative to this test file)
 // __dirname is packages/core/tests, so ../.. goes to packages/
-const AEGIS_SKILLS_PATH = join(__dirname, '..', '..', 'skills', 'dist', 'index.js');
+const MYCELIUM_SKILLS_PATH = join(__dirname, '..', '..', 'skills', 'dist', 'index.js');
 const SKILLS_DIR = join(__dirname, '..', '..', 'skills', 'skills');
 
 interface SkillData {
@@ -47,7 +47,7 @@ function extractServerFromTool(toolPattern: string): string | null {
   return null;
 }
 
-describe('Real E2E: aegis-skills Server Integration', () => {
+describe('Real E2E: mycelium-skills Server Integration', () => {
   let serverProcess: ChildProcess | null = null;
   let serverReady = false;
 
@@ -91,17 +91,17 @@ describe('Real E2E: aegis-skills Server Integration', () => {
   }
 
   beforeAll(async () => {
-    // Check if aegis-skills is installed
+    // Check if mycelium-skills is installed
     try {
       const { access } = await import('fs/promises');
-      await access(AEGIS_SKILLS_PATH);
+      await access(MYCELIUM_SKILLS_PATH);
     } catch {
-      console.log('aegis-skills not installed, skipping real E2E tests');
+      console.log('mycelium-skills not installed, skipping real E2E tests');
       return;
     }
 
-    // Start aegis-skills server
-    serverProcess = spawn('node', [AEGIS_SKILLS_PATH, SKILLS_DIR], {
+    // Start mycelium-skills server
+    serverProcess = spawn('node', [MYCELIUM_SKILLS_PATH, SKILLS_DIR], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
@@ -501,7 +501,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
       // set_role should be allowed for ALL roles
       const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
       for (const roleId of roleIds) {
-        const isAllowed = roleManager.isToolAllowedForRole(roleId, 'set_role', 'aegis-router');
+        const isAllowed = roleManager.isToolAllowedForRole(roleId, 'set_role', 'mycelium-router');
         expect(isAllowed).toBe(true);
       }
       console.log(`set_role is allowed for all ${roleIds.length} roles`);
@@ -626,7 +626,7 @@ describe('Real E2E: aegis-skills Server Integration', () => {
       // Step 5: Verify set_role is always available
       console.log('Step 5: Verifying set_role availability...');
       for (const roleId of roleIds) {
-        expect(roleManager.isToolAllowedForRole(roleId, 'set_role', 'aegis-router')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(roleId, 'set_role', 'mycelium-router')).toBe(true);
       }
       console.log(`  -> set_role available for all ${roleIds.length} roles`);
 

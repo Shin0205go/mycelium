@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/skills MCP Server
+ * Unit tests for @mycelium/skills MCP Server
  * Tests skill loading, parsing, and MCP handlers
  */
 
@@ -26,7 +26,7 @@ vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
   StdioServerTransport: vi.fn(),
 }));
 
-describe('@aegis/skills', () => {
+describe('@mycelium/skills', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

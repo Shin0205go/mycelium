@@ -1,12 +1,13 @@
 /**
- * AEGIS Interactive CLI - REPL with role switching
+ * MYCELIUM Interactive CLI - REPL with role switching and session management
  */
 
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult } from './mcp-client.js';
+import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig, type SDKMessage } from './agent.js';
+import { SessionStore, createSessionStore, type Session, type SessionSummary } from '@mycelium/session';
 
 export interface InteractiveCLIOptions {
   role?: string;
@@ -24,7 +25,15 @@ export class InteractiveCLI {
   private authSource: string = 'unknown';
   private useApiKey: boolean = false;
 
-  private readonly commands = [
+  // Session management
+  private sessionStore: SessionStore;
+  private currentSession: Session | null = null;
+
+  // Dynamic commands loaded from skills
+  private skillCommands: Map<string, SkillCommandInfo> = new Map();
+
+  // Built-in commands (always available)
+  private readonly builtInCommands = [
     '/roles',
     '/skills',
     '/tools',
@@ -45,15 +54,19 @@ export class InteractiveCLI {
     const projectRoot = process.cwd();
     // Support both monorepo and installed package paths
     const routerPath = options.routerPath ||
-      process.env.AEGIS_ROUTER_PATH ||
+      process.env.MYCELIUM_ROUTER_PATH ||
       join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
     const configPath = options.configPath ||
-      process.env.AEGIS_CONFIG_PATH ||
+      process.env.MYCELIUM_CONFIG_PATH ||
       join(projectRoot, 'config.json');
 
     this.mcp = new MCPClient('node', [routerPath], {
-      AEGIS_CONFIG_PATH: configPath
+      MYCELIUM_CONFIG_PATH: configPath
     });
+
+    // Initialize session store
+    const sessionDir = join(projectRoot, 'sessions');
+    this.sessionStore = createSessionStore(sessionDir);
 
     if (options.role) {
       this.currentRole = options.role;
@@ -158,7 +171,7 @@ export class InteractiveCLI {
       return;
     }
 
-    console.log(chalk.gray('Connecting to AEGIS Router...'));
+    console.log(chalk.gray('Connecting to MYCELIUM Router...'));
 
     this.mcp.on('log', () => {
       // Suppress logs during normal operation
@@ -171,14 +184,150 @@ export class InteractiveCLI {
 
     try {
       await this.mcp.connect();
-      console.log(chalk.green('✓ Connected to AEGIS Router\n'));
+      console.log(chalk.green('✓ Connected to MYCELIUM Router'));
     } catch (error) {
       console.error(chalk.red('Failed to connect:'), error);
       process.exit(1);
     }
 
+    // Initialize session store
+    try {
+      await this.sessionStore.initialize();
+      console.log(chalk.green('✓ Session store initialized'));
+    } catch (error) {
+      console.error(chalk.yellow('Warning: Session store failed to initialize'), error);
+    }
+
+    // Load dynamic commands from skills
+    await this.loadSkillCommands();
+
     await this.switchRole(this.currentRole);
     this.startREPL();
+  }
+
+  /**
+   * Load dynamic slash commands from skill definitions
+   */
+  private async loadSkillCommands(): Promise<void> {
+    try {
+      const result = await this.mcp.listCommands();
+      this.skillCommands.clear();
+
+      for (const cmd of result.commands) {
+        this.skillCommands.set(cmd.command, cmd);
+      }
+
+      if (this.skillCommands.size > 0) {
+        console.log(chalk.green(`✓ Loaded ${this.skillCommands.size} skill commands\n`));
+      } else {
+        console.log(chalk.gray('  No skill commands available\n'));
+      }
+    } catch (error) {
+      // Skills server may not be available
+      console.log(chalk.gray('  Skill commands: unavailable\n'));
+    }
+  }
+
+  /**
+   * Execute a dynamic skill command
+   */
+  private async executeSkillCommand(cmd: SkillCommandInfo, args: string[]): Promise<void> {
+    try {
+      if (cmd.handlerType === 'tool') {
+        // Execute via MCP tool call
+        if (!cmd.toolName) {
+          console.log(chalk.red(`Command /${cmd.command} has no toolName configured`));
+          return;
+        }
+
+        // Build arguments from command args
+        const toolArgs: Record<string, unknown> = {};
+        if (cmd.arguments && args.length > 0) {
+          for (let i = 0; i < cmd.arguments.length && i < args.length; i++) {
+            toolArgs[cmd.arguments[i].name] = args[i];
+          }
+        } else if (args.length > 0) {
+          // Default: pass first arg as 'name' or 'id'
+          toolArgs['name'] = args[0];
+        }
+
+        console.log(chalk.gray(`\n  Executing ${cmd.toolName}...`));
+
+        // Call tool via MCP (tool may be prefixed with server name)
+        const toolName = cmd.toolName.includes('__')
+          ? cmd.toolName
+          : `mycelium-skills__${cmd.toolName}`;
+
+        const result = await this.mcp.callTool(toolName, toolArgs) as {
+          content?: Array<{ type?: string; text?: string }>;
+          isError?: boolean;
+        };
+
+        if (result?.isError) {
+          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+        } else {
+          const text = result?.content?.[0]?.text;
+          if (text) {
+            try {
+              const json = JSON.parse(text);
+              console.log(chalk.green(`\n  ✓ Success`));
+              console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
+            } catch {
+              console.log(chalk.green(`\n  ✓ ${text}\n`));
+            }
+          } else {
+            console.log(chalk.green(`\n  ✓ Command executed\n`));
+          }
+        }
+      } else if (cmd.handlerType === 'script') {
+        // Execute via run_script
+        if (!cmd.scriptPath) {
+          console.log(chalk.red(`Command /${cmd.command} has no scriptPath configured`));
+          return;
+        }
+
+        console.log(chalk.gray(`\n  Running script ${cmd.scriptPath}...`));
+
+        const result = await this.mcp.callTool('mycelium-skills__run_script', {
+          skill: cmd.skillId,
+          path: cmd.scriptPath,
+          args: args,
+        }) as {
+          content?: Array<{ type?: string; text?: string }>;
+          isError?: boolean;
+        };
+
+        if (result?.isError) {
+          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+        } else {
+          const text = result?.content?.[0]?.text;
+          if (text) {
+            try {
+              const json = JSON.parse(text);
+              if (json.success) {
+                console.log(chalk.green(`\n  ✓ Script completed`));
+                if (json.stdout) {
+                  console.log(json.stdout);
+                }
+              } else {
+                console.log(chalk.red(`\n  ✗ Script failed (exit code: ${json.exitCode})`));
+                if (json.stderr) {
+                  console.log(chalk.red(json.stderr));
+                }
+              }
+            } catch {
+              console.log(text);
+            }
+          }
+          console.log();
+        }
+      } else {
+        console.log(chalk.yellow(`Unknown handler type: ${cmd.handlerType}`));
+      }
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log(chalk.red(`Failed to execute /${cmd.command}: ${err.message}\n`));
+    }
   }
 
   private async switchRole(roleId: string): Promise<void> {
@@ -295,7 +444,12 @@ export class InteractiveCLI {
         const matches = this.models.filter(m => m.startsWith(partial));
         return [matches.map(m => `/model ${m}`), line];
       }
-      const matches = this.commands.filter(c => c.startsWith(line));
+      // Combine built-in commands with dynamic skill commands
+      const allCommands = [
+        ...this.builtInCommands,
+        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`)
+      ];
+      const matches = allCommands.filter(c => c.startsWith(line));
       return [matches, line];
     }
     return [[], line];
@@ -442,13 +596,36 @@ export class InteractiveCLI {
 
   private showHelp(): void {
     console.log(chalk.cyan('\nCommands:\n'));
-    console.log('  ' + chalk.bold('/roles') + '         Select and switch roles');
-    console.log('  ' + chalk.bold('/skills') + '        List available skills');
-    console.log('  ' + chalk.bold('/tools') + '         List available tools');
-    console.log('  ' + chalk.bold('/model <name>') + '  Change model');
-    console.log('  ' + chalk.bold('/status') + '        Show current status');
-    console.log('  ' + chalk.bold('/help') + '          Show this help');
-    console.log('  ' + chalk.bold('/quit') + '          Exit');
+    console.log(chalk.gray('  Built-in:'));
+    console.log('  ' + chalk.bold('/roles') + '           Select and switch roles');
+    console.log('  ' + chalk.bold('/skills') + '          List available skills');
+    console.log('  ' + chalk.bold('/tools') + '           List available tools');
+    console.log('  ' + chalk.bold('/model <name>') + '    Change model');
+    console.log('  ' + chalk.bold('/status') + '          Show current status');
+    console.log('  ' + chalk.bold('/help') + '            Show this help');
+    console.log('  ' + chalk.bold('/quit') + '            Exit');
+
+    // Show dynamic skill commands
+    if (this.skillCommands.size > 0) {
+      // Group commands by skill
+      const bySkill = new Map<string, SkillCommandInfo[]>();
+      for (const cmd of this.skillCommands.values()) {
+        const existing = bySkill.get(cmd.skillName) || [];
+        existing.push(cmd);
+        bySkill.set(cmd.skillName, existing);
+      }
+
+      console.log();
+      console.log(chalk.gray('  Skill Commands:'));
+      for (const [skillName, cmds] of bySkill) {
+        for (const cmd of cmds) {
+          const usage = cmd.usage || `/${cmd.command}`;
+          const paddedUsage = usage.padEnd(16);
+          console.log('  ' + chalk.bold(paddedUsage) + ' ' + cmd.description + chalk.gray(` [${skillName}]`));
+        }
+      }
+    }
+
     console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
   }
 
@@ -520,6 +697,239 @@ export class InteractiveCLI {
     console.log();
   }
 
+  // ============================================================================
+  // Session Management
+  // ============================================================================
+
+  private async saveSession(name?: string): Promise<void> {
+    try {
+      if (this.currentSession) {
+        // Update existing session
+        if (name) {
+          await this.sessionStore.rename(this.currentSession.id, name);
+        }
+        await this.sessionStore.save(this.currentSession);
+        console.log(chalk.green(`\n✓ Session saved: ${this.currentSession.name || this.currentSession.id}`));
+        console.log(chalk.gray(`  Messages: ${this.currentSession.messages.length}`));
+      } else {
+        // Create new session
+        this.currentSession = await this.sessionStore.create(
+          this.currentRole,
+          name,
+          [this.currentModel]
+        );
+        this.currentSession.metadata.model = this.currentModel;
+        await this.sessionStore.save(this.currentSession);
+        console.log(chalk.green(`\n✓ New session created: ${this.currentSession.name || this.currentSession.id}`));
+      }
+      console.log();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(chalk.red(`Failed to save session: ${err.message}\n`));
+    }
+  }
+
+  private async listSessions(): Promise<void> {
+    try {
+      const sessions = await this.sessionStore.list({ limit: 20 });
+
+      if (sessions.length === 0) {
+        console.log(chalk.yellow('\nNo saved sessions.\n'));
+        console.log(chalk.gray('  Use /save [name] to save the current session.\n'));
+        return;
+      }
+
+      console.log(chalk.cyan(`\nSaved Sessions (${sessions.length}):\n`));
+
+      for (const session of sessions) {
+        const isCurrent = this.currentSession?.id === session.id;
+        const marker = isCurrent ? chalk.green('▶') : ' ';
+        const name = session.name || session.id;
+        const displayName = isCurrent ? chalk.green.bold(name) : chalk.bold(name);
+        const date = new Date(session.lastModifiedAt).toLocaleDateString();
+        const compressed = session.compressed ? chalk.yellow(' [compressed]') : '';
+
+        console.log(`  ${marker} ${displayName}${compressed}`);
+        console.log(chalk.gray(`    Role: ${session.roleId} | Messages: ${session.messageCount} | ${date}`));
+        if (session.preview) {
+          console.log(chalk.gray(`    "${session.preview}"`));
+        }
+        console.log();
+      }
+
+      console.log(chalk.gray('  Use /resume <id> to resume a session.\n'));
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(chalk.red(`Failed to list sessions: ${err.message}\n`));
+    }
+  }
+
+  private async resumeSession(sessionId?: string): Promise<void> {
+    try {
+      if (!sessionId) {
+        // Interactive session selector
+        const sessions = await this.sessionStore.list({ limit: 20 });
+
+        if (sessions.length === 0) {
+          console.log(chalk.yellow('\nNo saved sessions to resume.\n'));
+          return;
+        }
+
+        const selected = await this.interactiveSessionSelector(sessions);
+        if (!selected) return;
+        sessionId = selected;
+      }
+
+      const session = await this.sessionStore.load(sessionId);
+
+      if (!session) {
+        console.log(chalk.red(`\nSession not found: ${sessionId}\n`));
+        return;
+      }
+
+      this.currentSession = session;
+
+      // Switch to session's role if different
+      if (session.roleId !== this.currentRole) {
+        await this.switchRole(session.roleId);
+        this.rl?.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
+      }
+
+      // Switch to session's model if different
+      if (session.metadata.model && session.metadata.model !== this.currentModel) {
+        this.currentModel = session.metadata.model;
+      }
+
+      console.log(chalk.green(`\n✓ Resumed session: ${session.name || session.id}`));
+      console.log(chalk.gray(`  Role: ${session.roleId} | Messages: ${session.messages.length}`));
+
+      // Show last few messages as context
+      const recentMessages = session.messages.slice(-3);
+      if (recentMessages.length > 0) {
+        console.log(chalk.gray('\n  Recent messages:'));
+        for (const msg of recentMessages) {
+          const role = msg.role === 'user' ? chalk.cyan('You') : chalk.green('Claude');
+          const preview = msg.content.slice(0, 60).replace(/\n/g, ' ');
+          console.log(chalk.gray(`    ${role}: ${preview}${msg.content.length > 60 ? '...' : ''}`));
+        }
+      }
+      console.log();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(chalk.red(`Failed to resume session: ${err.message}\n`));
+    }
+  }
+
+  private async interactiveSessionSelector(sessions: SessionSummary[]): Promise<string | null> {
+    return new Promise((resolve) => {
+      let selectedIndex = 0;
+
+      const render = () => {
+        process.stdout.write('\x1B[?25l');
+        console.log(chalk.cyan('\nSelect Session:') + chalk.gray(' (↑↓: move, Enter: select, q: cancel)\n'));
+
+        for (let i = 0; i < sessions.length; i++) {
+          const session = sessions[i];
+          const isSelected = i === selectedIndex;
+          const isCurrent = this.currentSession?.id === session.id;
+
+          const marker = isSelected ? chalk.cyan('▶') : ' ';
+          const name = session.name || session.id.slice(0, 12);
+          const displayName = isSelected ? chalk.cyan.bold(name) : (isCurrent ? chalk.green(name) : name);
+          const currentTag = isCurrent ? chalk.green(' (current)') : '';
+          const date = new Date(session.lastModifiedAt).toLocaleDateString();
+
+          console.log(`  ${marker} ${displayName}${currentTag}`);
+          console.log(chalk.gray(`    Role: ${session.roleId} | Messages: ${session.messageCount} | ${date}\n`));
+        }
+      };
+
+      const clearScreen = () => {
+        const totalLines = sessions.length * 3 + 3;
+        process.stdout.write(`\x1B[${totalLines}A`);
+        for (let i = 0; i < totalLines; i++) {
+          process.stdout.write('\x1B[2K\n');
+        }
+        process.stdout.write(`\x1B[${totalLines}A`);
+      };
+
+      render();
+
+      const wasRaw = process.stdin.isRaw;
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+      }
+      process.stdin.resume();
+
+      const cleanup = () => {
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(wasRaw || false);
+        }
+        process.stdin.removeListener('data', onKeyPress);
+        process.stdout.write('\x1B[?25h');
+      };
+
+      const onKeyPress = (key: Buffer) => {
+        const keyStr = key.toString();
+
+        if (keyStr === '\x1B[A' || keyStr === 'k') {
+          clearScreen();
+          selectedIndex = (selectedIndex - 1 + sessions.length) % sessions.length;
+          render();
+        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
+          clearScreen();
+          selectedIndex = (selectedIndex + 1) % sessions.length;
+          render();
+        } else if (keyStr === '\r' || keyStr === '\n') {
+          clearScreen();
+          cleanup();
+          resolve(sessions[selectedIndex].id);
+        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
+          clearScreen();
+          cleanup();
+          console.log(chalk.gray('Cancelled'));
+          resolve(null);
+        }
+      };
+
+      process.stdin.on('data', onKeyPress);
+    });
+  }
+
+  private async compressSession(): Promise<void> {
+    if (!this.currentSession) {
+      console.log(chalk.yellow('\nNo active session to compress.'));
+      console.log(chalk.gray('  Use /save to create a session first.\n'));
+      return;
+    }
+
+    const messageCount = this.currentSession.messages.length;
+
+    if (messageCount <= 10) {
+      console.log(chalk.yellow(`\nSession has only ${messageCount} messages, no compression needed.\n`));
+      return;
+    }
+
+    try {
+      console.log(chalk.gray(`\nCompressing session (${messageCount} messages)...`));
+
+      const compressed = await this.sessionStore.compress(this.currentSession.id, {
+        strategy: 'summarize',
+        keepRecentMessages: 10,
+      });
+
+      this.currentSession = compressed;
+
+      console.log(chalk.green(`\n✓ Session compressed`));
+      console.log(chalk.gray(`  Original: ${messageCount} messages`));
+      console.log(chalk.gray(`  Compressed: ${compressed.messages.length} messages`));
+      console.log();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.error(chalk.red(`Failed to compress session: ${err.message}\n`));
+    }
+  }
+
   private async chat(message: string): Promise<void> {
     if (this.isProcessing) {
       console.log(chalk.yellow('Already processing a request...'));
@@ -563,7 +973,7 @@ export class InteractiveCLI {
           if (isToolUseMessage(msg)) {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
-              const shortName = tool.name.replace('mcp__aegis-router__', '');
+              const shortName = tool.name.replace('mcp__mycelium-router__', '');
               console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
               if (shortName === 'set_role') {
                 const input = tool.input as { role_id?: string };
@@ -707,8 +1117,14 @@ export class InteractiveCLI {
             break;
 
           default:
-            console.log(chalk.yellow(`Unknown command: /${cmd}`));
-            console.log(chalk.gray('Type /help for available commands'));
+            // Check if it's a dynamic skill command
+            const skillCmd = this.skillCommands.get(cmd.toLowerCase());
+            if (skillCmd) {
+              await this.executeSkillCommand(skillCmd, args);
+            } else {
+              console.log(chalk.yellow(`Unknown command: /${cmd}`));
+              console.log(chalk.gray('Type /help for available commands'));
+            }
         }
       } else {
         await this.chat(input);

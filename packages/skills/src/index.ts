@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// AEGIS Skills - MCP Server for Skill Definitions
+// MYCELIUM Skills - MCP Server for Skill Definitions
 // Provides skill manifests with declarative role permissions
 // ============================================================================
 
@@ -28,23 +28,43 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
+ * Custom slash command defined by a skill
+ */
+interface SkillCommand {
+  name: string;
+  description: string;
+  handlerType: 'tool' | 'script';
+  toolName?: string;
+  scriptPath?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+    default?: string;
+  }>;
+  usage?: string;
+}
+
+/**
  * Skill definition with role permissions
  *
  * Compatible with official Claude Agent Skills format:
  * - name: Skill identifier (required, max 64 chars, lowercase/numbers/hyphens)
  * - description: What the skill does and when to use it (required, max 1024 chars)
  *
- * AEGIS RBAC extensions:
+ * Mycelium RBAC extensions:
  * - allowedRoles: Roles that can use this skill
  * - allowedTools: MCP tools this skill grants access to
+ * - commands: Custom slash commands this skill provides
  */
 interface SkillDefinition {
   id: string;           // Internal ID (defaults to name)
   name: string;         // Official: skill name
   displayName: string;  // Human-readable name
   description: string;  // Official: skill description
-  allowedRoles: string[];  // AEGIS: roles that can use this skill
-  allowedTools: string[];  // AEGIS: tools this skill grants
+  allowedRoles: string[];  // Mycelium: roles that can use this skill
+  allowedTools: string[];  // Mycelium: tools this skill grants
+  commands?: SkillCommand[];  // Mycelium: custom slash commands
   version?: string;
   category?: string;
   tags?: string[];
@@ -52,20 +72,23 @@ interface SkillDefinition {
 }
 
 /**
- * Raw YAML structure (supports official + AEGIS formats)
+ * Raw YAML structure (supports official + Mycelium formats)
  */
 interface RawSkillYaml {
   // Official Claude Skills fields
   name?: string;           // Required in official format
   description?: string;    // Required in official format
 
-  // AEGIS RBAC fields
+  // Mycelium RBAC fields
   id?: string;             // Optional, defaults to name
   displayName?: string;    // Optional, defaults to name
   allowedRoles?: string[];
   'allowed-roles'?: string[];
   allowedTools?: string[];
   'allowed-tools'?: string[];
+
+  // Custom slash commands
+  commands?: SkillCommand[];
 
   // Optional metadata
   version?: string;
@@ -159,14 +182,14 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
           }
         }
 
-        // Normalize field names (support official + AEGIS formats)
+        // Normalize field names (support official + MYCELIUM formats)
         const skillName = manifest.name || manifest.id;
         const skillId = manifest.id || manifest.name;
         const allowedRoles = manifest.allowedRoles || manifest['allowed-roles'] || [];
         const allowedTools = manifest.allowedTools || manifest['allowed-tools'] || [];
 
         // Official format requires name and description
-        // AEGIS format requires allowedRoles
+        // Mycelium format requires allowedRoles
         if (skillName && allowedRoles.length > 0) {
           skills.push({
             id: skillId!,
@@ -175,6 +198,7 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
             description: manifest.description || '',
             allowedRoles: allowedRoles,
             allowedTools: allowedTools,
+            commands: manifest.commands,
             version: manifest.version,
             category: manifest.category,
             tags: manifest.tags,
@@ -194,7 +218,7 @@ async function main() {
   // Get skills directory from args or default
   const skillsDir = process.argv[2] || path.join(__dirname, '..', 'skills');
 
-  console.error(`AEGIS Skills Server starting...`);
+  console.error(`MYCELIUM Skills Server starting...`);
   console.error(`Skills directory: ${skillsDir}`);
 
   // Load skills
@@ -204,7 +228,7 @@ async function main() {
   // Create MCP Server
   const server = new Server(
     {
-      name: 'aegis-skills',
+      name: 'mycelium-skills',
       version: '1.0.0',
     },
     {
@@ -306,6 +330,19 @@ async function main() {
               },
             },
             required: ['skill', 'path'],
+          },
+        },
+        {
+          name: 'list_commands',
+          description: 'List all custom slash commands defined by skills',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              role: {
+                type: 'string',
+                description: 'Optional: Filter commands by role',
+              },
+            },
           },
         },
       ],
@@ -545,6 +582,55 @@ async function main() {
         }
       }
 
+      case 'list_commands': {
+        const role = (args as any)?.role;
+
+        // Collect all commands from all skills (optionally filtered by role)
+        const commands: Array<{
+          command: string;
+          description: string;
+          skillId: string;
+          skillName: string;
+          handlerType: string;
+          toolName?: string;
+          scriptPath?: string;
+          arguments?: SkillCommand['arguments'];
+          usage?: string;
+        }> = [];
+
+        for (const skill of skills) {
+          // Filter by role if specified
+          if (role && !skill.allowedRoles.includes(role) && !skill.allowedRoles.includes('*')) {
+            continue;
+          }
+
+          if (skill.commands) {
+            for (const cmd of skill.commands) {
+              commands.push({
+                command: cmd.name,
+                description: cmd.description,
+                skillId: skill.id,
+                skillName: skill.displayName,
+                handlerType: cmd.handlerType,
+                toolName: cmd.toolName,
+                scriptPath: cmd.scriptPath,
+                arguments: cmd.arguments,
+                usage: cmd.usage,
+              });
+            }
+          }
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ commands }, null, 2),
+            },
+          ],
+        };
+      }
+
       default:
         return {
           content: [{ type: 'text', text: `Unknown tool: ${name}` }],
@@ -557,7 +643,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('AEGIS Skills Server running on stdio');
+  console.error('MYCELIUM Skills Server running on stdio');
 }
 
 main().catch((error) => {

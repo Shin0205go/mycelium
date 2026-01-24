@@ -1,13 +1,13 @@
 /**
  * Role Switching Tests
  *
- * Tests for AegisRouterCore role switching functionality
+ * Tests for MyceliumRouterCore role switching functionality
  * Verifies that tools and skills change correctly when switching roles
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 
 // Mock logger for tests
 const testLogger: Logger = {

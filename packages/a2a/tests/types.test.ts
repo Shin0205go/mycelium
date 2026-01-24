@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/a2a types
+ * Unit tests for @mycelium/a2a types
  * Verifies type exports and interface structures
  */
 
@@ -15,7 +15,7 @@ import type {
   IdentityStats,
 } from '../src/types.js';
 
-describe('@aegis/a2a types', () => {
+describe('@mycelium/a2a types', () => {
   describe('A2AAgentSkill', () => {
     it('should accept minimal skill definition', () => {
       const skill: A2AAgentSkill = {

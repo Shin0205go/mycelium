@@ -23,11 +23,11 @@ function runCli(args: string, cwd?: string): string {
   }
 }
 
-describe('AEGIS CLI', () => {
+describe('MYCELIUM CLI', () => {
   describe('Main', () => {
     it('should show help with --help', () => {
       const output = runCli('--help');
-      expect(output).toContain('AEGIS CLI');
+      expect(output).toContain('MYCELIUM CLI');
       expect(output).toContain('init');
       expect(output).toContain('skill');
       expect(output).toContain('policy');
@@ -55,7 +55,7 @@ describe('AEGIS CLI', () => {
 
     it('should initialize a project with default skills', () => {
       const output = runCli('init', testDir);
-      expect(output).toContain('Initializing AEGIS project');
+      expect(output).toContain('Initializing MYCELIUM project');
       expect(output).toContain('Created config.json');
       expect(output).toContain('Created skills/ directory');
     });
@@ -66,7 +66,7 @@ describe('AEGIS CLI', () => {
 
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       expect(config).toHaveProperty('mcpServers');
-      expect(config.mcpServers).toHaveProperty('aegis-skills');
+      expect(config.mcpServers).toHaveProperty('mycelium-skills');
     });
 
     it('should create default skills', () => {

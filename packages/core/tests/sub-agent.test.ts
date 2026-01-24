@@ -333,8 +333,8 @@ describe('SubAgent', () => {
 
       mockIsToolUse.mockReturnValueOnce(true).mockReturnValue(false);
       mockGetToolUseInfo.mockReturnValueOnce([
-        { name: 'mcp__aegis-router__read_file', input: {} },
-        { name: 'mcp__aegis-router__write_file', input: {} }
+        { name: 'mcp__mycelium-router__read_file', input: {} },
+        { name: 'mcp__mycelium-router__write_file', input: {} }
       ]).mockReturnValue([]);
 
       const mockQueryResult = {

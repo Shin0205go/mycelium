@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/shared
+ * Unit tests for @mycelium/shared
  * Tests error classes and type exports
  */
 
@@ -25,7 +25,7 @@ import {
   type Logger,
 } from '../src/index.js';
 
-describe('@aegis/shared', () => {
+describe('@mycelium/shared', () => {
   describe('RoleNotFoundError', () => {
     it('should create error with role ID and available roles', () => {
       const error = new RoleNotFoundError('admin', ['user', 'guest']);

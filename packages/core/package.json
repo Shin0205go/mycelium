@@ -1,12 +1,12 @@
 {
-  "name": "@aegis/core",
+  "name": "@mycelium/core",
   "version": "1.0.0",
   "description": "AEGIS Core - Integration Layer with CLI",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "aegis": "./dist/cli-entry.js",
-    "aegis-router": "./dist/mcp-server.js"
+    "mycelium": "./dist/cli-entry.js",
+    "mycelium-router": "./dist/mcp-server.js"
   },
   "type": "module",
   "scripts": {
@@ -19,7 +19,7 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "core",
     "mcp",
     "agent",
@@ -29,12 +29,12 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/shared": "*",
-    "@aegis/rbac": "*",
-    "@aegis/a2a": "*",
-    "@aegis/gateway": "*",
-    "@aegis/audit": "*",
-    "@aegis/skills": "*",
+    "@mycelium/shared": "*",
+    "@mycelium/rbac": "*",
+    "@mycelium/a2a": "*",
+    "@mycelium/gateway": "*",
+    "@mycelium/audit": "*",
+    "@mycelium/skills": "*",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "chalk": "^5.3.0",

@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/gateway
+ * Unit tests for @mycelium/gateway
  * Tests MCP gateway/proxy functionality
  */
 
@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { GATEWAY_VERSION, TIMEOUTS, SERVER, StdioRouter } from '../src/index.js';
 import type { UpstreamServerInfo, MCPServerConfig } from '../src/index.js';
 
-describe('@aegis/gateway', () => {
+describe('@mycelium/gateway', () => {
   describe('GATEWAY_VERSION', () => {
     it('should be defined', () => {
       expect(GATEWAY_VERSION).toBeDefined();

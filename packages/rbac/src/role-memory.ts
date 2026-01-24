@@ -1,11 +1,11 @@
 // ============================================================================
-// AEGIS Role Memory - Transparent Markdown-based Memory per Role
+// MYCELIUM Role Memory - Transparent Markdown-based Memory per Role
 // Inspired by Claude's simple, editable file-based approach
 // ============================================================================
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 
 // ============================================================================
 // Types

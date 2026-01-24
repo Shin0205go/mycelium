@@ -1,6 +1,6 @@
 /**
- * Agent SDK integration for AEGIS CLI
- * Routes all tool calls through AEGIS Router, excluding built-in tools
+ * Agent SDK integration for MYCELIUM CLI
+ * Routes all tool calls through MYCELIUM Router, excluding built-in tools
  */
 
 import { query, type SDKMessage, type Query, type Options } from '@anthropic-ai/claude-agent-sdk';
@@ -15,9 +15,9 @@ const __dirname = dirname(__filename);
 // When running from src/ (tsx), __dirname is packages/core/src
 // Either way, go up to packages/core, then to packages/, then to monorepo root
 const projectRoot = join(__dirname, '..', '..', '..');
-const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
+const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
   join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
   join(projectRoot, 'config.json');
 
 export interface AgentConfig {
@@ -43,7 +43,7 @@ export interface AgentResult {
 }
 
 /**
- * Create agent options with AEGIS Router as the only tool source
+ * Create agent options with MYCELIUM Router as the only tool source
  */
 export function createAgentOptions(config: AgentConfig = {}): Options {
   // Determine which env to use based on useApiKey flag
@@ -65,13 +65,13 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     // Use appropriate auth
     env: envToUse,
 
-    // Route everything through AEGIS Router
+    // Route everything through MYCELIUM Router
     mcpServers: {
-      'aegis-router': {
+      'mycelium-router': {
         command: 'node',
-        args: [AEGIS_ROUTER_PATH],
+        args: [MYCELIUM_ROUTER_PATH],
         env: {
-          AEGIS_CONFIG_PATH
+          MYCELIUM_CONFIG_PATH
         }
       }
     },
@@ -80,7 +80,7 @@ export function createAgentOptions(config: AgentConfig = {}): Options {
     model: config.model || 'claude-sonnet-4-5-20250929',
     cwd: config.cwd || process.cwd(),
     systemPrompt: config.systemPrompt,
-    // Use bypassPermissions for MCP tools - AEGIS Router handles access control
+    // Use bypassPermissions for MCP tools - MYCELIUM Router handles access control
     permissionMode: config.permissionMode || 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
     maxTurns: config.maxTurns || 50,
@@ -297,11 +297,11 @@ export function extractThinkingFromMessage(
 
 /**
  * Create a ThinkingSignature from extracted thinking.
- * This can be passed to AegisRouterCore.setThinkingContext() for audit logging.
+ * This can be passed to MyceliumRouterCore.setThinkingContext() for audit logging.
  *
  * @param extracted - The extracted thinking from a message
  * @param thinkingTokens - Optional number of thinking tokens used
- * @returns ThinkingSignature object ready for use with AEGIS Router
+ * @returns ThinkingSignature object ready for use with MYCELIUM Router
  */
 export function createThinkingSignature(
   extracted: ExtractedThinking,

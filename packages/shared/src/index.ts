@@ -1,6 +1,6 @@
 // ============================================================================
-// AEGIS Shared Types
-// Common types used across all AEGIS packages
+// MYCELIUM Shared Types
+// Common types used across all MYCELIUM packages
 // ============================================================================
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -148,6 +148,41 @@ export interface SkillMetadata {
   tags?: string[];
 }
 
+/**
+ * Custom slash command defined by a skill
+ */
+export interface SkillCommand {
+  /** Command name (without leading slash) */
+  name: string;
+
+  /** Command description */
+  description: string;
+
+  /** Handler type: 'tool' calls an MCP tool, 'script' runs a script */
+  handlerType: 'tool' | 'script';
+
+  /** Tool name to call (for handlerType='tool') */
+  toolName?: string;
+
+  /** Script path relative to skill directory (for handlerType='script') */
+  scriptPath?: string;
+
+  /** Argument schema (JSON Schema format) */
+  arguments?: {
+    /** Argument name */
+    name: string;
+    /** Argument description */
+    description?: string;
+    /** Whether required */
+    required?: boolean;
+    /** Default value */
+    default?: string;
+  }[];
+
+  /** Usage example */
+  usage?: string;
+}
+
 // ============================================================================
 // Tool Types
 // ============================================================================
@@ -278,7 +313,7 @@ export interface ListRolesResult {
 
 /**
  * Skill definition from Skill MCP Server (base type)
- * Extended by @aegis/a2a with identity configuration
+ * Extended by @mycelium/a2a with identity configuration
  */
 export interface BaseSkillDefinition {
   /** Unique skill identifier */
@@ -298,6 +333,9 @@ export interface BaseSkillDefinition {
 
   /** Capability grants (memory, etc.) */
   grants?: SkillGrants;
+
+  /** Custom slash commands provided by this skill */
+  commands?: SkillCommand[];
 
   /** Skill metadata */
   metadata?: SkillMetadata;
@@ -388,7 +426,7 @@ export interface ThinkingSignature {
 
 /**
  * Tool call context with optional thinking signature.
- * Used when routing tool calls through AEGIS.
+ * Used when routing tool calls through MYCELIUM.
  */
 export interface ToolCallContext {
   /** Thinking signature from the model, if available */

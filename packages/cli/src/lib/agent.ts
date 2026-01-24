@@ -1,6 +1,6 @@
 /**
- * Agent SDK integration for AEGIS CLI
- * Routes all tool calls through AEGIS Router
+ * Agent SDK integration for MYCELIUM CLI
+ * Routes all tool calls through MYCELIUM Router
  */
 
 import { join } from 'path';
@@ -14,7 +14,7 @@ export interface AgentConfig {
   maxTurns?: number;
   includePartialMessages?: boolean;
   useApiKey?: boolean;
-  currentRole?: string;  // Role to auto-switch to in aegis-router
+  currentRole?: string;  // Role to auto-switch to in mycelium-router
 }
 
 export interface AgentResult {
@@ -29,13 +29,13 @@ export interface AgentResult {
 }
 
 /**
- * Create agent options with AEGIS Router as the only tool source
+ * Create agent options with MYCELIUM Router as the only tool source
  */
 export function createAgentOptions(config: AgentConfig = {}): Record<string, unknown> {
   const projectRoot = process.cwd();
-  const AEGIS_ROUTER_PATH = process.env.AEGIS_ROUTER_PATH ||
-    join(projectRoot, 'node_modules', '@aegis', 'core', 'dist', 'mcp-server.js');
-  const AEGIS_CONFIG_PATH = process.env.AEGIS_CONFIG_PATH ||
+  const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
+    join(projectRoot, 'node_modules', '@mycelium', 'core', 'dist', 'mcp-server.js');
+  const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
     join(projectRoot, 'config.json');
 
   let envToUse: Record<string, string>;
@@ -48,21 +48,24 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     envToUse = envWithoutApiKey as Record<string, string>;
   }
 
-  // Build aegis-router env with optional role
+  // Build mycelium-router env with optional role
   const routerEnv: Record<string, string> = {
-    AEGIS_CONFIG_PATH
+    MYCELIUM_CONFIG_PATH
   };
   if (config.currentRole) {
-    routerEnv.AEGIS_CURRENT_ROLE = config.currentRole;
+    routerEnv.MYCELIUM_CURRENT_ROLE = config.currentRole;
   }
 
   return {
     tools: [],
+    // Only allow MCP tools from mycelium-router - disable all built-in tools
+    // This ensures all tool access goes through RBAC
+    allowedTools: ['mcp__mycelium-router__*'],
     env: envToUse,
     mcpServers: {
-      'aegis-router': {
+      'mycelium-router': {
         command: 'node',
-        args: [AEGIS_ROUTER_PATH],
+        args: [MYCELIUM_ROUTER_PATH],
         env: routerEnv
       }
     },

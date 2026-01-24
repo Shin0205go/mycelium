@@ -445,7 +445,7 @@ describe('Tool Name Handling', () => {
   });
 
   it('should match set_role with prefixed name', () => {
-    const name = 'mcp__aegis-router__set_role';
+    const name = 'mcp__mycelium-router__set_role';
     const isSetRole = name === 'set_role' || name.endsWith('__set_role');
     expect(isSetRole).toBe(true);
   });
@@ -457,7 +457,7 @@ describe('Tool Name Handling', () => {
   });
 
   it('should match spawn_sub_agent with prefixed name', () => {
-    const name = 'mcp__aegis-router__spawn_sub_agent';
+    const name = 'mcp__mycelium-router__spawn_sub_agent';
     const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
     expect(isSpawn).toBe(true);
   });

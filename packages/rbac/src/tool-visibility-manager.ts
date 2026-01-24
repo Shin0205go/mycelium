@@ -1,9 +1,9 @@
 // ============================================================================
-// AEGIS RBAC - Tool Visibility Manager
+// MYCELIUM RBAC - Tool Visibility Manager
 // Manages tool discovery and role-based visibility filtering
 // ============================================================================
 
-import type { Logger, Role, ToolInfo, MemoryPolicy } from '@aegis/shared';
+import type { Logger, Role, ToolInfo, MemoryPolicy } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { RoleManager } from './role-manager.js';
 
@@ -225,7 +225,7 @@ export class ToolVisibilityManager {
       // Register set_role (visible when not in A2A mode)
       const setRoleInfo: ToolInfo = {
         tool: setRoleTool,
-        sourceServer: 'aegis-router',
+        sourceServer: 'mycelium-router',
         prefixedName: 'set_role',
         visible: true,
         visibilityReason: 'system_tool'
@@ -353,7 +353,7 @@ export class ToolVisibilityManager {
     for (const { tool, name } of memoryTools) {
       const toolInfo: ToolInfo = {
         tool,
-        sourceServer: 'aegis-router',
+        sourceServer: 'mycelium-router',
         prefixedName: name,
         visible: true,
         visibilityReason: `memory_granted:${memoryPermission.policy}`

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RateLimiter, createRateLimiter, type RoleQuota } from '@aegis/audit';
-import type { Logger } from '@aegis/shared';
+import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
+import type { Logger } from '@mycelium/shared';
 
 // Silent test logger
 const createTestLogger = (): Logger => ({

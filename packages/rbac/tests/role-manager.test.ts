@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 
 // Mock logger for tests
 const testLogger: Logger = {
@@ -154,8 +154,8 @@ describe('RoleManager (Skill-Driven)', () => {
 
   describe('System Tools', () => {
     it('system tool set_role should always be allowed', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
-      expect(roleManager.isToolAllowedForRole('guest', 'set_role', 'aegis-router')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'mycelium-router')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('guest', 'set_role', 'mycelium-router')).toBe(true);
     });
   });
 
@@ -624,7 +624,7 @@ describe('Role Inheritance', () => {
     it('should return true for tool defined in skill allowedTools', async () => {
       const manifest: SkillManifest<BaseSkillDefinition> = {
         skills: [
-          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['aegis-router__list_roles', 'filesystem__read'] }
+          { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['mycelium-router__list_roles', 'filesystem__read'] }
         ],
         version: '1.0.0',
         generatedAt: new Date()
@@ -632,7 +632,7 @@ describe('Role Inheritance', () => {
 
       await roleManager.loadFromSkillManifest(manifest);
 
-      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('mycelium-router__list_roles')).toBe(true);
       expect(roleManager.isToolDefinedInAnySkill('filesystem__read')).toBe(true);
     });
 
@@ -647,7 +647,7 @@ describe('Role Inheritance', () => {
 
       await roleManager.loadFromSkillManifest(manifest);
 
-      expect(roleManager.isToolDefinedInAnySkill('aegis-router__spawn_sub_agent')).toBe(false);
+      expect(roleManager.isToolDefinedInAnySkill('mycelium-router__spawn_sub_agent')).toBe(false);
       expect(roleManager.isToolDefinedInAnySkill('unknown__tool')).toBe(false);
     });
 
@@ -663,7 +663,7 @@ describe('Role Inheritance', () => {
       await roleManager.loadFromSkillManifest(manifest);
 
       expect(roleManager.isToolDefinedInAnySkill('any_tool')).toBe(true);
-      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('mycelium-router__list_roles')).toBe(true);
     });
 
     it('should match tools with server wildcard pattern', async () => {
@@ -686,7 +686,7 @@ describe('Role Inheritance', () => {
       const manifest: SkillManifest<BaseSkillDefinition> = {
         skills: [
           { id: 's1', displayName: 'S1', description: 'S1', allowedRoles: ['role1'], allowedTools: ['filesystem__read'] },
-          { id: 's2', displayName: 'S2', description: 'S2', allowedRoles: ['role2'], allowedTools: ['aegis-router__list_roles'] }
+          { id: 's2', displayName: 'S2', description: 'S2', allowedRoles: ['role2'], allowedTools: ['mycelium-router__list_roles'] }
         ],
         version: '1.0.0',
         generatedAt: new Date()
@@ -695,7 +695,7 @@ describe('Role Inheritance', () => {
       await roleManager.loadFromSkillManifest(manifest);
 
       expect(roleManager.isToolDefinedInAnySkill('filesystem__read')).toBe(true);
-      expect(roleManager.isToolDefinedInAnySkill('aegis-router__list_roles')).toBe(true);
+      expect(roleManager.isToolDefinedInAnySkill('mycelium-router__list_roles')).toBe(true);
     });
   });
 });

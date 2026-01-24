@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/gateway",
+  "name": "@mycelium/gateway",
   "version": "1.0.0",
   "description": "AEGIS Gateway - MCP Proxy Layer",
   "main": "dist/index.js",
@@ -10,14 +10,14 @@
     "test": "vitest run"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "mcp",
     "gateway",
     "proxy"
   ],
   "license": "MIT",
   "dependencies": {
-    "@aegis/shared": "*",
+    "@mycelium/shared": "*",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {

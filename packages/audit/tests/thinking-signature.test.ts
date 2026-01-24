@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createAuditLogger, AuditLogger, AuditLogEntry } from '../src/audit-logger.js';
-import type { ThinkingSignature } from '@aegis/shared';
+import type { ThinkingSignature } from '@mycelium/shared';
 
 // Mock logger for testing
 const mockLogger = {

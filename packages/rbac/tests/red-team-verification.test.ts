@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
 import { ToolVisibilityManager } from '../src/tool-visibility-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 // Mock logger that captures warnings for audit verification
@@ -543,7 +543,7 @@ describe('Red Team: Privilege Escalation Attempts', () => {
     it('Without role, should follow fail-open (but critical tools require role check)', () => {
       // Note: Current implementation returns true for visibility when no role is set
       // This is documented behavior - the security check happens at RoleManager level
-      // Real enforcement happens at checkAccess time in AegisRouterCore
+      // Real enforcement happens at checkAccess time in MyceliumRouterCore
 
       const guestRole = roleManager.getRole('guest');
       const freshVisibility = new ToolVisibilityManager(testLogger, roleManager);

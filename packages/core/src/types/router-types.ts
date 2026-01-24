@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Router Core - Type Definitions
+// MYCELIUM Router Core - Type Definitions
 // Defines types for role-based routing and dynamic tool filtering
 // ============================================================================
 
@@ -174,7 +174,7 @@ export interface RemoteInstruction {
  * Design philosophy:
  * - Agent = skill + access control
  * - Skill provides instruction (SKILL.md) and tools
- * - AEGIS controls which servers/skills/tools are accessible
+ * - MYCELIUM controls which servers/skills/tools are accessible
  */
 export interface AgentConfig {
   /** Agent ID for internal reference */
@@ -241,9 +241,9 @@ export interface ExtendedRolesConfig extends RolesConfig {
 // ============================================================================
 
 /**
- * Current state of the AEGIS Router
+ * Current state of the MYCELIUM Router
  */
-export interface AegisRouterState {
+export interface MyceliumRouterState {
   /** Currently active role */
   currentRole: Role | null;
 

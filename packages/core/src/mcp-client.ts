@@ -1,5 +1,5 @@
 /**
- * MCP Client for AEGIS Router
+ * MCP Client for MYCELIUM Router
  */
 
 import { spawn, ChildProcess } from 'child_process';
