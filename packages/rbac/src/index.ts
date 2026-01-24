@@ -19,7 +19,7 @@ export type {
   SkillGrants,
   SkillMetadata,
   BaseSkillDefinition
-} from '@aegis/shared';
+} from '@mycelium/shared';
 
 // Role Manager
 export {

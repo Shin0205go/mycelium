@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { AUDIT_VERSION } from '../src/index.js';
 
-describe('@aegis/audit', () => {
+describe('@mycelium/audit', () => {
   describe('AUDIT_VERSION', () => {
     it('should be defined', () => {
       expect(AUDIT_VERSION).toBeDefined();

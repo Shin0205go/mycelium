@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { AegisRouterCore, createAegisRouterCore } from '../src/router/aegis-router-core.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 
 // Test logger that silences output
 const testLogger: Logger = {

@@ -5,11 +5,11 @@
 
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
-import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@aegis/gateway';
-import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@aegis/rbac';
-import { IdentityResolver, createIdentityResolver } from '@aegis/a2a';
-import { AuditLogger, createAuditLogger } from '@aegis/audit';
-import { RateLimiter, createRateLimiter, type RoleQuota } from '@aegis/audit';
+import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@mycelium/gateway';
+import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@mycelium/rbac';
+import { IdentityResolver, createIdentityResolver } from '@mycelium/a2a';
+import { AuditLogger, createAuditLogger } from '@mycelium/audit';
+import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
 import type {
   Role,
   AegisRouterState,
@@ -27,7 +27,7 @@ import type {
   IdentityResolution,
   IdentityConfig
 } from '../types/router-types.js';
-import type { ThinkingSignature, ToolCallContext } from '@aegis/shared';
+import type { ThinkingSignature, ToolCallContext } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 

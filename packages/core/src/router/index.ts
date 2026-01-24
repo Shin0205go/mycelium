@@ -18,13 +18,13 @@ export {
   type RoleMemory,
   type MemorySearchOptions,
   type SaveMemoryOptions
-} from '@aegis/rbac';
+} from '@mycelium/rbac';
 
 // Re-export from @aegis/a2a
 export {
   IdentityResolver,
   createIdentityResolver
-} from '@aegis/a2a';
+} from '@mycelium/a2a';
 
 // Remote prompt fetching
 export {
@@ -44,7 +44,7 @@ export {
   type AuditLogEntry,
   type AuditQueryOptions,
   type AuditStats
-} from '@aegis/audit';
+} from '@mycelium/audit';
 
 // Rate limiting - re-export from @aegis/audit
 export {
@@ -53,6 +53,6 @@ export {
   type RoleQuota,
   type RateLimitResult,
   type RateLimitEvent
-} from '@aegis/audit';
+} from '@mycelium/audit';
 
 // Types are exported from ../types/index.js to avoid duplicate exports

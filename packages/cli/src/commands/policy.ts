@@ -166,7 +166,7 @@ policyCommand
       // Dynamic import to avoid build-time dependency
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const rbacModule = await importDynamic('@aegis/rbac');
+      const rbacModule = await importDynamic('@mycelium/rbac');
       const RoleManager = rbacModule.RoleManager;
 
       // Create role manager and load skills
@@ -288,7 +288,7 @@ policyCommand
       // Dynamic import to avoid build-time dependency
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const a2aModule = await importDynamic('@aegis/a2a');
+      const a2aModule = await importDynamic('@mycelium/a2a');
       const createIdentityResolver = a2aModule.createIdentityResolver;
 
       // Create identity resolver

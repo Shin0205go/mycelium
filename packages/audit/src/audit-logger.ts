@@ -3,7 +3,7 @@
 // Records all tool access attempts for compliance and debugging
 // ============================================================================
 
-import { Logger, ThinkingSignature } from '@aegis/shared';
+import { Logger, ThinkingSignature } from '@mycelium/shared';
 import { EventEmitter } from 'events';
 
 /**

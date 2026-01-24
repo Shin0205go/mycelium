@@ -5,7 +5,7 @@
 
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type {
   IdentityConfig,
   IdentityResolution,

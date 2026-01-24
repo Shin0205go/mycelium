@@ -13,7 +13,7 @@ import type {
   RoleManifest,
   MemoryPolicy,
   BaseSkillDefinition
-} from '@aegis/shared';
+} from '@mycelium/shared';
 
 /**
  * Memory permission configuration for a role
@@ -134,11 +134,11 @@ export class RoleManager {
    * Get effective tool permissions for a role (including inherited)
    * Child permissions take precedence over parent
    */
-  getEffectiveToolPermissions(roleId: string): import('@aegis/shared').ToolPermissions {
+  getEffectiveToolPermissions(roleId: string): import('@mycelium/shared').ToolPermissions {
     const chain = this.getInheritanceChain(roleId);
 
     // Start with empty permissions and merge from root to child
-    const effective: import('@aegis/shared').ToolPermissions = {
+    const effective: import('@mycelium/shared').ToolPermissions = {
       allow: [],
       deny: [],
       allowPatterns: [],

@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IdentityResolver, createIdentityResolver } from '../src/identity-resolver.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type { AgentIdentity, SkillDefinition } from '../src/types.js';
 
 // Mock logger for tests

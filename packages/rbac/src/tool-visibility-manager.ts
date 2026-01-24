@@ -3,7 +3,7 @@
 // Manages tool discovery and role-based visibility filtering
 // ============================================================================
 
-import type { Logger, Role, ToolInfo, MemoryPolicy } from '@aegis/shared';
+import type { Logger, Role, ToolInfo, MemoryPolicy } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { RoleManager } from './role-manager.js';
 

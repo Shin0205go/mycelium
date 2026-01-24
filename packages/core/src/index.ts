@@ -4,10 +4,10 @@
 // ============================================================================
 
 // Re-export from sub-packages
-export * from '@aegis/shared';
-export * from '@aegis/rbac';
-export * from '@aegis/a2a';
-export * from '@aegis/audit';
+export * from '@mycelium/shared';
+export * from '@mycelium/rbac';
+export * from '@mycelium/a2a';
+export * from '@mycelium/audit';
 
 // TODO: Migrate AegisRouterCore (rename to AegisCore)
 // For now, re-export placeholder

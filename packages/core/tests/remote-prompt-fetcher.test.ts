@@ -8,7 +8,7 @@ import {
   createRemotePromptFetcher,
   type PromptRouter,
 } from '../src/router/remote-prompt-fetcher.js';
-import type { Logger } from '@aegis/shared';
+import type { Logger } from '@mycelium/shared';
 import type { RemoteInstruction } from '../src/types/router-types.js';
 
 // Silent test logger

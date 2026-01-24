@@ -17,7 +17,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { RoleManager } from '../src/role-manager.js';
 import { ToolVisibilityManager } from '../src/tool-visibility-manager.js';
-import type { Logger, SkillManifest, BaseSkillDefinition } from '@aegis/shared';
+import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
 // Mock logger that captures warnings for audit verification

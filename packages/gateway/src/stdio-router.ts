@@ -7,7 +7,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { TIMEOUTS } from './constants.js';
 import { LATEST_PROTOCOL_VERSION } from '@modelcontextprotocol/sdk/types.js';
-import type { Logger, MCPServerConfig } from '@aegis/shared';
+import type { Logger, MCPServerConfig } from '@mycelium/shared';
 
 export interface UpstreamServerInfo {
   name: string;

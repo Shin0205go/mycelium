@@ -15,7 +15,7 @@ import type {
   IdentityStats,
 } from '../src/types.js';
 
-describe('@aegis/a2a types', () => {
+describe('@mycelium/a2a types', () => {
   describe('A2AAgentSkill', () => {
     it('should accept minimal skill definition', () => {
       const skill: A2AAgentSkill = {

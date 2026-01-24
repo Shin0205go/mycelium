@@ -12,4 +12,4 @@ export { StdioRouter, type UpstreamServerInfo } from './stdio-router.js';
 export { TIMEOUTS, SERVER } from './constants.js';
 
 // Re-export shared types for convenience
-export type { MCPServerConfig, DesktopConfig } from '@aegis/shared';
+export type { MCPServerConfig, DesktopConfig } from '@mycelium/shared';

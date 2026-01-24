@@ -1,5 +1,5 @@
 {
-  "name": "@aegis/skills",
+  "name": "@mycelium/skills",
   "version": "1.0.0",
   "description": "AEGIS Skills - Skill MCP Server with declarative role permissions",
   "main": "dist/index.js",

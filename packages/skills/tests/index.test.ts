@@ -26,7 +26,7 @@ vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
   StdioServerTransport: vi.fn(),
 }));
 
-describe('@aegis/skills', () => {
+describe('@mycelium/skills', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
