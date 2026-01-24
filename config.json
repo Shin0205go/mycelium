@@ -5,6 +5,11 @@
       "args": ["packages/skills/dist/index.js", "packages/skills/skills"],
       "comment": "Skill MCP Server - provides list_skills tool"
     },
+    "mycelium-session": {
+      "command": "node",
+      "args": ["packages/session/dist/mcp-server.js", "sessions"],
+      "comment": "Session MCP Server - save, resume, compress conversations"
+    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],

@@ -5,8 +5,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "mycelium-session": "./dist/mcp-server.js"
+  },
   "scripts": {
     "build": "tsc",
+    "start": "node dist/mcp-server.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -14,10 +18,12 @@
     "mycelium",
     "session",
     "conversation",
-    "persistence"
+    "persistence",
+    "mcp"
   ],
   "license": "MIT",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@mycelium/shared": "*"
   },
   "devDependencies": {

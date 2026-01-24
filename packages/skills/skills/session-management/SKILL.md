@@ -6,40 +6,76 @@ description: Save, resume, and compress conversation sessions
 allowedRoles:
   - "*"
 
-allowedTools: []
+allowedTools:
+  - mycelium-session__*
 
 commands:
   - name: save
     description: Save current session
     handlerType: tool
-    toolName: session_save
+    toolName: mycelium-session__session_save
     arguments:
       - name: name
         description: Optional session name
         required: false
+      - name: roleId
+        description: Role ID for the session
+        required: true
+        default: orchestrator
     usage: "/save [name]"
 
   - name: sessions
     description: List saved sessions
     handlerType: tool
-    toolName: session_list
+    toolName: mycelium-session__session_list
     usage: "/sessions"
 
   - name: resume
     description: Resume a saved session
     handlerType: tool
-    toolName: session_resume
+    toolName: mycelium-session__session_load
     arguments:
-      - name: id
-        description: Session ID to resume (interactive if omitted)
-        required: false
-    usage: "/resume [id]"
+      - name: sessionId
+        description: Session ID to resume
+        required: true
+    usage: "/resume <id>"
 
   - name: compress
     description: Compress current session to save context
     handlerType: tool
-    toolName: session_compress
-    usage: "/compress"
+    toolName: mycelium-session__session_compress
+    arguments:
+      - name: sessionId
+        description: Session ID to compress
+        required: true
+    usage: "/compress <id>"
+
+  - name: fork
+    description: Create a fork of a session
+    handlerType: tool
+    toolName: mycelium-session__session_fork
+    arguments:
+      - name: sessionId
+        description: Session ID to fork
+        required: true
+      - name: name
+        description: Name for the forked session
+        required: false
+    usage: "/fork <id> [name]"
+
+  - name: export
+    description: Export a session to file
+    handlerType: tool
+    toolName: mycelium-session__session_export
+    arguments:
+      - name: sessionId
+        description: Session ID to export
+        required: true
+      - name: format
+        description: Export format (markdown, json, html)
+        required: false
+        default: markdown
+    usage: "/export <id> [format]"
 
 metadata:
   version: "1.0.0"
