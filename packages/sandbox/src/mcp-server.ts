@@ -126,6 +126,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: 'bash',
+        description: 'Execute a bash command. Commands run through the sandbox for security. Use this for shell commands, git operations, npm/yarn commands, etc.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            command: {
+              type: 'string',
+              description: 'The bash command to execute',
+            },
+            workingDirectory: {
+              type: 'string',
+              description: 'Working directory for the command',
+            },
+            timeout: {
+              type: 'number',
+              description: 'Timeout in milliseconds (default: 120000)',
+            },
+          },
+          required: ['command'],
+        },
+      },
+      {
         name: 'sandbox_capabilities',
         description: 'Get sandbox capabilities for the current platform',
         inputSchema: {
@@ -327,6 +349,60 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
           isError: !result.success,
+        };
+      }
+
+      case 'bash': {
+        const {
+          command: bashCommand,
+          workingDirectory: cwd,
+          timeout = 120000,
+        } = (args || {}) as {
+          command: string;
+          workingDirectory?: string;
+          timeout?: number;
+        };
+
+        // Use permissive profile for bash - similar to normal shell usage
+        // but still with sandbox protection (no API keys leaked, etc.)
+        const overrides: Partial<SandboxConfig> = {
+          workingDirectory: cwd || workingDirectory,
+          process: {
+            ...SANDBOX_PROFILES.permissive.process,
+            timeoutSeconds: Math.ceil(timeout / 1000),
+          } as SandboxConfig['process'],
+        };
+
+        const result = await sandboxManager.executeWithProfile(
+          'bash',
+          ['-c', bashCommand],
+          'permissive',
+          overrides,
+          undefined
+        );
+
+        // Format output similar to Claude's built-in Bash tool
+        let output = '';
+        if (result.stdout) {
+          output += result.stdout;
+        }
+        if (result.stderr) {
+          if (output && !output.endsWith('\n')) output += '\n';
+          output += result.stderr;
+        }
+
+        if (result.timedOut) {
+          output += `\n[Command timed out after ${timeout}ms]`;
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: output || `(exit code: ${result.exitCode})`,
+            },
+          ],
+          isError: result.exitCode !== 0,
         };
       }
 
