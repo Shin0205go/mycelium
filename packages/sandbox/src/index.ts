@@ -26,6 +26,12 @@ export { SandboxExecutor, UnsandboxedExecutor } from './executor.js';
 // Platform-specific executors
 export { LinuxSandboxExecutor } from './linux-executor.js';
 export { DarwinSandboxExecutor } from './darwin-executor.js';
+export {
+  DockerSandboxExecutor,
+  createDockerSandboxExecutor,
+  DOCKER_IMAGES,
+  type DockerExecutorConfig,
+} from './docker-executor.js';
 
 // Manager
 export { SandboxManager, createSandboxManager } from './sandbox-manager.js';

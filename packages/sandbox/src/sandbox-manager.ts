@@ -16,6 +16,7 @@ import { SANDBOX_PROFILES } from './types.js';
 import { SandboxExecutor, UnsandboxedExecutor } from './executor.js';
 import { LinuxSandboxExecutor } from './linux-executor.js';
 import { DarwinSandboxExecutor } from './darwin-executor.js';
+import { DockerSandboxExecutor } from './docker-executor.js';
 
 /**
  * Sandbox Manager - Central orchestrator for sandboxed execution
@@ -38,6 +39,7 @@ export class SandboxManager {
   /**
    * Initialize the sandbox manager
    * Detects platform and selects appropriate executor
+   * Priority: Native (Linux/macOS) > Docker/Podman > Unsandboxed
    */
   async initialize(): Promise<void> {
     const platform = process.platform;
@@ -49,7 +51,7 @@ export class SandboxManager {
       const executor = new LinuxSandboxExecutor(this.getDefaultConfig());
       if (await executor.isAvailable()) {
         this.executor = executor;
-        this.logger.info('Linux sandbox executor initialized');
+        this.logger.info('Linux sandbox executor initialized (bwrap/firejail)');
         return;
       }
     }
@@ -58,9 +60,17 @@ export class SandboxManager {
       const executor = new DarwinSandboxExecutor(this.getDefaultConfig());
       if (await executor.isAvailable()) {
         this.executor = executor;
-        this.logger.info('macOS sandbox executor initialized');
+        this.logger.info('macOS sandbox executor initialized (sandbox-exec)');
         return;
       }
+    }
+
+    // Try Docker as cross-platform fallback
+    const dockerExecutor = new DockerSandboxExecutor(this.getDefaultConfig());
+    if (await dockerExecutor.isAvailable()) {
+      this.executor = dockerExecutor;
+      this.logger.info('Docker sandbox executor initialized');
+      return;
     }
 
     // Fallback to unsandboxed executor
