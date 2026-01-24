@@ -1,6 +1,6 @@
 # Official Claude Skills compatible format
 name: orchestrator
-description: タスクの調整と他のロールへの委譲を行うコーディネーターロール。
+description: タスクの調整と他のロールへの委譲を行うコーディネーターロール。Workflowエージェントが使用。
 
 # AEGIS RBAC extensions
 allowedRoles:
@@ -8,5 +8,7 @@ allowedRoles:
 allowedTools:
   - aegis-router__list_roles
   - aegis-router__spawn_sub_agent
+  - aegis-skills__list_skills
   - aegis-skills__get_skill
   - aegis-skills__get_resource
+  # Note: run_script はサブエージェント側で実行

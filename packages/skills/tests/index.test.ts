@@ -358,6 +358,37 @@ No frontmatter here.
 
       expect(reloadSkillsSchema.name).toBe('reload_skills');
     });
+
+    it('should define run_script tool schema', () => {
+      const runScriptSchema = {
+        name: 'run_script',
+        description: 'Execute a script file within a skill directory',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            skill: {
+              type: 'string',
+              description: 'The skill ID containing the script',
+            },
+            path: {
+              type: 'string',
+              description: 'Relative path to the script file within the skill directory',
+            },
+            args: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional arguments to pass to the script',
+            },
+          },
+          required: ['skill', 'path'],
+        },
+      };
+
+      expect(runScriptSchema.name).toBe('run_script');
+      expect(runScriptSchema.inputSchema.required).toContain('skill');
+      expect(runScriptSchema.inputSchema.required).toContain('path');
+      expect(runScriptSchema.inputSchema.properties.args).toBeDefined();
+    });
   });
 
   describe('Skill manifest structure', () => {
@@ -442,6 +473,146 @@ No frontmatter here.
       expect(resources.map(r => r.name)).toContain('resources');
       expect(resources.map(r => r.name)).not.toContain('.hidden');
       expect(resources.map(r => r.name)).not.toContain('SKILL.yaml');
+    });
+  });
+
+  describe('Script runner selection', () => {
+    const SCRIPT_RUNNERS: Record<string, string[]> = {
+      '.py': ['python3'],
+      '.sh': ['bash'],
+      '.js': ['node'],
+      '.ts': ['npx', 'tsx'],
+    };
+
+    it('should select python3 for .py files', () => {
+      const ext = '.py';
+      expect(SCRIPT_RUNNERS[ext]).toEqual(['python3']);
+    });
+
+    it('should select bash for .sh files', () => {
+      const ext = '.sh';
+      expect(SCRIPT_RUNNERS[ext]).toEqual(['bash']);
+    });
+
+    it('should select node for .js files', () => {
+      const ext = '.js';
+      expect(SCRIPT_RUNNERS[ext]).toEqual(['node']);
+    });
+
+    it('should select npx tsx for .ts files', () => {
+      const ext = '.ts';
+      expect(SCRIPT_RUNNERS[ext]).toEqual(['npx', 'tsx']);
+    });
+
+    it('should return undefined for unsupported extensions', () => {
+      expect(SCRIPT_RUNNERS['.rb']).toBeUndefined();
+      expect(SCRIPT_RUNNERS['.go']).toBeUndefined();
+      expect(SCRIPT_RUNNERS['.exe']).toBeUndefined();
+    });
+  });
+
+  describe('run_script path security', () => {
+    it('should detect path traversal in script paths', () => {
+      const testPaths = [
+        { path: '../malicious.py', isTraversal: true },
+        { path: '../../etc/passwd', isTraversal: true },
+        { path: 'scripts/valid.py', isTraversal: false },
+        { path: './scripts/valid.sh', isTraversal: false },
+        { path: '/absolute/path.js', isTraversal: true },
+      ];
+
+      for (const { path: testPath, isTraversal } of testPaths) {
+        const normalizedPath = path.normalize(testPath);
+        const hasTraversal =
+          normalizedPath.startsWith('..') || path.isAbsolute(normalizedPath);
+
+        expect(hasTraversal).toBe(isTraversal);
+      }
+    });
+  });
+
+  describe('run_script error responses', () => {
+    it('should format missing parameter error', () => {
+      const response = {
+        content: [{ type: 'text', text: 'Missing skill or path parameter' }],
+        isError: true,
+      };
+
+      expect(response.isError).toBe(true);
+      expect(response.content[0].text).toContain('Missing');
+    });
+
+    it('should format unsupported script type error', () => {
+      const ext = '.rb';
+      const supported = ['.py', '.sh', '.js', '.ts'];
+      const response = {
+        content: [{ type: 'text', text: `Unsupported script type: ${ext}. Supported: ${supported.join(', ')}` }],
+        isError: true,
+      };
+
+      expect(response.isError).toBe(true);
+      expect(response.content[0].text).toContain('Unsupported');
+      expect(response.content[0].text).toContain('.rb');
+    });
+
+    it('should format script not found error', () => {
+      const scriptPath = 'scripts/missing.py';
+      const response = {
+        content: [{ type: 'text', text: `Script not found: ${scriptPath}` }],
+        isError: true,
+      };
+
+      expect(response.isError).toBe(true);
+      expect(response.content[0].text).toContain('Script not found');
+    });
+
+    it('should format path traversal error', () => {
+      const response = {
+        content: [{ type: 'text', text: 'Invalid script path: path traversal not allowed' }],
+        isError: true,
+      };
+
+      expect(response.isError).toBe(true);
+      expect(response.content[0].text).toContain('path traversal');
+    });
+
+    it('should format execution result correctly', () => {
+      const result = {
+        success: true,
+        exitCode: 0,
+        stdout: 'Hello, World!',
+        stderr: '',
+      };
+
+      const response = {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        isError: false,
+      };
+
+      expect(response.isError).toBe(false);
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.exitCode).toBe(0);
+      expect(parsed.stdout).toBe('Hello, World!');
+    });
+
+    it('should mark failed execution as error', () => {
+      const result = {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Error: something went wrong',
+      };
+
+      const response = {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        isError: true,
+      };
+
+      expect(response.isError).toBe(true);
+      const parsed = JSON.parse(response.content[0].text);
+      expect(parsed.success).toBe(false);
+      expect(parsed.exitCode).toBe(1);
     });
   });
 

@@ -1,0 +1,26 @@
+# Adhoc Tools - Full access for investigation and fixes
+name: adhoc-tools
+description: 調査・修正用のフルツールアクセス。Workflowスクリプト失敗時の原因調査や手動修正に使用。
+
+allowedRoles:
+  - adhoc
+  - admin
+
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+  - filesystem__list_directory
+  - filesystem__create_directory
+  - filesystem__move_file
+  - filesystem__search_files
+  - filesystem__get_file_info
+  - git__status
+  - git__log
+  - git__diff
+  - git__add
+  - git__commit
+  - git__push
+  - git__pull
+  - git__branch
+  - git__checkout
+  - shell__run_command
