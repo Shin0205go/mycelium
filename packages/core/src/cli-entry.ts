@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AEGIS CLI - Agent router client with dynamic role switching
+ * MYCELIUM CLI - Agent router client with dynamic role switching
  *
  * Supports two modes:
  * 1. Interactive mode (default) - REPL with role switching
@@ -8,7 +8,7 @@
  */
 
 import { parseArgs, showHelp, showVersion } from './args.js';
-import { AegisCLI } from './cli.js';
+import { MyceliumCLI } from './cli.js';
 import { SubAgent } from './sub-agent.js';
 
 async function main() {
@@ -28,7 +28,7 @@ async function main() {
   // Choose mode
   if (args.interactive) {
     // Interactive REPL mode
-    const cli = new AegisCLI();
+    const cli = new MyceliumCLI();
     await cli.run();
   } else {
     // Sub-agent mode (non-interactive)

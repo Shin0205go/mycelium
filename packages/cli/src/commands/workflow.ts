@@ -2,9 +2,9 @@
  * Workflow command - Run skill-based workflows
  *
  * Usage:
- *   aegis workflow              - Start interactive workflow mode
- *   aegis workflow "task"       - Execute a single workflow task
- *   aegis workflow --list       - List available skills
+ *   mycelium workflow              - Start interactive workflow mode
+ *   mycelium workflow "task"       - Execute a single workflow task
+ *   mycelium workflow --list       - List available skills
  */
 
 import { Command } from 'commander';
@@ -40,7 +40,7 @@ export const workflowCommand = new Command('workflow')
       if (!result.success && result.contextPath) {
         console.log();
         console.log(chalk.yellow('Task failed. Context saved.'));
-        console.log(chalk.cyan(`To investigate: aegis adhoc --context ${result.contextPath}`));
+        console.log(chalk.cyan(`To investigate: mycelium adhoc --context ${result.contextPath}`));
       }
 
       process.exit(result.success ? 0 : 1);

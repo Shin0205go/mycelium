@@ -75,7 +75,7 @@ export function parseArgs(argv: string[] = process.argv.slice(2)): CliArgs {
 
 export function showHelp(): void {
   console.log(`
-AEGIS CLI - Agent Router Client
+MYCELIUM CLI - Agent Router Client
 
 Usage:
   aegis-cli [options]                    # Interactive mode

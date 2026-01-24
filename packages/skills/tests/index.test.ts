@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/skills MCP Server
+ * Unit tests for @mycelium/skills MCP Server
  * Tests skill loading, parsing, and MCP handlers
  */
 

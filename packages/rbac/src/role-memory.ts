@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Role Memory - Transparent Markdown-based Memory per Role
+// MYCELIUM Role Memory - Transparent Markdown-based Memory per Role
 // Inspired by Claude's simple, editable file-based approach
 // ============================================================================
 

@@ -1,5 +1,5 @@
 /**
- * Unit tests for StdioRouter (from @aegis/gateway)
+ * Unit tests for StdioRouter (from @mycelium/gateway)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

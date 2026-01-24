@@ -2,9 +2,9 @@
  * Adhoc command - Full tool access for investigation and fixes
  *
  * Usage:
- *   aegis adhoc                      - Start interactive adhoc mode
- *   aegis adhoc "investigate"        - Execute a single task
- *   aegis adhoc --context <file>     - Load context from workflow failure
+ *   mycelium adhoc                      - Start interactive adhoc mode
+ *   mycelium adhoc "investigate"        - Execute a single task
+ *   mycelium adhoc --context <file>     - Load context from workflow failure
  */
 
 import { Command } from 'commander';

@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/shared
+ * Unit tests for @mycelium/shared
  * Tests error classes and type exports
  */
 

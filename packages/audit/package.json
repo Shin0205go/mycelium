@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "audit",
     "logging",
     "rate-limit"

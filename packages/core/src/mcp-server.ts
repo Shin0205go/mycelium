@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// AEGIS Router - MCP Server Entry Point
+// MYCELIUM Router - MCP Server Entry Point
 // stdio-based MCP server for Claude Desktop / Claude Code integration
 // ============================================================================
 
@@ -17,7 +17,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
-import { AegisRouterCore, createAegisRouterCore, ROUTER_TOOLS } from './router/aegis-router-core.js';
+import { MyceliumRouterCore, createMyceliumRouterCore, ROUTER_TOOLS } from './router/mycelium-router-core.js';
 
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
@@ -26,7 +26,7 @@ const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
 // Path to aegis-cli for sub-agent spawning
-const AEGIS_CLI_PATH = process.env.AEGIS_CLI_PATH ||
+const MYCELIUM_CLI_PATH = process.env.MYCELIUM_CLI_PATH ||
   join(PROJECT_ROOT, 'packages', 'core', 'dist', 'cli-entry.js');
 
 const logger = new Logger('info');
@@ -61,11 +61,11 @@ async function spawnSubAgent(
     logger.info(`📝 Task: ${task.substring(0, 100)}${task.length > 100 ? '...' : ''}`);
     logger.info(`${'='.repeat(60)}\n`);
 
-    const child = spawn('node', [AEGIS_CLI_PATH, ...args], {
+    const child = spawn('node', [MYCELIUM_CLI_PATH, ...args], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        AEGIS_CURRENT_ROLE: role  // Pass role to sub-agent's aegis-router
+        MYCELIUM_CURRENT_ROLE: role  // Pass role to sub-agent's mycelium-router
       },
     });
 
@@ -163,7 +163,7 @@ async function spawnInteractiveSubAgent(
   const escapeForAppleScript = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const escapedRole = escapeForAppleScript(role);
   const escapedPrompt = escapeForAppleScript(initialPrompt);
-  const escapedCliPath = escapeForAppleScript(AEGIS_CLI_PATH);
+  const escapedCliPath = escapeForAppleScript(MYCELIUM_CLI_PATH);
 
   // Build a prompt that instructs Claude to first switch roles, then execute the task
   const fullPrompt = `まず set_role を使って "${role}" ロールに切り替えてください。その後、以下のタスクを実行してください：
@@ -178,7 +178,7 @@ tell application "Terminal"
     activate
 
     -- Open new window with aegis-cli (with role env var)
-    do script "clear && echo '🤖 AEGIS Sub-Agent [${escapedRole}]' && echo '' && AEGIS_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
+    do script "clear && echo '🤖 MYCELIUM Sub-Agent [${escapedRole}]' && echo '' && MYCELIUM_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
 
     -- Wait for CLI to start
     delay 6
@@ -212,12 +212,12 @@ end tell
 }
 
 async function main() {
-  logger.info('Starting AEGIS Router MCP Server...', { projectRoot: PROJECT_ROOT });
+  logger.info('Starting MYCELIUM Router MCP Server...', { projectRoot: PROJECT_ROOT });
 
   // Create MCP Server
   const server = new Server(
     {
-      name: 'aegis-router',
+      name: 'mycelium-router',
       version: '1.0.0',
     },
     {
@@ -229,13 +229,13 @@ async function main() {
   );
 
   // Initialize Router Core with explicit paths
-  const routerCore = createAegisRouterCore(logger, {
+  const routerCore = createMyceliumRouterCore(logger, {
     rolesDir: join(PROJECT_ROOT, 'roles'),
     cwd: PROJECT_ROOT,
   });
 
   // Load server configuration from environment or default config file
-  const configPath = process.env.AEGIS_CONFIG_PATH || join(PROJECT_ROOT, 'config.json');
+  const configPath = process.env.MYCELIUM_CONFIG_PATH || join(PROJECT_ROOT, 'config.json');
   logger.info(`Loading backend servers from: ${configPath}`);
 
   try {
@@ -262,13 +262,13 @@ async function main() {
   await routerCore.startServers();
   logger.info('All backend servers started');
 
-  // Load roles from aegis-skills server
-  logger.info('Loading roles from aegis-skills...');
+  // Load roles from mycelium-skills server
+  logger.info('Loading roles from mycelium-skills...');
   await routerCore.loadRolesFromSkillsServer();
   logger.info('Roles loaded');
 
-  // Auto-switch to role if AEGIS_CURRENT_ROLE is set
-  const currentRoleEnv = process.env.AEGIS_CURRENT_ROLE;
+  // Auto-switch to role if MYCELIUM_CURRENT_ROLE is set
+  const currentRoleEnv = process.env.MYCELIUM_CURRENT_ROLE;
   if (currentRoleEnv) {
     logger.info(`Auto-switching to role from env: ${currentRoleEnv}`);
     try {
@@ -358,7 +358,7 @@ async function main() {
     }
 
     // Handle spawn_sub_agent
-    if (name === 'aegis-router__spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
+    if (name === 'mycelium-router__spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
       logger.info(`🚀 Spawning sub-agent`);
       const { role, task, model, interactive } = args as {
         role: string;
@@ -418,7 +418,7 @@ async function main() {
     }
 
     // Handle list_roles
-    if (name === 'aegis-router__list_roles' || name.endsWith('__list_roles')) {
+    if (name === 'mycelium-router__list_roles' || name.endsWith('__list_roles')) {
       logger.info(`✅ Handling list_roles`);
       const roles = routerCore.listRoles();
       return {
@@ -558,7 +558,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  logger.info('AEGIS Router MCP Server running on stdio');
+  logger.info('MYCELIUM Router MCP Server running on stdio');
 }
 
 main().catch((error) => {

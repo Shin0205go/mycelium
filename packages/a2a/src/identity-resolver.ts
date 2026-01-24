@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS A2A - Identity Resolver
+// MYCELIUM A2A - Identity Resolver
 // A2A Zero-Trust identity resolution based on Agent Card skills
 // ============================================================================
 
@@ -434,7 +434,7 @@ export class IdentityResolver {
   }
 
   // ============================================================================
-  // Skill-Based Identity Loading from Aegis Skills
+  // Skill-Based Identity Loading from Mycelium Skills
   // ============================================================================
 
   /**

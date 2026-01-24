@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "mcp",
     "skills",
     "rbac",

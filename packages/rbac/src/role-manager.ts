@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS RBAC - Role Manager
+// MYCELIUM RBAC - Role Manager
 // Manages role definitions and permissions (skill-driven architecture)
 // ============================================================================
 

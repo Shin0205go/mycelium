@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// AEGIS Skills - MCP Server for Skill Definitions
+// MYCELIUM Skills - MCP Server for Skill Definitions
 // Provides skill manifests with declarative role permissions
 // ============================================================================
 
@@ -182,7 +182,7 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
           }
         }
 
-        // Normalize field names (support official + AEGIS formats)
+        // Normalize field names (support official + MYCELIUM formats)
         const skillName = manifest.name || manifest.id;
         const skillId = manifest.id || manifest.name;
         const allowedRoles = manifest.allowedRoles || manifest['allowed-roles'] || [];
@@ -218,7 +218,7 @@ async function main() {
   // Get skills directory from args or default
   const skillsDir = process.argv[2] || path.join(__dirname, '..', 'skills');
 
-  console.error(`AEGIS Skills Server starting...`);
+  console.error(`MYCELIUM Skills Server starting...`);
   console.error(`Skills directory: ${skillsDir}`);
 
   // Load skills
@@ -228,7 +228,7 @@ async function main() {
   // Create MCP Server
   const server = new Server(
     {
-      name: 'aegis-skills',
+      name: 'mycelium-skills',
       version: '1.0.0',
     },
     {
@@ -643,7 +643,7 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('AEGIS Skills Server running on stdio');
+  console.error('MYCELIUM Skills Server running on stdio');
 }
 
 main().catch((error) => {

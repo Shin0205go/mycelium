@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS - ロガーユーティリティ
+// MYCELIUM - ロガーユーティリティ
 // ============================================================================
 
 import winston from 'winston';
@@ -91,13 +91,13 @@ export class Logger {
     }
     
     if (isStdioMode) {
-      console.error(`[AEGIS CRITICAL] ${message}`, metadata ? JSON.stringify(metadata) : '');
+      console.error(`[MYCELIUM CRITICAL] ${message}`, metadata ? JSON.stringify(metadata) : '');
     } else {
       this.error(message, metadata);
     }
   }
 
-  // AEGIS専用ログメソッド
+  // MYCELIUM専用ログメソッド
   decision(agentId: string, decision: string, resource: string, reason: string) {
     this.info('Access Decision', {
       type: 'DECISION',

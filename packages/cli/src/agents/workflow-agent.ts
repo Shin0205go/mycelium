@@ -37,25 +37,25 @@ interface ScriptResult {
 const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator. Use the available tools to complete user requests.`;
 
 /**
- * Create MCP server config via aegis-router with orchestrator role
- * This ensures RBAC is applied - only aegis-skills tools are accessible
+ * Create MCP server config via mycelium-router with orchestrator role
+ * This ensures RBAC is applied - only mycelium-skills tools are accessible
  */
 function createWorkflowMcpConfig(): Record<string, unknown> {
   const projectRoot = process.cwd();
 
-  const routerPath = process.env.AEGIS_ROUTER_PATH ||
+  const routerPath = process.env.MYCELIUM_ROUTER_PATH ||
     join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-  const configPath = process.env.AEGIS_CONFIG_PATH ||
+  const configPath = process.env.MYCELIUM_CONFIG_PATH ||
     join(projectRoot, 'config.json');
 
   return {
-    'aegis-router': {
+    'mycelium-router': {
       command: 'node',
       args: [routerPath],
       env: {
-        AEGIS_CONFIG_PATH: configPath,
-        // Use orchestrator role - restricted to aegis-skills tools only
-        AEGIS_CURRENT_ROLE: 'orchestrator',
+        MYCELIUM_CONFIG_PATH: configPath,
+        // Use orchestrator role - restricted to mycelium-skills tools only
+        MYCELIUM_CURRENT_ROLE: 'orchestrator',
       },
     },
   };
@@ -78,7 +78,7 @@ export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Re
   return {
     tools: [],
     // Only allow MCP tools - disable all built-in tools for RBAC enforcement
-    allowedTools: ['mcp__aegis-router__*'],
+    allowedTools: ['mcp__mycelium-router__*'],
     env: envToUse,
     mcpServers: createWorkflowMcpConfig(),
     model: config.model || 'claude-sonnet-4-5-20250929',
@@ -244,7 +244,7 @@ ${chalk.bold('Commands:')}
               console.log(block.text);
             } else if (block.type === 'tool_use') {
               // Track run_script calls
-              if (block.name === 'aegis-skills__run_script') {
+              if (block.name === 'mycelium-skills__run_script') {
                 this.lastScriptCall = {
                   skillId: (block.input as any)?.skill || '',
                   scriptPath: (block.input as any)?.path || '',
@@ -307,7 +307,7 @@ ${chalk.bold('Commands:')}
 
     if (onFailure === 'prompt') {
       console.log(chalk.cyan('To investigate, run:'));
-      console.log(chalk.white(`  aegis adhoc --context ${contextPath}`));
+      console.log(chalk.white(`  mycelium adhoc --context ${contextPath}`));
       console.log();
     } else if (onFailure === 'auto') {
       console.log(chalk.cyan('Auto-escalating to Adhoc agent...'));
@@ -334,7 +334,7 @@ ${chalk.bold('Commands:')}
             if (block.type === 'text') {
               resultText += block.text;
             } else if (block.type === 'tool_use') {
-              if (block.name === 'aegis-skills__run_script') {
+              if (block.name === 'mycelium-skills__run_script') {
                 this.lastScriptCall = {
                   skillId: (block.input as any)?.skill || '',
                   scriptPath: (block.input as any)?.path || '',

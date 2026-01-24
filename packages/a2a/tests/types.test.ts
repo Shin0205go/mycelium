@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/a2a types
+ * Unit tests for @mycelium/a2a types
  * Verifies type exports and interface structures
  */
 

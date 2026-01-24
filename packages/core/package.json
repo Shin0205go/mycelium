@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "aegis": "./dist/cli-entry.js",
-    "aegis-router": "./dist/mcp-server.js"
+    "mycelium": "./dist/cli-entry.js",
+    "mycelium-router": "./dist/mcp-server.js"
   },
   "type": "module",
   "scripts": {
@@ -19,7 +19,7 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "core",
     "mcp",
     "agent",

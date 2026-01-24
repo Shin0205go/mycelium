@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Gateway - MCP stdio Router
+// MYCELIUM Gateway - MCP stdio Router
 // Manages and routes to multiple upstream MCP servers via stdio
 // ============================================================================
 
@@ -55,7 +55,7 @@ export class StdioRouter extends EventEmitter {
    */
   loadServersFromDesktopConfig(config: { mcpServers: Record<string, MCPServerConfig> }): void {
     Object.entries(config.mcpServers).forEach(([name, serverConfig]) => {
-      // Exclude AEGIS proxy itself
+      // Exclude MYCELIUM proxy itself
       if (name !== 'aegis-proxy' && name !== 'aegis') {
         this.addServerFromConfig(name, serverConfig);
       }
@@ -248,7 +248,7 @@ export class StdioRouter extends EventEmitter {
                 params: {
                   protocolVersion: LATEST_PROTOCOL_VERSION,
                   clientInfo: {
-                    name: 'AEGIS Policy Enforcement Proxy',
+                    name: 'MYCELIUM Policy Enforcement Proxy',
                     version: '1.0.0'
                   },
                   capabilities: {}

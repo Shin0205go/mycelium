@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Gateway - MCP Proxy Layer
+// MYCELIUM Gateway - MCP Proxy Layer
 // Manages connections to upstream MCP servers
 // ============================================================================
 

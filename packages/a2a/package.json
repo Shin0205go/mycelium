@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "keywords": [
-    "aegis",
+    "mycelium",
     "a2a",
     "agent",
     "identity",

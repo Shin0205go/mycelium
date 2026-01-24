@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS RBAC - Role-Based Access Control
+// MYCELIUM RBAC - Role-Based Access Control
 // Skill-driven role and tool permission management
 // ============================================================================
 

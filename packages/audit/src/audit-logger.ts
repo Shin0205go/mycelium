@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Audit - Audit Logger
+// MYCELIUM Audit - Audit Logger
 // Records all tool access attempts for compliance and debugging
 // ============================================================================
 

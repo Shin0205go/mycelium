@@ -1,7 +1,7 @@
 /**
  * Adhoc Agent - Full tool access for investigation and fixes
  *
- * This agent has access to all tools through aegis-router:
+ * This agent has access to all tools through mycelium-router:
  * - filesystem operations
  * - git operations
  * - shell commands
@@ -60,25 +60,25 @@ Please investigate this failure and help the user understand what went wrong.`;
 }
 
 /**
- * Create MCP server config for full tool access via aegis-router
+ * Create MCP server config for full tool access via mycelium-router
  */
 function createAdhocMcpConfig(): Record<string, unknown> {
   const projectRoot = process.cwd();
 
   // Try monorepo path first, then installed package
-  const routerPath = process.env.AEGIS_ROUTER_PATH ||
+  const routerPath = process.env.MYCELIUM_ROUTER_PATH ||
     join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-  const configPath = process.env.AEGIS_CONFIG_PATH ||
+  const configPath = process.env.MYCELIUM_CONFIG_PATH ||
     join(projectRoot, 'config.json');
 
   return {
-    'aegis-router': {
+    'mycelium-router': {
       command: 'node',
       args: [routerPath],
       env: {
-        AEGIS_CONFIG_PATH: configPath,
+        MYCELIUM_CONFIG_PATH: configPath,
         // Use adhoc role - has filesystem, git, shell access for investigation
-        AEGIS_CURRENT_ROLE: 'adhoc',
+        MYCELIUM_CURRENT_ROLE: 'adhoc',
       },
     },
   };
@@ -108,7 +108,7 @@ export function createAdhocAgentOptions(
   return {
     tools: [],
     // Only allow MCP tools - disable all built-in tools for RBAC enforcement
-    allowedTools: ['mcp__aegis-router__*'],
+    allowedTools: ['mcp__mycelium-router__*'],
     env: envToUse,
     mcpServers: createAdhocMcpConfig(),
     model: config.model || 'claude-sonnet-4-5-20250929',

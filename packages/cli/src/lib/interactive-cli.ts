@@ -1,5 +1,5 @@
 /**
- * AEGIS Interactive CLI - REPL with role switching and session management
+ * MYCELIUM Interactive CLI - REPL with role switching and session management
  */
 
 import * as readline from 'readline';
@@ -54,14 +54,14 @@ export class InteractiveCLI {
     const projectRoot = process.cwd();
     // Support both monorepo and installed package paths
     const routerPath = options.routerPath ||
-      process.env.AEGIS_ROUTER_PATH ||
+      process.env.MYCELIUM_ROUTER_PATH ||
       join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
     const configPath = options.configPath ||
-      process.env.AEGIS_CONFIG_PATH ||
+      process.env.MYCELIUM_CONFIG_PATH ||
       join(projectRoot, 'config.json');
 
     this.mcp = new MCPClient('node', [routerPath], {
-      AEGIS_CONFIG_PATH: configPath
+      MYCELIUM_CONFIG_PATH: configPath
     });
 
     // Initialize session store
@@ -171,7 +171,7 @@ export class InteractiveCLI {
       return;
     }
 
-    console.log(chalk.gray('Connecting to AEGIS Router...'));
+    console.log(chalk.gray('Connecting to MYCELIUM Router...'));
 
     this.mcp.on('log', () => {
       // Suppress logs during normal operation
@@ -184,7 +184,7 @@ export class InteractiveCLI {
 
     try {
       await this.mcp.connect();
-      console.log(chalk.green('✓ Connected to AEGIS Router'));
+      console.log(chalk.green('✓ Connected to MYCELIUM Router'));
     } catch (error) {
       console.error(chalk.red('Failed to connect:'), error);
       process.exit(1);
@@ -256,7 +256,7 @@ export class InteractiveCLI {
         // Call tool via MCP (tool may be prefixed with server name)
         const toolName = cmd.toolName.includes('__')
           ? cmd.toolName
-          : `aegis-skills__${cmd.toolName}`;
+          : `mycelium-skills__${cmd.toolName}`;
 
         const result = await this.mcp.callTool(toolName, toolArgs) as {
           content?: Array<{ type?: string; text?: string }>;
@@ -288,7 +288,7 @@ export class InteractiveCLI {
 
         console.log(chalk.gray(`\n  Running script ${cmd.scriptPath}...`));
 
-        const result = await this.mcp.callTool('aegis-skills__run_script', {
+        const result = await this.mcp.callTool('mycelium-skills__run_script', {
           skill: cmd.skillId,
           path: cmd.scriptPath,
           args: args,
@@ -973,7 +973,7 @@ export class InteractiveCLI {
           if (isToolUseMessage(msg)) {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
-              const shortName = tool.name.replace('mcp__aegis-router__', '');
+              const shortName = tool.name.replace('mcp__mycelium-router__', '');
               console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
               if (shortName === 'set_role') {
                 const input = tool.input as { role_id?: string };

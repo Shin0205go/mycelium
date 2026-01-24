@@ -1,5 +1,5 @@
 /**
- * Unit tests for @aegis/gateway
+ * Unit tests for @mycelium/gateway
  * Tests MCP gateway/proxy functionality
  */
 

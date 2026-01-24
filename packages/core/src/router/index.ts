@@ -1,12 +1,12 @@
 // ============================================================================
-// AEGIS Router Module
+// MYCELIUM Router Module
 // Exports for role-based routing and tool management
 // ============================================================================
 
 // Core router
-export { AegisRouterCore, createAegisRouterCore } from './aegis-router-core.js';
+export { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
 
-// Re-export from @aegis/rbac
+// Re-export from @mycelium/rbac
 export {
   RoleManager,
   createRoleManager,
@@ -20,7 +20,7 @@ export {
   type SaveMemoryOptions
 } from '@mycelium/rbac';
 
-// Re-export from @aegis/a2a
+// Re-export from @mycelium/a2a
 export {
   IdentityResolver,
   createIdentityResolver
@@ -37,7 +37,7 @@ export {
 // Router adapter for proxy integration
 export { RouterAdapter, createRouterAdapter } from './router-adapter.js';
 
-// Audit logging - re-export from @aegis/audit
+// Audit logging - re-export from @mycelium/audit
 export {
   AuditLogger,
   createAuditLogger,
@@ -46,7 +46,7 @@ export {
   type AuditStats
 } from '@mycelium/audit';
 
-// Rate limiting - re-export from @aegis/audit
+// Rate limiting - re-export from @mycelium/audit
 export {
   RateLimiter,
   createRateLimiter,

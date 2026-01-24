@@ -1,7 +1,7 @@
 /**
  * Role Switching Tests
  *
- * Tests for AegisRouterCore role switching functionality
+ * Tests for MyceliumRouterCore role switching functionality
  * Verifies that tools and skills change correctly when switching roles
  */
 

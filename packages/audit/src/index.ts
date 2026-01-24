@@ -1,5 +1,5 @@
 // ============================================================================
-// AEGIS Audit - Logging and Rate Limiting
+// MYCELIUM Audit - Logging and Rate Limiting
 // Compliance logging and quota management
 // ============================================================================
 

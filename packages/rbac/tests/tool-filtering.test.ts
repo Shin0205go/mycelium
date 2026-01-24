@@ -159,7 +159,7 @@ describe('Tool Filtering by Role (Skill-Driven)', () => {
     });
 
     it('should allow set_role system tool', () => {
-      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'aegis-router')).toBe(true);
+      expect(roleManager.isToolAllowedForRole('orchestrator', 'set_role', 'mycelium-router')).toBe(true);
     });
   });
 
@@ -318,7 +318,7 @@ describe('Pattern Matching (Skill-Driven)', () => {
     it('should always allow set_role regardless of role', () => {
       const allRoles = ['orchestrator', 'frontend', 'security', 'guest', 'devops', 'db_admin', 'formatter'];
       for (const role of allRoles) {
-        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'aegis-router')).toBe(true);
+        expect(roleManager.isToolAllowedForRole(role, 'set_role', 'mycelium-router')).toBe(true);
       }
     });
   });

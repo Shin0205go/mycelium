@@ -1,6 +1,6 @@
 // ============================================================================
-// AEGIS Shared Types
-// Common types used across all AEGIS packages
+// MYCELIUM Shared Types
+// Common types used across all MYCELIUM packages
 // ============================================================================
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -426,7 +426,7 @@ export interface ThinkingSignature {
 
 /**
  * Tool call context with optional thinking signature.
- * Used when routing tool calls through AEGIS.
+ * Used when routing tool calls through MYCELIUM.
  */
 export interface ToolCallContext {
   /** Thinking signature from the model, if available */

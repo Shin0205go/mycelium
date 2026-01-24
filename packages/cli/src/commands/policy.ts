@@ -1,5 +1,5 @@
 // ============================================================================
-// aegis policy - Policy verification and testing
+// mycelium policy - Policy verification and testing
 // ============================================================================
 
 import { Command } from 'commander';
@@ -127,7 +127,7 @@ async function loadSkills(skillsDir: string): Promise<SkillFrontmatter[]> {
 export const policyCommand = new Command('policy')
   .description('Policy verification and testing');
 
-// aegis policy check --role <role>
+// mycelium policy check --role <role>
 policyCommand
   .command('check')
   .description('Check effective permissions for a role')
@@ -144,7 +144,7 @@ policyCommand
 
       if (skills.length === 0) {
         console.log(chalk.yellow('No skills found.'));
-        console.log(chalk.cyan('Initialize project: ') + chalk.white('aegis init'));
+        console.log(chalk.cyan('Initialize project: ') + chalk.white('mycelium init'));
         return;
       }
 
@@ -262,7 +262,7 @@ policyCommand
     }
   });
 
-// aegis policy test --agent <name> [--skills <skills>] [--time <datetime>]
+// mycelium policy test --agent <name> [--skills <skills>] [--time <datetime>]
 policyCommand
   .command('test')
   .description('Test A2A identity resolution')
@@ -281,7 +281,7 @@ policyCommand
 
       if (skills.length === 0) {
         console.log(chalk.yellow('No skills found.'));
-        console.log(chalk.cyan('Initialize project: ') + chalk.white('aegis init'));
+        console.log(chalk.cyan('Initialize project: ') + chalk.white('mycelium init'));
         return;
       }
 
@@ -365,7 +365,7 @@ policyCommand
     }
   });
 
-// aegis policy roles
+// mycelium policy roles
 policyCommand
   .command('roles')
   .description('List all available roles')
