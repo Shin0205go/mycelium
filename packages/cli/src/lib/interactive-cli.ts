@@ -39,10 +39,6 @@ export class InteractiveCLI {
     '/tools',
     '/status',
     '/model',
-    '/save',
-    '/sessions',
-    '/resume',
-    '/compress',
     '/help',
     '/quit'
   ];
@@ -600,32 +596,20 @@ export class InteractiveCLI {
 
   private showHelp(): void {
     console.log(chalk.cyan('\nCommands:\n'));
-    console.log(chalk.gray('  Roles & Tools:'));
+    console.log(chalk.gray('  Built-in:'));
     console.log('  ' + chalk.bold('/roles') + '           Select and switch roles');
     console.log('  ' + chalk.bold('/skills') + '          List available skills');
     console.log('  ' + chalk.bold('/tools') + '           List available tools');
     console.log('  ' + chalk.bold('/model <name>') + '    Change model');
-    console.log();
-    console.log(chalk.gray('  Sessions:'));
-    console.log('  ' + chalk.bold('/save [name]') + '     Save current session');
-    console.log('  ' + chalk.bold('/sessions') + '        List saved sessions');
-    console.log('  ' + chalk.bold('/resume [id]') + '     Resume a saved session');
-    console.log('  ' + chalk.bold('/compress') + '        Compress current session');
-    console.log();
-    console.log(chalk.gray('  General:'));
     console.log('  ' + chalk.bold('/status') + '          Show current status');
     console.log('  ' + chalk.bold('/help') + '            Show this help');
     console.log('  ' + chalk.bold('/quit') + '            Exit');
 
-    // Show dynamic skill commands (excluding session commands which are built-in)
-    const sessionCommands = new Set(['save', 'sessions', 'resume', 'compress']);
-    const dynamicCommands = Array.from(this.skillCommands.values())
-      .filter(cmd => !sessionCommands.has(cmd.command));
-
-    if (dynamicCommands.length > 0) {
+    // Show dynamic skill commands
+    if (this.skillCommands.size > 0) {
       // Group commands by skill
       const bySkill = new Map<string, SkillCommandInfo[]>();
-      for (const cmd of dynamicCommands) {
+      for (const cmd of this.skillCommands.values()) {
         const existing = bySkill.get(cmd.skillName) || [];
         existing.push(cmd);
         bySkill.set(cmd.skillName, existing);
@@ -1118,23 +1102,6 @@ export class InteractiveCLI {
             } else {
               this.showModels();
             }
-            break;
-
-          // Built-in session commands (using local SessionStore)
-          case 'save':
-            await this.saveSession(args[0]);
-            break;
-
-          case 'sessions':
-            await this.listSessions();
-            break;
-
-          case 'resume':
-            await this.resumeSession(args[0]);
-            break;
-
-          case 'compress':
-            await this.compressSession();
             break;
 
           case 'help':
