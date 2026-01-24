@@ -107,6 +107,8 @@ export function createAdhocAgentOptions(
 
   return {
     tools: [],
+    // Only allow MCP tools - disable all built-in tools for RBAC enforcement
+    allowedTools: ['mcp__aegis-router__*'],
     env: envToUse,
     mcpServers: createAdhocMcpConfig(),
     model: config.model || 'claude-sonnet-4-5-20250929',

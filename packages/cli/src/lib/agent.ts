@@ -58,6 +58,9 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
 
   return {
     tools: [],
+    // Only allow MCP tools from aegis-router - disable all built-in tools
+    // This ensures all tool access goes through RBAC
+    allowedTools: ['mcp__aegis-router__*'],
     env: envToUse,
     mcpServers: {
       'aegis-router': {
