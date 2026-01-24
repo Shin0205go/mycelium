@@ -10,6 +10,11 @@
       "args": ["packages/session/dist/mcp-server.js", "sessions"],
       "comment": "Session MCP Server - save, resume, compress conversations"
     },
+    "mycelium-sandbox": {
+      "command": "node",
+      "args": ["packages/sandbox/dist/mcp-server.js"],
+      "comment": "Sandbox MCP Server - secure code execution with OS-level isolation"
+    },
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
