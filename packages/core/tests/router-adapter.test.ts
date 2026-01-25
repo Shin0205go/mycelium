@@ -69,10 +69,11 @@ describe('RouterAdapter', () => {
       expect(adapter.checkToolAccess('any_tool')).toBeNull();
     });
 
-    it('should allow tools when no role set', async () => {
+    it('should deny tools when enabled but no role set', async () => {
       await adapter.initialize();
       adapter.enable();
-      expect(adapter.checkToolAccess('some_tool')).toBeNull();
+      // When RBAC is enabled, tools are denied if no role is set
+      expect(adapter.checkToolAccess('some_tool')).not.toBeNull();
     });
   });
 

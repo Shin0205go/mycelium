@@ -113,7 +113,7 @@ export class StdioRouter extends EventEmitter {
       const proc = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ...env },
-        cwd: server.config.cwd || this.cwd,
+        cwd: this.cwd,
       });
 
       server.process = proc;
@@ -131,7 +131,7 @@ export class StdioRouter extends EventEmitter {
 
       // Handle process events
       proc.on('error', (err) => {
-        this.logger.error(`[${name}] process error:`, err);
+        this.logger.error(`[${name}] process error: ${err.message}`);
         server.connected = false;
       });
 
@@ -147,7 +147,7 @@ export class StdioRouter extends EventEmitter {
       this.logger.info(`Server started: ${name}`);
 
     } catch (error) {
-      this.logger.error(`Failed to start server ${name}:`, error);
+      this.logger.error(`Failed to start server ${name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

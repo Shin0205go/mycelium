@@ -14,12 +14,9 @@ import type {
   RemoteInstruction,
   ToolInfo,
   SkillManifest,
-  RoleManifest
+  RoleManifest,
+  BaseSkillDefinition as SkillDefinition
 } from '@mycelium/shared';
-
-// Import A2A types (merged from @mycelium/a2a)
-// SkillDefinition extends BaseSkillDefinition with identity config
-import type { SkillDefinition } from '../rbac/identity-resolver.js';
 
 // ============================================================================
 // Role Configuration File Format
