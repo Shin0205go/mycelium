@@ -76,6 +76,26 @@ export interface SkillCommandInfo {
   usage?: string;
 }
 
+export interface RouterContext {
+  role: {
+    id: string;
+    name: string;
+    description: string;
+  } | null;
+  systemInstruction: string | null;
+  availableTools: Array<{
+    name: string;
+    source: string;
+    description?: string;
+  }>;
+  availableServers: string[];
+  metadata: {
+    sessionId: string;
+    roleSwitchCount: number;
+    lastRoleSwitch: string | null;
+  };
+}
+
 export interface ListCommandsResult {
   commands: SkillCommandInfo[];
 }
@@ -276,6 +296,28 @@ export class MCPClient extends EventEmitter {
       return JSON.parse(text);
     } catch {
       throw new Error(`Failed to switch role: ${text}`);
+    }
+  }
+
+  async getContext(): Promise<RouterContext> {
+    const result = await this.sendRequest('tools/call', {
+      name: 'mycelium-router__get_context',
+      arguments: {}
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
+
+    const text = result?.content?.[0]?.text;
+    if (!text) {
+      throw new Error('Failed to get context: no response');
+    }
+
+    if (result.isError || text.startsWith('Error:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to get context: ${text}`);
     }
   }
 

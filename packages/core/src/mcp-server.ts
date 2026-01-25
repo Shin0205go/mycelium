@@ -346,6 +346,7 @@ async function main() {
     // Check tool access (skip for router system tools - always available)
     const ROUTER_SYSTEM_TOOLS = [
       'set_role',
+      'mycelium-router__get_context',
       'mycelium-router__list_roles',
       'mycelium-router__spawn_sub_agent'
     ];
@@ -417,6 +418,28 @@ async function main() {
         }
       } catch (error: any) {
         logger.error('Sub-agent spawn failed:', error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle get_context
+    if (name === 'mycelium-router__get_context' || name.endsWith('__get_context')) {
+      logger.info(`✅ Handling get_context`);
+      try {
+        const context = routerCore.getContext();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(context, null, 2),
+            },
+          ],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to get context:`, error);
         return {
           content: [{ type: 'text', text: `Error: ${error.message}` }],
           isError: true,

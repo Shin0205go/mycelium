@@ -36,6 +36,14 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export const ROUTER_TOOLS: Tool[] = [
   {
+    name: 'mycelium-router__get_context',
+    description: 'Get current router context including active role, system instruction, available tools count, and connected servers. Use this to query current state without switching roles.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
     name: 'mycelium-router__list_roles',
     description: 'Get a list of available roles with their skills and capabilities',
     inputSchema: {
@@ -1404,6 +1412,49 @@ export class MyceliumRouterCore extends EventEmitter {
       systemInstruction: this.state.currentRole?.systemInstruction ?? null,
       visibleToolsCount: this.toolVisibility.getVisibleCount(),
       connectedServersCount: this.state.connectedServers.size
+    };
+  }
+
+  /**
+   * Get detailed context for CLI and external tools
+   * Returns current role, manifest-like data, and available resources
+   */
+  getContext(): {
+    role: {
+      id: string;
+      name: string;
+      description: string;
+    } | null;
+    systemInstruction: string | null;
+    availableTools: Array<{ name: string; source: string; description?: string }>;
+    availableServers: string[];
+    metadata: {
+      sessionId: string;
+      roleSwitchCount: number;
+      lastRoleSwitch: Date | null;
+    };
+  } {
+    const role = this.state.currentRole;
+    const visibleToolsInfo = this.toolVisibility.getVisibleToolsInfo();
+
+    return {
+      role: role ? {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+      } : null,
+      systemInstruction: role?.systemInstruction ?? null,
+      availableTools: visibleToolsInfo.map(info => ({
+        name: info.tool.name,
+        source: info.sourceServer,
+        description: info.tool.description,
+      })),
+      availableServers: Array.from(this.state.connectedServers.keys()),
+      metadata: {
+        sessionId: this.state.metadata.sessionId,
+        roleSwitchCount: this.state.metadata.roleSwitchCount,
+        lastRoleSwitch: this.state.metadata.lastRoleSwitch ?? null,
+      },
     };
   }
 
