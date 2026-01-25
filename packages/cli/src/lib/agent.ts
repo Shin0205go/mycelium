@@ -4,6 +4,7 @@
  */
 
 import { join } from 'path';
+import { existsSync } from 'fs';
 
 export interface AgentConfig {
   model?: string;
@@ -33,8 +34,14 @@ export interface AgentResult {
  */
 export function createAgentOptions(config: AgentConfig = {}): Record<string, unknown> {
   const projectRoot = process.cwd();
+
+  // Detect monorepo vs installed package
+  const monorepoPath = join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
+  const installedPath = join(projectRoot, 'node_modules', '@mycelium', 'core', 'dist', 'mcp-server.js');
+
+  // Use monorepo path if it exists, otherwise use installed package path
   const MYCELIUM_ROUTER_PATH = process.env.MYCELIUM_ROUTER_PATH ||
-    join(projectRoot, 'node_modules', '@mycelium', 'core', 'dist', 'mcp-server.js');
+    (existsSync(monorepoPath) ? monorepoPath : installedPath);
   const MYCELIUM_CONFIG_PATH = process.env.MYCELIUM_CONFIG_PATH ||
     join(projectRoot, 'config.json');
 
