@@ -4,7 +4,19 @@ This document provides guidance for AI assistants working with the Mycelium-CLI 
 
 ## Project Overview
 
-Mycelium-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router** that integrates Claude Agent SDK with Model Context Protocol (MCP) servers. It provides dynamic role-based tool filtering and access control for AI agents.
+Mycelium-CLI is a **skill-driven autonomous AI agent system** that integrates Claude Agent SDK with Model Context Protocol (MCP) servers. It provides dynamic role-based tool filtering to improve agent **focus**, **context management**, and **reproducibility**.
+
+### Why Mycelium?
+
+従来のコーディングエージェント（Claude Code、Cursor等）の課題：
+- **なんでもできる**: 全ツールにアクセス可能で、タスクに不要なツールも使える
+- **コンテキストが汚れる**: 無関係な操作でコンテキストが肥大化
+- **再現性が低い**: 同じプロンプトでも異なる結果になりやすい
+
+Myceliumのアプローチ：
+- **スキルベースの制限**: エージェントは必要なツールのみにアクセス
+- **クリーンなコンテキスト**: タスクに関連する操作のみ実行
+- **高い再現性**: 制限されたツールセットで一貫した動作
 
 ### Key Concepts
 
@@ -129,8 +141,14 @@ Myceliumは2つの実行モードを提供します：**Workflow**（制限付�
 | **ツールアクセス** | スキルスクリプトのみ | 全ツール |
 | **用途** | 定型タスク、自動化 | 調査、デバッグ、修正 |
 | **RBAC Role** | `orchestrator` | `adhoc` |
-| **リスク** | 低（制限付き） | 高（全アクセス） |
-| **承認フロー** | 不要 | 将来的に危険操作で必要 |
+| **コンテキスト** | クリーン（制限付き） | 汚れやすい（全アクセス） |
+| **再現性** | 高い（制限されたツールセット） | 低い（自由度が高い） |
+| **承認フロー** | 不要 | 危険操作時に必要 |
+
+**Workflow優先の設計思想**:
+- 通常タスクは必ずWorkflow Agentで実行（制限付き、再現性高い）
+- Adhoc Agentは調査・デバッグ専用（例外的な使用）
+- 失敗時のみAdhocにエスカレーション（段階的アクセス拡大）
 
 #### Workflow → Adhoc Handoff
 
@@ -680,37 +698,33 @@ npx vitest --watch
 - **E2E tests**: Full flow with mycelium-skills server (`packages/core/tests/real-e2e.test.ts`)
 - **CLI tests**: Workflow/Adhoc agents, context handling (`packages/cli/tests/`)
 
-### Security Testing Guidelines
+### RBAC Enforcement Testing
 
-セキュリティ製品であるMYCELIUMでは、以下のセキュリティテストパターンを採用しています：
+MYCELIUMのスキルベース制限が正しく機能することを確認するテストパターン：
 
-**原則**: Routerのコードを書いた後、許可されていないロールで危険なツールを呼び出し、正しく拒否されることを確認する
+**原則**: ロールに許可されていないツールが正しくフィルタリングされ、エージェントの動作が制限されることを確認する
 
-**推奨セキュリティテストケース**:
+**推奨テストケース**:
 
 | Category | Description | Example Test |
 |----------|-------------|--------------|
-| Unauthorized Role Access | 権限のないロールが危険なツールにアクセス | `guest → delete_file` |
-| Memory Access Bypass | メモリ権限のないロールがメモリ操作 | `guest → save_memory` |
-| Pattern Matching Exploits | ツール名の操作による権限バイパス | `read_file_and_delete` |
-| Server Access Control | 許可されていないサーバーへのアクセス | `filesystem_user → database__query` |
+| Tool Filtering | スキルに定義されていないツールへのアクセス制限 | `orchestrator → filesystem__write_file` |
+| Memory Isolation | メモリ権限のないロールがメモリ操作できない | `guest → save_memory` |
+| Server Restriction | 許可されていないサーバーのツールへのアクセス制限 | `frontend → database__query` |
+| Skill Boundary | ワークフローエージェントがスキルスクリプトのみ実行可能 | `workflow → shell__exec` |
 
-**セキュリティテストの例**:
+**RBAC制限テストの例**:
 ```typescript
-// Test: Role without memory grant cannot save memory
-it('should deny memory access for role without grant', async () => {
-  // Set role without memory permissions
-  router.setRole({ role: 'guest' });
+// Test: Workflow agent can only use skill tools
+it('should restrict workflow agent to skill tools only', async () => {
+  // Workflow agent with orchestrator role
+  const visibleTools = toolVisibility.getVisibleTools();
 
-  // Attempt to save memory
-  const result = await router.routeRequest({
-    method: 'tools/call',
-    params: { name: 'save_memory', arguments: { content: 'test' } }
-  });
+  // Should only see mycelium-skills tools
+  expect(visibleTools.every(t => t.name.startsWith('mycelium-skills__'))).toBe(true);
 
-  // Should return error
-  expect(result.result.isError).toBe(true);
-  expect(result.result.content[0].text).toContain('does not have memory access');
+  // Should NOT see filesystem tools
+  expect(visibleTools.find(t => t.name.startsWith('filesystem__'))).toBeUndefined();
 });
 ```
 
