@@ -48,6 +48,19 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     envToUse = envWithoutApiKey as Record<string, string>;
   }
 
+  // Pass through Claude Code environment variables for OAuth authentication
+  const claudeCodeEnvVars = [
+    'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR',
+    'CLAUDE_CODE_SESSION_ID',
+    'CLAUDE_CODE_CONTAINER_ID',
+    'CLAUDECODE',
+  ];
+  for (const key of claudeCodeEnvVars) {
+    if (process.env[key]) {
+      envToUse[key] = process.env[key]!;
+    }
+  }
+
   // Build mycelium-router env with optional role
   const routerEnv: Record<string, string> = {
     MYCELIUM_CONFIG_PATH
@@ -55,6 +68,11 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
   if (config.currentRole) {
     routerEnv.MYCELIUM_CURRENT_ROLE = config.currentRole;
   }
+
+  // Check for OAuth token file descriptor (used by Claude Code)
+  const oauthFd = process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+    ? parseInt(process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, 10)
+    : undefined;
 
   return {
     tools: [],
@@ -76,7 +94,9 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     allowDangerouslySkipPermissions: true,
     maxTurns: config.maxTurns || 50,
     includePartialMessages: config.includePartialMessages ?? true,
-    persistSession: false
+    persistSession: false,
+    // Use OAuth if available (Claude Code environment)
+    ...(oauthFd !== undefined && { oauthTokenFromFd: oauthFd }),
   };
 }
 
