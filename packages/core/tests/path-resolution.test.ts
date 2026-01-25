@@ -76,8 +76,8 @@ describe('Path Resolution', () => {
       await expect(access(mcpServerPath, constants.R_OK)).resolves.toBeUndefined();
     });
 
-    it('should find cli-entry.js in dist/', async () => {
-      const cliEntryPath = join(PROJECT_ROOT, 'packages', 'core', 'dist', 'cli-entry.js');
+    it('should find cli index.js in dist/', async () => {
+      const cliEntryPath = join(PROJECT_ROOT, 'packages', 'cli', 'dist', 'index.js');
       await expect(access(cliEntryPath, constants.R_OK)).resolves.toBeUndefined();
     });
   });

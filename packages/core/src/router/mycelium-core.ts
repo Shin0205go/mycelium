@@ -5,18 +5,15 @@
 
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
-import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@mycelium/gateway';
+import { StdioRouter, type UpstreamServerInfo } from '../mcp/stdio-router.js';
 import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '../rbac/index.js';
-import { IdentityResolver, createIdentityResolver, type SkillDefinition, type AgentIdentity, type IdentityResolution, type IdentityConfig } from '@mycelium/a2a';
-import { AuditLogger, createAuditLogger } from '@mycelium/audit';
-import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
 import type {
   Role,
   ToolInfo,
   ListRolesResult,
   SkillManifest,
-  ThinkingSignature,
-  ToolCallContext
+  MCPServerConfig,
+  BaseSkillDefinition
 } from '@mycelium/shared';
 import type {
   MyceliumRouterState,
@@ -93,16 +90,10 @@ export class MyceliumCore extends EventEmitter {
   private stdioRouter: StdioRouter;
   private roleManager: RoleManager;
   private toolVisibility: ToolVisibilityManager;
-  private auditLogger: AuditLogger;
-  private rateLimiter: RateLimiter;
   private memoryStore: RoleMemoryStore;
-  private identityResolver: IdentityResolver;
 
   // Router state
   private state: MyceliumRouterState;
-
-  // Current identity resolution result
-  private currentIdentity: IdentityResolution | null = null;
 
   // Notification callback for tools/list_changed
   private toolsChangedCallback?: () => Promise<void>;
@@ -111,17 +102,12 @@ export class MyceliumCore extends EventEmitter {
   private initialized: boolean = false;
   private initializationPromise: Promise<void> | null = null;
 
-  // Current thinking context for the next tool call
-  // Set this before executeToolCall to capture "why" in audit logs
-  private pendingThinkingContext: ThinkingSignature | null = null;
-
   constructor(
     logger: Logger,
     options?: {
       rolesDir?: string;
       configFile?: string;
       memoryDir?: string;
-      identityConfigPath?: string;
       cwd?: string;
     }
   ) {
@@ -137,17 +123,8 @@ export class MyceliumCore extends EventEmitter {
     // Initialize tool visibility manager
     this.toolVisibility = createToolVisibilityManager(logger, this.roleManager);
 
-    // Initialize audit logger
-    this.auditLogger = createAuditLogger(logger);
-
-    // Initialize rate limiter
-    this.rateLimiter = createRateLimiter(logger);
-
     // Initialize role memory store
     this.memoryStore = createRoleMemoryStore(options?.memoryDir || './memory');
-
-    // Initialize identity resolver
-    this.identityResolver = createIdentityResolver(logger);
 
     // Initialize state
     this.state = {
@@ -157,13 +134,12 @@ export class MyceliumCore extends EventEmitter {
       visibleTools: new Map(),
       metadata: {
         initializedAt: new Date(),
-        sessionId: uuidv4()
+        sessionId: uuidv4(),
+        roleSwitchCount: 0
       }
     };
 
-    this.logger.debug('MyceliumCore created', {
-      sessionId: this.state.metadata.sessionId
-    });
+    this.logger.debug('MyceliumCore created');
   }
 
   /**
@@ -216,71 +192,6 @@ export class MyceliumCore extends EventEmitter {
       this.logger.error('Failed to initialize router core:', error);
       throw error;
     }
-  }
-
-  // ============================================================================
-  // A2A Identity Resolution
-  // ============================================================================
-
-  /**
-   * Load identity configuration from file
-   */
-  async loadIdentityConfig(configPath: string): Promise<void> {
-    await this.identityResolver.loadFromFile(configPath);
-    this.logger.info(`Identity configuration loaded from ${configPath}`);
-  }
-
-  /**
-   * Resolve agent identity and set skill automatically
-   *
-   * This is the main entry point for sub-agent connections. Agents
-   * are assigned skills based on their identity.
-   *
-   * @param identity Agent identity from MCP connection
-   * @returns The resolved skill information
-   */
-  async setRoleFromIdentity(identity: AgentIdentity): Promise<AgentManifest> {
-    this.logger.info(`🔐 A2A Identity resolution for: ${identity.name}`);
-
-    // Resolve identity to role
-    const resolution = this.identityResolver.resolve(identity);
-    this.currentIdentity = resolution;
-
-    // Check if the resolved role exists
-    const role = this.state.availableRoles.get(resolution.roleId);
-    if (!role) {
-      this.logger.warn(`Resolved role '${resolution.roleId}' not found, using default`);
-      const defaultRoleId = this.roleManager.getDefaultRoleId();
-      const defaultRole = this.state.availableRoles.get(defaultRoleId);
-
-      if (!defaultRole) {
-        throw new Error(`No valid role found for identity: ${identity.name}`);
-      }
-
-      // Update resolution with fallback role
-      resolution.roleId = defaultRoleId;
-    }
-
-    // Set the skill internally
-    const manifest = await this.setRole({
-      role: resolution.roleId,
-      includeToolDescriptions: true
-    });
-
-    this.logger.info(`✅ A2A Identity resolved: ${identity.name} → ${resolution.roleId}`, {
-      matchedSkills: resolution.matchedSkills,
-      matchedRule: resolution.matchedRule?.description,
-      isTrusted: resolution.isTrusted
-    });
-
-    return manifest;
-  }
-
-  /**
-   * Get the current identity resolution
-   */
-  getCurrentIdentity(): IdentityResolution | null {
-    return this.currentIdentity;
   }
 
   // ============================================================================
@@ -369,10 +280,6 @@ export class MyceliumCore extends EventEmitter {
       // Load roles from skill manifest
       await this.roleManager.loadFromSkillManifest(skillManifest);
 
-      // Load identity rules from skills (A2A skill-based matching)
-      this.identityResolver.clearRules();
-      this.identityResolver.loadFromSkills(skillManifest.skills);
-
       // Update state with new roles
       this.state.availableRoles.clear();
       const allRoles = this.roleManager.getAllRoles();
@@ -389,12 +296,7 @@ export class MyceliumCore extends EventEmitter {
         this.logger.info(`Applied tool filtering for default role: ${defaultRole.id}`);
       }
 
-      // Log identity statistics
-      const identityStats = this.identityResolver.getStats();
-      this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`, {
-        identityRules: identityStats.totalRules,
-        rulesByRole: identityStats.rulesByRole
-      });
+      this.logger.info(`✅ Loaded ${this.state.availableRoles.size} roles from ${skillManifest.skills.length} skills`);
       return true;
 
     } catch (error) {
@@ -404,10 +306,10 @@ export class MyceliumCore extends EventEmitter {
   }
 
   /**
-   * Transform skills data from mycelium-skills to SkillDefinition format
+   * Transform skills data from mycelium-skills to BaseSkillDefinition format
    */
-  private transformSkillsToDefinitions(skillsData: any[]): SkillDefinition[] {
-    const definitions: SkillDefinition[] = [];
+  private transformSkillsToDefinitions(skillsData: any[]): BaseSkillDefinition[] {
+    const definitions: BaseSkillDefinition[] = [];
 
     for (const skill of skillsData) {
       // Skip skills without allowedRoles
@@ -425,11 +327,6 @@ export class MyceliumCore extends EventEmitter {
         grants: skill.grants ? {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
-        } : undefined,
-        // A2A Identity configuration from skill (skill-based matching)
-        identity: skill.identity ? {
-          skillMatching: skill.identity.skillMatching || [],
-          trustedPrefixes: skill.identity.trustedPrefixes
         } : undefined,
         metadata: {
           version: skill.version,
@@ -1101,107 +998,24 @@ export class MyceliumCore extends EventEmitter {
    * Throws an error if access is denied
    */
   checkToolAccess(toolName: string): void {
-    const roleId = this.state.currentRole?.id || 'none';
-    const sessionId = this.state.metadata.sessionId;
-    const toolInfo = this.toolVisibility.getToolInfo(toolName);
-    const sourceServer = toolInfo?.sourceServer || 'unknown';
-
-    // Check rate limit first
-    const rateLimitResult = this.rateLimiter.check(roleId, sessionId, toolName);
-    if (!rateLimitResult.allowed) {
-      this.auditLogger.logDenied(
-        sessionId,
-        roleId,
-        toolName,
-        sourceServer,
-        {},
-        rateLimitResult.reason || 'Rate limit exceeded'
-      );
-      throw new Error(rateLimitResult.reason);
-    }
-
     // Check role-based access
-    try {
-      this.toolVisibility.checkAccess(toolName);
-    } catch (error) {
-      this.auditLogger.logDenied(
-        sessionId,
-        roleId,
-        toolName,
-        sourceServer,
-        {},
-        error instanceof Error ? error.message : String(error)
-      );
-      throw error;
-    }
+    this.toolVisibility.checkAccess(toolName);
   }
 
   /**
-   * Execute a tool call with audit logging and rate limiting
+   * Execute a tool call
    * @param toolName - The tool to execute
    * @param args - Tool arguments
-   * @param thinking - Optional thinking signature to capture in audit log
    */
   async executeToolCall(
     toolName: string,
-    args: Record<string, unknown>,
-    thinking?: ThinkingSignature
+    args: Record<string, unknown>
   ): Promise<any> {
-    const roleId = this.state.currentRole?.id || 'none';
-    const sessionId = this.state.metadata.sessionId;
-    const toolInfo = this.toolVisibility.getToolInfo(toolName);
-    const sourceServer = toolInfo?.sourceServer || 'unknown';
-
-    // Use provided thinking or pending context
-    const thinkingSignature = thinking || this.pendingThinkingContext;
-
-    // Clear pending context after use
-    if (this.pendingThinkingContext) {
-      this.pendingThinkingContext = null;
-    }
-
     // Check access (throws if denied)
     this.checkToolAccess(toolName);
 
-    // Start tracking
-    const startTime = Date.now();
-    this.rateLimiter.startConcurrent(sessionId);
-    this.rateLimiter.consume(roleId, sessionId, toolName);
-
-    try {
-      // Route the call
-      const result = await this.routeToolCall(toolName, args);
-
-      // Log success with thinking signature
-      const durationMs = Date.now() - startTime;
-      this.auditLogger.logAllowed(
-        sessionId,
-        roleId,
-        toolName,
-        sourceServer,
-        args,
-        durationMs,
-        undefined, // metadata
-        thinkingSignature ?? undefined
-      );
-
-      return result;
-    } catch (error) {
-      // Log error with thinking signature
-      this.auditLogger.logError(
-        sessionId,
-        roleId,
-        toolName,
-        sourceServer,
-        args,
-        error instanceof Error ? error.message : String(error),
-        undefined, // metadata
-        thinkingSignature ?? undefined
-      );
-      throw error;
-    } finally {
-      this.rateLimiter.endConcurrent(sessionId);
-    }
+    // Route the call
+    return await this.routeToolCall(toolName, args);
   }
 
   // ============================================================================
@@ -1354,151 +1168,6 @@ export class MyceliumCore extends EventEmitter {
     };
   }
 
-  // ============================================================================
-  // Audit & Rate Limiting
-  // ============================================================================
-
-  /**
-   * Get the audit logger instance
-   */
-  getAuditLogger(): AuditLogger {
-    return this.auditLogger;
-  }
-
-  /**
-   * Get the rate limiter instance
-   */
-  getRateLimiter(): RateLimiter {
-    return this.rateLimiter;
-  }
-
-  /**
-   * Get the identity resolver instance
-   */
-  getIdentityResolver(): IdentityResolver {
-    return this.identityResolver;
-  }
-
-  /**
-   * Get identity resolution statistics
-   */
-  getIdentityStats() {
-    return this.identityResolver.getStats();
-  }
-
-  /**
-   * Set quota for a role
-   */
-  setRoleQuota(roleId: string, quota: RoleQuota): void {
-    this.rateLimiter.setQuota(roleId, quota);
-    this.logger.info(`Quota set for role: ${roleId}`, quota);
-  }
-
-  /**
-   * Set quotas for multiple roles
-   */
-  setRoleQuotas(quotas: Record<string, RoleQuota>): void {
-    this.rateLimiter.setQuotas(quotas);
-  }
-
-  /**
-   * Get audit statistics
-   */
-  getAuditStats() {
-    return this.auditLogger.getStats();
-  }
-
-  /**
-   * Get recent access denials
-   */
-  getRecentDenials(limit: number = 10) {
-    return this.auditLogger.getRecentDenials(limit);
-  }
-
-  /**
-   * Export audit logs as JSON
-   */
-  exportAuditLogs(): string {
-    return this.auditLogger.exportJson();
-  }
-
-  /**
-   * Export audit logs as CSV
-   */
-  exportAuditLogsCsv(): string {
-    return this.auditLogger.exportCsv();
-  }
-
-  // ============================================================================
-  // Thinking Signature Management
-  // ============================================================================
-
-  /**
-   * Set thinking context for the next tool call.
-   * This captures "why" the operation is being performed.
-   *
-   * @param thinking - The thinking signature from the model
-   *
-   * @example
-   * ```typescript
-   * router.setThinkingContext({
-   *   thinking: "I need to read the file to understand the code structure...",
-   *   type: 'extended_thinking',
-   *   modelId: 'claude-opus-4-5-20251101',
-   *   capturedAt: new Date(),
-   * });
-   * await router.executeToolCall('filesystem__read_file', { path: '/src/index.ts' });
-   * ```
-   */
-  setThinkingContext(thinking: ThinkingSignature): void {
-    this.pendingThinkingContext = thinking;
-    this.logger.debug('Thinking context set', {
-      type: thinking.type,
-      modelId: thinking.modelId,
-      thinkingTokens: thinking.thinkingTokens,
-      thinkingLength: thinking.thinking.length,
-    });
-  }
-
-  /**
-   * Clear any pending thinking context without using it.
-   */
-  clearThinkingContext(): void {
-    if (this.pendingThinkingContext) {
-      this.logger.debug('Thinking context cleared without use');
-      this.pendingThinkingContext = null;
-    }
-  }
-
-  /**
-   * Check if there is a pending thinking context.
-   */
-  hasThinkingContext(): boolean {
-    return this.pendingThinkingContext !== null;
-  }
-
-  /**
-   * Get audit entries that have thinking signatures (for transparency analysis).
-   */
-  getEntriesWithThinking(limit: number = 50) {
-    return this.auditLogger.getEntriesWithThinking(limit);
-  }
-
-  /**
-   * Export a detailed thinking report for transparency audits.
-   * This includes all entries with thinking signatures and their reasoning.
-   */
-  exportThinkingReport(): string {
-    return this.auditLogger.exportThinkingReport();
-  }
-
-  /**
-   * Get thinking statistics from audit logs.
-   */
-  getThinkingStats() {
-    const stats = this.auditLogger.getStats();
-    return stats.thinkingStats;
-  }
 }
 
 // Export factory function
@@ -1508,7 +1177,6 @@ export function createMyceliumCore(
     rolesDir?: string;
     configFile?: string;
     memoryDir?: string;
-    identityConfigPath?: string;
     cwd?: string;
   }
 ): MyceliumCore {

@@ -13,13 +13,22 @@
 import { join } from 'path';
 import * as readline from 'readline';
 import chalk from 'chalk';
-import { DANGEROUS_TOOL_CATEGORIES } from '@mycelium/adhoc';
 import {
   readContext,
   contextExists,
   formatContextForDisplay,
   type WorkflowContext,
 } from '../lib/context.js';
+
+/**
+ * Dangerous tool categories that require approval
+ */
+export const DANGEROUS_TOOL_CATEGORIES: Record<string, string[]> = {
+  FILE_WRITE: ['filesystem__write_file', 'filesystem__delete_file'],
+  SHELL_EXEC: ['shell__exec', 'bash__run', 'sandbox__exec'],
+  NETWORK: ['http__request', 'fetch__url'],
+  DATABASE: ['postgres__execute', 'database__write'],
+};
 
 /**
  * Approval check result

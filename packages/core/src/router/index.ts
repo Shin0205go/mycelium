@@ -35,22 +35,4 @@ export {
 // Router adapter for proxy integration
 export { RouterAdapter, createRouterAdapter } from './router-adapter.js';
 
-// Audit logging - from @mycelium/audit
-export {
-  AuditLogger,
-  createAuditLogger,
-  type AuditLogEntry,
-  type AuditQueryOptions,
-  type AuditStats
-} from '@mycelium/audit';
-
-// Rate limiting - from @mycelium/audit
-export {
-  RateLimiter,
-  createRateLimiter,
-  type RoleQuota,
-  type RateLimitResult,
-  type RateLimitEvent
-} from '@mycelium/audit';
-
 // Types are exported from ../types/index.js to avoid duplicate exports

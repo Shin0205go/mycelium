@@ -124,52 +124,6 @@ describe('MyceliumCore', () => {
     });
   });
 
-  describe('audit and rate limiting accessors', () => {
-    it('should return audit logger instance', () => {
-      const auditLogger = router.getAuditLogger();
-      expect(auditLogger).toBeDefined();
-    });
-
-    it('should return rate limiter instance', () => {
-      const rateLimiter = router.getRateLimiter();
-      expect(rateLimiter).toBeDefined();
-    });
-
-    it('should return identity resolver instance', () => {
-      const resolver = router.getIdentityResolver();
-      expect(resolver).toBeDefined();
-    });
-
-    it('should set role quota without error', () => {
-      expect(() => {
-        router.setRoleQuota('guest', {
-          maxCallsPerMinute: 10,
-          maxCallsPerHour: 100
-        });
-      }).not.toThrow();
-    });
-
-    it('should set multiple role quotas without error', () => {
-      expect(() => {
-        router.setRoleQuotas({
-          guest: { maxCallsPerMinute: 10 },
-          admin: { maxCallsPerMinute: 100 }
-        });
-      }).not.toThrow();
-    });
-
-    it('should return audit stats', () => {
-      const stats = router.getAuditStats();
-      expect(stats).toBeDefined();
-    });
-
-    it('should return identity stats', () => {
-      const stats = router.getIdentityStats();
-      expect(stats).toBeDefined();
-      expect(stats).toHaveProperty('totalRules');
-    });
-  });
-
   describe('tools changed callback', () => {
     it('should accept callback function', () => {
       const callback = async () => {};
