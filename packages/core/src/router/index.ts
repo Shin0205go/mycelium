@@ -6,7 +6,7 @@
 // Core router
 export { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
 
-// Re-export from @mycelium/rbac
+// RBAC components (from local ./rbac, not @mycelium/rbac)
 export {
   RoleManager,
   createRoleManager,
@@ -18,13 +18,7 @@ export {
   type RoleMemory,
   type MemorySearchOptions,
   type SaveMemoryOptions
-} from '@mycelium/rbac';
-
-// Re-export from @mycelium/a2a
-export {
-  IdentityResolver,
-  createIdentityResolver
-} from '@mycelium/a2a';
+} from '../rbac/index.js';
 
 // Remote prompt fetching
 export {
@@ -37,7 +31,7 @@ export {
 // Router adapter for proxy integration
 export { RouterAdapter, createRouterAdapter } from './router-adapter.js';
 
-// Audit logging - re-export from @mycelium/audit
+// Audit logging - from @mycelium/audit
 export {
   AuditLogger,
   createAuditLogger,
@@ -46,7 +40,7 @@ export {
   type AuditStats
 } from '@mycelium/audit';
 
-// Rate limiting - re-export from @mycelium/audit
+// Rate limiting - from @mycelium/audit
 export {
   RateLimiter,
   createRateLimiter,

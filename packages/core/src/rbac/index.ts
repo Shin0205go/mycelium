@@ -3,23 +3,8 @@
 // Skill-driven role and tool permission management
 // ============================================================================
 
-// Re-export types from shared
-export type {
-  Role,
-  ToolPermissions,
-  RoleMetadata,
-  RemoteInstruction,
-  ToolInfo,
-  ListRolesOptions,
-  ListRolesResult,
-  SkillManifest,
-  DynamicRole,
-  RoleManifest,
-  MemoryPolicy,
-  SkillGrants,
-  SkillMetadata,
-  BaseSkillDefinition
-} from '@mycelium/shared';
+// Types are re-exported from @mycelium/shared via ../index.ts
+// Do not re-export here to avoid duplicate exports
 
 // Role Manager
 export {

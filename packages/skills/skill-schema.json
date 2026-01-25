@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://aegis-cli.com/schemas/skill.json",
-  "title": "AEGIS Skill Definition",
-  "description": "Schema for AEGIS skill YAML files with Claude Skills and RBAC extensions",
+  "$id": "https://mycelium-cli.com/schemas/skill.json",
+  "title": "MYCELIUM Skill Definition",
+  "description": "Schema for MYCELIUM skill YAML files with Claude Skills and RBAC extensions",
   "type": "object",
   "required": ["name", "description"],
   "properties": {
@@ -26,7 +26,7 @@
     },
     "allowedRoles": {
       "type": "array",
-      "description": "AEGIS RBAC: Roles that can use this skill",
+      "description": "MYCELIUM RBAC: Roles that can use this skill",
       "items": {
         "type": "string"
       },
@@ -35,7 +35,7 @@
     },
     "allowedTools": {
       "type": "array",
-      "description": "AEGIS RBAC: MCP tools this skill requires (server__tool format)",
+      "description": "MYCELIUM RBAC: MCP tools this skill requires (server__tool format)",
       "items": {
         "type": "string",
         "pattern": "^([a-z0-9-]+__[a-z0-9_]+|\\*)$"
@@ -44,7 +44,7 @@
     },
     "grants": {
       "type": "object",
-      "description": "AEGIS RBAC: Capability grants",
+      "description": "MYCELIUM RBAC: Capability grants",
       "properties": {
         "memory": {
           "type": "string",
@@ -65,7 +65,7 @@
     },
     "identity": {
       "type": "object",
-      "description": "AEGIS A2A: Agent-to-Agent identity resolution",
+      "description": "MYCELIUM A2A: Agent-to-Agent identity resolution",
       "properties": {
         "skillMatching": {
           "type": "array",

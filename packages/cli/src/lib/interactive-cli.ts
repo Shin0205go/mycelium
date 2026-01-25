@@ -6,8 +6,9 @@ import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
 import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo } from './mcp-client.js';
-import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig, type SDKMessage } from './agent.js';
+import { createQuery, isToolUseMessage, getToolUseInfo, type SDKMessage } from './agent.js';
 import { SessionStore, createSessionStore, type Session, type SessionSummary } from '@mycelium/session';
+import { createBanner, createSpinner, icons, suggestCommand, errorBox } from './ui.js';
 
 export interface InteractiveCLIOptions {
   role?: string;
@@ -61,7 +62,9 @@ export class InteractiveCLI {
       join(projectRoot, 'config.json');
 
     this.mcp = new MCPClient('node', [routerPath], {
-      MYCELIUM_CONFIG_PATH: configPath
+      MYCELIUM_CONFIG_PATH: configPath,
+      MCP_TRANSPORT: 'stdio',  // Tell logger to use stderr
+      LOG_SILENT: 'true'       // Suppress logs in stdio mode
     });
 
     // Initialize session store
@@ -151,15 +154,7 @@ export class InteractiveCLI {
   }
 
   private showBanner(): void {
-    const banner = `
-    ${chalk.cyan('    ___    _______________  _____')}
-    ${chalk.cyan('   /   |  / ____/ ____/  _// ___/')}
-    ${chalk.cyan('  / /| | / __/ / / __ / /  \\__ \\ ')}
-    ${chalk.cyan(' / ___ |/ /___/ /_/ // /  ___/ / ')}
-    ${chalk.cyan('/_/  |_/_____/\\____/___/ /____/  ')}
-    ${chalk.gray('Role-Based Access Control Router')}
-`;
-    console.log(banner);
+    console.log(createBanner());
   }
 
   async run(): Promise<void> {
@@ -938,9 +933,11 @@ export class InteractiveCLI {
 
     this.isProcessing = true;
     const systemPrompt = this.manifest?.systemInstruction;
+    const spinner = createSpinner('Thinking...');
 
     try {
       console.log();
+      spinner.start();
 
       const queryResult = await createQuery(message, {
         model: this.currentModel,
@@ -962,6 +959,7 @@ export class InteractiveCLI {
           const event = msg.event;
           if (event?.type === 'content_block_delta' && event.delta?.text) {
             if (!hasStartedOutput) {
+              spinner.stop();
               process.stdout.write(chalk.green('Claude: '));
               hasStartedOutput = true;
             }
@@ -974,11 +972,22 @@ export class InteractiveCLI {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
               const shortName = tool.name.replace('mcp__mycelium-router__', '');
-              console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
+              // Update spinner with tool info
+              const input = tool.input as Record<string, unknown>;
+              let status = `${icons.tool} ${shortName}`;
+              if (input.path) {
+                const filename = String(input.path).split('/').pop();
+                status = `${icons.tool} ${shortName}: ${filename}`;
+              } else if (input.command) {
+                const cmd = String(input.command).slice(0, 25);
+                status = `${icons.tool} ${cmd}...`;
+              }
+              spinner.text = status;
+              if (!spinner.isSpinning) spinner.start();
+
               if (shortName === 'set_role') {
-                const input = tool.input as { role_id?: string };
                 if (input.role_id && input.role_id !== 'list') {
-                  pendingRoleSwitch = input.role_id;
+                  pendingRoleSwitch = input.role_id as string;
                 }
               }
             }
@@ -1006,19 +1015,20 @@ export class InteractiveCLI {
         }
 
         if (msg.type === 'result') {
+          spinner.stop();
           if (hasStartedOutput) {
             console.log();
           }
 
           if (msg.subtype === 'success') {
             const cost = msg.total_cost_usd.toFixed(4);
-            const input = msg.usage.input_tokens;
-            const output = msg.usage.output_tokens;
+            const inputTokens = msg.usage.input_tokens;
+            const outputTokens = msg.usage.output_tokens;
 
             if (this.useApiKey) {
-              console.log(chalk.yellow(`\n  📊 Tokens: ${input} in / ${output} out | Cost: $${cost}`));
+              console.log(chalk.yellow(`\n  ${icons.tokens} Tokens: ${inputTokens} in / ${outputTokens} out | ${icons.cost} Cost: $${cost}`));
             } else {
-              console.log(chalk.gray(`\n  📊 Tokens: ${input} in / ${output} out | Est: $${cost}`));
+              console.log(chalk.gray(`\n  ${icons.tokens} Tokens: ${inputTokens} in / ${outputTokens} out | ${icons.cost} Est: $${cost}`));
             }
           } else {
             console.log(chalk.red(`\nError: ${msg.errors?.join(', ') || msg.subtype}`));
@@ -1028,17 +1038,19 @@ export class InteractiveCLI {
 
       console.log();
     } catch (error: unknown) {
+      spinner.stop();
       const err = error as Error;
       const errorMsg = err.message || String(error);
 
       if (errorMsg.includes('Invalid API key') ||
           errorMsg.includes('/login') ||
           errorMsg.includes('exited with code 1')) {
-        console.error(chalk.red('\n⚠️  Auth error: Not logged in to Claude Code'));
-        console.log(chalk.yellow('  Please login with:'));
-        console.log(chalk.cyan('    claude login\n'));
+        console.log(errorBox('Not logged in to Claude Code', [
+          'Run: claude login',
+          'Set: export ANTHROPIC_API_KEY=...',
+        ]));
       } else {
-        console.error(chalk.red(`\nError: ${errorMsg}\n`));
+        console.log(errorBox(errorMsg));
       }
     } finally {
       this.isProcessing = false;
@@ -1122,8 +1134,19 @@ export class InteractiveCLI {
             if (skillCmd) {
               await this.executeSkillCommand(skillCmd, args);
             } else {
-              console.log(chalk.yellow(`Unknown command: /${cmd}`));
-              console.log(chalk.gray('Type /help for available commands'));
+              // Suggest similar commands using fuzzy matching
+              const allCommands = [
+                ...this.builtInCommands.map(c => c.slice(1)),
+                ...Array.from(this.skillCommands.keys())
+              ];
+              const suggestions = suggestCommand(cmd, allCommands);
+              if (suggestions.length > 0) {
+                console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                console.log(chalk.gray(`Did you mean: ${suggestions.map(s => `/${s}`).join(', ')}?`));
+              } else {
+                console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                console.log(chalk.gray('Type /help for available commands'));
+              }
             }
         }
       } else {

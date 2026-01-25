@@ -40,11 +40,11 @@ describe('MYCELIUM CLI', () => {
     });
   });
 
-  describe('aegis init', () => {
+  describe('mycelium init', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-test-'));
     });
 
     afterAll(() => {
@@ -55,7 +55,7 @@ describe('MYCELIUM CLI', () => {
 
     it('should initialize a project with default skills', () => {
       const output = runCli('init', testDir);
-      expect(output).toContain('Initializing MYCELIUM project');
+      expect(output).toContain('Initializing mycelium project');
       expect(output).toContain('Created config.json');
       expect(output).toContain('Created skills/ directory');
     });
@@ -88,11 +88,11 @@ describe('MYCELIUM CLI', () => {
     });
   });
 
-  describe('aegis skill', () => {
+  describe('mycelium skill', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-skill-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-skill-test-'));
       runCli('init', testDir);
     });
 
@@ -124,21 +124,19 @@ describe('MYCELIUM CLI', () => {
       expect(output).toContain('admin-access');
     });
 
-    it('should add a skill from template', () => {
-      const output = runCli('skill add test-skill --template basic', testDir);
-      expect(output).toContain('Adding skill: test-skill');
-      expect(output).toContain('Created skills/test-skill/SKILL.md');
-
-      const skillPath = join(testDir, 'skills', 'test-skill', 'SKILL.md');
-      expect(existsSync(skillPath)).toBe(true);
+    it('should start interactive skill creation', () => {
+      // skill add is an interactive command, so it starts but doesn't complete
+      // without user input - we just verify it starts correctly
+      const output = runCli('skill add test-skill', testDir);
+      expect(output).toContain('Creating skill: test-skill');
     });
   });
 
-  describe('aegis policy', () => {
+  describe('mycelium policy', () => {
     let testDir: string;
 
     beforeAll(() => {
-      testDir = mkdtempSync(join(tmpdir(), 'aegis-cli-policy-test-'));
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-policy-test-'));
       runCli('init', testDir);
     });
 

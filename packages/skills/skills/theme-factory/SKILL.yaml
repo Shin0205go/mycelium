@@ -1,4 +1,4 @@
-# AEGIS RBAC extensions for Anthropic skill
+# MYCELIUM RBAC extensions for Anthropic skill
 allowedRoles:
   - designer
   - developer

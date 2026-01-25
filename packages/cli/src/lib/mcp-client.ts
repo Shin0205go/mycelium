@@ -230,26 +230,46 @@ export class MCPClient extends EventEmitter {
     const result = await this.sendRequest('tools/call', {
       name: 'mycelium-router__list_roles',
       arguments: {}
-    }) as { content?: Array<{ text?: string }> };
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
 
     const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
+    if (!text) {
+      throw new Error('Failed to list roles: no response');
     }
-    throw new Error('Failed to list roles');
+
+    // Check if response is an error message (not JSON)
+    if (result.isError || text.startsWith('Error:') || text.startsWith('Access denied:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to list roles: ${text}`);
+    }
   }
 
   async switchRole(roleId: string): Promise<AgentManifest> {
     const result = await this.sendRequest('tools/call', {
       name: 'set_role',
       arguments: { role_id: roleId }
-    }) as { content?: Array<{ text?: string }> };
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
 
     const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
+    if (!text) {
+      throw new Error('Failed to switch role: no response');
     }
-    throw new Error('Failed to switch role');
+
+    // Check if response is an error message (not JSON)
+    if (result.isError || text.startsWith('Error:') || text.startsWith('Access denied:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to switch role: ${text}`);
+    }
   }
 
   async listTools(): Promise<unknown[]> {

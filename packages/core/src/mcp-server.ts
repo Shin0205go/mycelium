@@ -25,7 +25,7 @@ const __dirname = dirname(__filename);
 // Go up from dist/ -> packages/core/ -> packages/ -> project root
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
-// Path to aegis-cli for sub-agent spawning
+// Path to mycelium-cli for sub-agent spawning
 const MYCELIUM_CLI_PATH = process.env.MYCELIUM_CLI_PATH ||
   join(PROJECT_ROOT, 'packages', 'core', 'dist', 'cli-entry.js');
 
@@ -96,7 +96,7 @@ async function spawnSubAgent(
       // Log errors/warnings from sub-agent
       const lines = data.toString().split('\n');
       for (const line of lines) {
-        if (line.trim() && !line.includes('[aegis]')) {
+        if (line.trim() && !line.includes('[mycelium]')) {
           logger.info(`[${role}:err] ${line.trim()}`);
         }
       }
@@ -143,7 +143,7 @@ async function spawnSubAgent(
 
 /**
  * Spawn an interactive sub-agent in a new terminal window (macOS)
- * Uses AppleScript to open Terminal, start aegis-cli, switch role, and send initial prompt
+ * Uses AppleScript to open Terminal, start mycelium-cli, switch role, and send initial prompt
  */
 async function spawnInteractiveSubAgent(
   role: string,
@@ -157,7 +157,7 @@ async function spawnInteractiveSubAgent(
 
   // Create AppleScript file (easier to handle escaping)
   const tmpDir = os.tmpdir();
-  const scriptPath = path.join(tmpDir, `aegis-subagent-${Date.now()}.scpt`);
+  const scriptPath = path.join(tmpDir, `mycelium-subagent-${Date.now()}.scpt`);
 
   // Escape strings for AppleScript
   const escapeForAppleScript = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -177,7 +177,7 @@ ${initialPrompt}`;
 tell application "Terminal"
     activate
 
-    -- Open new window with aegis-cli (with role env var)
+    -- Open new window with mycelium-cli (with role env var)
     do script "clear && echo '🤖 MYCELIUM Sub-Agent [${escapedRole}]' && echo '' && MYCELIUM_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
 
     -- Wait for CLI to start
@@ -343,9 +343,16 @@ async function main() {
 
     logger.info(`📥 Tool call received: "${name}"`);
 
-    // Check tool access (skip for system tools - only set_role is always available)
-    const SYSTEM_TOOLS = ['set_role'];
-    if (!SYSTEM_TOOLS.includes(name)) {
+    // Check tool access (skip for router system tools - always available)
+    const ROUTER_SYSTEM_TOOLS = [
+      'set_role',
+      'mycelium-router__list_roles',
+      'mycelium-router__spawn_sub_agent'
+    ];
+    // Also skip check if tool name ends with system tool suffix
+    const isSystemTool = ROUTER_SYSTEM_TOOLS.includes(name) ||
+      ROUTER_SYSTEM_TOOLS.some(t => name.endsWith(`__${t.replace('mycelium-router__', '')}`));
+    if (!isSystemTool) {
       try {
         routerCore.checkToolAccess(name);
       } catch (error: any) {
@@ -420,15 +427,23 @@ async function main() {
     // Handle list_roles
     if (name === 'mycelium-router__list_roles' || name.endsWith('__list_roles')) {
       logger.info(`✅ Handling list_roles`);
-      const roles = routerCore.listRoles();
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(roles, null, 2),
-          },
-        ],
-      };
+      try {
+        const roles = routerCore.listRoles();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(roles, null, 2),
+            },
+          ],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to list roles:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
     }
 
     // Handle set_role (check both exact match and suffix)

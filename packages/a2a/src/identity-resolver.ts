@@ -24,7 +24,7 @@ const DEFAULT_IDENTITY_CONFIG: IdentityConfig = {
   defaultRole: 'guest',
   skillRules: [],
   rejectUnknown: false,
-  trustedPrefixes: ['claude-', 'aegis-']
+  trustedPrefixes: ['claude-', 'mycelium-']
 };
 
 /**

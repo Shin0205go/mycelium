@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, ChildProcess } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { RoleManager } from '@mycelium/rbac';
+import { RoleManager } from '../src/rbac/index.js';
 import type { Logger, SkillManifest, BaseSkillDefinition } from '@mycelium/shared';
 
 // Get __dirname for ES modules

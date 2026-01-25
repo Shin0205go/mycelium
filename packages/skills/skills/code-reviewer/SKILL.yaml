@@ -2,7 +2,7 @@
 name: code-reviewer
 description: コードレビューとベストプラクティスの提案を行うスキル。コーディング規約の準拠チェック、セキュリティ脆弱性の検出、パフォーマンス改善の提案を実行。
 
-# AEGIS RBAC extensions
+# MYCELIUM RBAC extensions
 allowedRoles:
   - developer
   - senior-developer

@@ -21,7 +21,7 @@ describe('Context file handling', () => {
   let testContextPath: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'aegis-context-test-'));
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mycelium-context-test-'));
     testContextPath = path.join(tempDir, 'test-context.json');
   });
 

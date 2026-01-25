@@ -1,7 +1,7 @@
 {
   "name": "@mycelium/audit",
   "version": "1.0.0",
-  "description": "AEGIS Audit - Logging and Rate Limiting",
+  "description": "MYCELIUM Audit - Logging and Rate Limiting",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

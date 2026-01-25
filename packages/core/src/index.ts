@@ -1,19 +1,28 @@
 // ============================================================================
-// MYCELIUM Core - Integration Layer
-// Brings together all MYCELIUM components
+// MYCELIUM Core - Router + Skill-based RBAC
 // ============================================================================
 
-// Re-export from sub-packages
+// Re-export from shared (base types)
 export * from '@mycelium/shared';
-export * from '@mycelium/rbac';
-export * from '@mycelium/a2a';
-export * from '@mycelium/audit';
 
-// TODO: Migrate MyceliumRouterCore (rename to MyceliumCore)
-// For now, re-export placeholder
+// RBAC (now part of core)
+export * from './rbac/index.js';
+
+// Router
+export * from './router/index.js';
+
+// MCP utilities
+export * from './mcp/index.js';
+
+// Types (router-specific types only, shared types come from @mycelium/shared)
+export * from './types/index.js';
+
+// Utils - export specific items to avoid Logger class/interface conflict
+export { Logger, logger } from './utils/logger.js';
+
+// Note: @mycelium/a2a and @mycelium/audit are NOT re-exported
+// Consumers should import directly from those packages:
+//   import { IdentityResolver } from '@mycelium/a2a';
+//   import { createAuditLogger } from '@mycelium/audit';
 
 export const CORE_VERSION = '1.0.0';
-
-// Will export:
-// - MyceliumCore (formerly MyceliumRouterCore)
-// - RoleMemoryStore

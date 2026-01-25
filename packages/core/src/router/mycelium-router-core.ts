@@ -6,28 +6,27 @@
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
 import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@mycelium/gateway';
-import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@mycelium/rbac';
-import { IdentityResolver, createIdentityResolver } from '@mycelium/a2a';
+import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '../rbac/index.js';
+import { IdentityResolver, createIdentityResolver, type SkillDefinition, type AgentIdentity, type IdentityResolution, type IdentityConfig } from '@mycelium/a2a';
 import { AuditLogger, createAuditLogger } from '@mycelium/audit';
 import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
 import type {
   Role,
+  ToolInfo,
+  ListRolesResult,
+  SkillManifest,
+  ThinkingSignature,
+  ToolCallContext
+} from '@mycelium/shared';
+import type {
   MyceliumRouterState,
   SubServerInfo,
-  ToolInfo,
   AgentManifest,
   ManifestTool,
   RoleSwitchEvent,
   ToolsChangedEvent,
-  SetRoleOptions,
-  ListRolesResult,
-  SkillManifest,
-  SkillDefinition,
-  AgentIdentity,
-  IdentityResolution,
-  IdentityConfig
+  SetRoleOptions
 } from '../types/router-types.js';
-import type { ThinkingSignature, ToolCallContext } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -477,14 +476,14 @@ export class MyceliumRouterCore extends EventEmitter {
     return {
       routeRequest: async (request: any): Promise<any> => {
         // Check if this is a targeted request (for a specific backend)
-        const targetServer = request._aegis_target_server;
+        const targetServer = request._mycelium_target_server;
 
         if (targetServer) {
           // Route to specific server
           this.logger.debug(`Routing prompts/get to server: ${targetServer}`);
 
-          // Strip the _aegis_target_server and modify request for specific server
-          const { _aegis_target_server, ...cleanRequest } = request;
+          // Strip the _mycelium_target_server and modify request for specific server
+          const { _mycelium_target_server, ...cleanRequest } = request;
 
           // Route through stdioRouter with server prefix
           return await this.stdioRouter.routeToServer(targetServer, cleanRequest);

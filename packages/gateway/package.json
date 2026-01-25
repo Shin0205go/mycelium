@@ -1,7 +1,7 @@
 {
   "name": "@mycelium/gateway",
   "version": "1.0.0",
-  "description": "AEGIS Gateway - MCP Proxy Layer",
+  "description": "MYCELIUM Gateway - MCP Proxy Layer",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

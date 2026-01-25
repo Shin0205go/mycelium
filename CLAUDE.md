@@ -1,10 +1,10 @@
-# CLAUDE.md - Aegis-CLI Codebase Guide
+# CLAUDE.md - Mycelium-CLI Codebase Guide
 
-This document provides guidance for AI assistants working with the Aegis-CLI codebase.
+This document provides guidance for AI assistants working with the Mycelium-CLI codebase.
 
 ## Project Overview
 
-Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router** that integrates Claude Agent SDK with Model Context Protocol (MCP) servers. It provides dynamic role-based tool filtering and access control for AI agents.
+Mycelium-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router** that integrates Claude Agent SDK with Model Context Protocol (MCP) servers. It provides dynamic role-based tool filtering and access control for AI agents.
 
 ### Key Concepts
 
@@ -14,17 +14,17 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 - **Dynamic Role Switching**: Agents can switch roles at runtime via `set_role` tool
 - **Interactive CLI**: REPL interface with Claude Agent SDK for role-aware conversations
 
-## AEGIS Architecture Rules
+## MYCELIUM Architecture Rules
 
 - **Inverted RBAC**: Roles are NOT defined manually. Skills declare `allowedRoles`.
 - **Trust Boundary**: The Router implies the Agent's identity; the Agent does not claim it.
-- **Source of Truth**: The MCP Server (@aegis/skills) is the only source of permission logic.
+- **Source of Truth**: The MCP Server (@mycelium/skills) is the only source of permission logic.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Aegis-skills (MCP Server)                │
+│                    Mycelium-skills (MCP Server)                │
 │  list_skills → スキル一覧を提供                              │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Skill: docx-handler                                 │   │
@@ -35,7 +35,7 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
                         │
                         ▼ list_skills
 ┌─────────────────────────────────────────────────────────────┐
-│                    AegisRouterCore (司令塔)                  │
+│                    MyceliumRouterCore (司令塔)                  │
 │  ├── StdioRouter (MCP server connection management)        │
 │  ├── RoleManager (role definitions and permission checks)  │
 │  └── ToolVisibilityManager (tool filtering)                │
@@ -53,28 +53,28 @@ Aegis-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy router*
 
 ## Directory Structure
 
-Aegis is organized as a monorepo with modular packages:
+Mycelium is organized as a monorepo with modular packages:
 
 ```
 packages/
-├── cli/                  # @aegis/cli - Command-Line Interface
+├── cli/                  # @mycelium/cli - Command-Line Interface
 │   └── src/
-│       ├── index.ts              # CLI entry point (aegis command)
+│       ├── index.ts              # CLI entry point (mycelium command)
 │       ├── commands/
-│       │   ├── init.ts           # aegis init - project scaffolding
-│       │   ├── skill.ts          # aegis skill add/list/templates
-│       │   ├── policy.ts         # aegis policy check/test/roles
-│       │   └── mcp.ts            # aegis mcp start/status
+│       │   ├── init.ts           # mycelium init - project scaffolding
+│       │   ├── skill.ts          # mycelium skill add/list/templates
+│       │   ├── policy.ts         # mycelium policy check/test/roles
+│       │   └── mcp.ts            # mycelium mcp start/status
 │       └── lib/
 │           ├── interactive-cli.ts # REPL with role switching
 │           ├── mcp-client.ts      # MCP client wrapper
 │           └── agent.ts           # Claude Agent SDK integration
 │
-├── shared/               # @aegis/shared - Common types and interfaces
+├── shared/               # @mycelium/shared - Common types and interfaces
 │   └── src/
 │       └── index.ts      # Role, ToolPermissions, SkillManifest types
 │
-├── rbac/                 # @aegis/rbac - Role-Based Access Control
+├── rbac/                 # @mycelium/rbac - Role-Based Access Control
 │   ├── src/
 │   │   ├── role-manager.ts           # Role definitions and permissions
 │   │   ├── tool-visibility-manager.ts # Tool filtering by role
@@ -87,10 +87,10 @@ packages/
 │       ├── memory-permission.test.ts
 │       ├── role-switching.test.ts
 │       ├── skill-integration.test.ts
-│       ├── aegis-skills-access.test.ts
+│       ├── mycelium-skills-access.test.ts
 │       └── red-team-verification.test.ts  # Security verification loop
 │
-├── a2a/                  # @aegis/a2a - Agent-to-Agent Identity
+├── a2a/                  # @mycelium/a2a - Agent-to-Agent Identity
 │   ├── src/
 │   │   ├── identity-resolver.ts  # A2A capability-based identity resolution
 │   │   └── types.ts              # A2A-specific types
@@ -98,22 +98,22 @@ packages/
 │       ├── identity-resolver.test.ts
 │       └── types.test.ts
 │
-├── audit/                # @aegis/audit - Audit and Rate Limiting
+├── audit/                # @mycelium/audit - Audit and Rate Limiting
 │   └── src/
 │       └── index.ts      # AuditLogger, RateLimiter (placeholder)
 │
-├── gateway/              # @aegis/gateway - MCP Gateway/Proxy
+├── gateway/              # @mycelium/gateway - MCP Gateway/Proxy
 │   └── src/
 │       └── index.ts      # StdioRouter, MCP connection management
 │
-├── core/                 # @aegis/core - Integration Layer
+├── core/                 # @mycelium/core - Integration Layer
 │   ├── src/
 │   │   ├── index.ts              # Re-exports all packages
 │   │   ├── mcp-server.ts         # MCP server entry point
 │   │   ├── mcp-client.ts         # MCP client implementation
 │   │   ├── agent.ts              # Claude Agent SDK wrapper
 │   │   ├── router/
-│   │   │   ├── aegis-router-core.ts  # Central routing system (司令塔)
+│   │   │   ├── mycelium-router-core.ts  # Central routing system (司令塔)
 │   │   │   ├── rate-limiter.ts       # Rate limiting
 │   │   │   └── audit-logger.ts       # Audit logging
 │   │   ├── mcp/
@@ -122,11 +122,11 @@ packages/
 │   │   └── utils/
 │   │       └── logger.ts             # Winston logger
 │   └── tests/                        # 18 test files
-│       ├── aegis-router-core.test.ts
-│       ├── real-e2e.test.ts          # E2E tests with aegis-skills server
+│       ├── mycelium-router-core.test.ts
+│       ├── real-e2e.test.ts          # E2E tests with mycelium-skills server
 │       └── ...
 │
-└── skills/               # @aegis/skills - Skill MCP Server
+└── skills/               # @mycelium/skills - Skill MCP Server
     └── src/
         └── index.ts      # Skill definition loading and serving
 ```
@@ -135,14 +135,14 @@ packages/
 
 | Package | Description |
 |---------|-------------|
-| `@aegis/cli` | Command-line interface with interactive mode, project scaffolding, and policy verification |
-| `@aegis/shared` | Common types and interfaces used across all packages |
-| `@aegis/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
-| `@aegis/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
-| `@aegis/audit` | Audit logging and rate limiting (placeholder) |
-| `@aegis/gateway` | MCP gateway/proxy for server connections (placeholder) |
-| `@aegis/core` | Integration layer with MCP server/client and AegisRouterCore implementation |
-| `@aegis/skills` | Skill MCP Server for loading and serving skill definitions |
+| `@mycelium/cli` | Command-line interface with interactive mode, project scaffolding, and policy verification |
+| `@mycelium/shared` | Common types and interfaces used across all packages |
+| `@mycelium/rbac` | Role-Based Access Control (RoleManager, ToolVisibilityManager, RoleMemoryStore) |
+| `@mycelium/a2a` | Agent-to-Agent identity resolution based on A2A Agent Card skills |
+| `@mycelium/audit` | Audit logging and rate limiting (placeholder) |
+| `@mycelium/gateway` | MCP gateway/proxy for server connections (placeholder) |
+| `@mycelium/core` | Integration layer with MCP server/client and MyceliumRouterCore implementation |
+| `@mycelium/skills` | Skill MCP Server for loading and serving skill definitions |
 
 ## Key Components
 
@@ -181,18 +181,18 @@ A2A Zero-Trust identity resolution for agent-to-agent communication:
 - Loads patterns from skills (skill-driven identity)
 - Trusted prefix detection for agent trust levels
 
-### 5. AegisRouterCore (`packages/core/src/router/aegis-router-core.ts`)
+### 5. MyceliumRouterCore (`packages/core/src/router/mycelium-router-core.ts`)
 Central routing system (司令塔) that orchestrates all components:
 - Manages connections to multiple sub-MCP servers via StdioRouter
 - Maintains virtual tool table filtered by current role
 - Handles role switching via `set_role` tool
 - Integrates RoleManager, ToolVisibilityManager, AuditLogger, RateLimiter
 - Supports A2A mode for automatic role assignment
-- Loads roles dynamically from aegis-skills server
+- Loads roles dynamically from mycelium-skills server
 
 ### 6. InteractiveCLI (`packages/cli/src/lib/interactive-cli.ts`)
 REPL interface for role-aware conversations:
-- Connects to AEGIS Router via MCP
+- Connects to MYCELIUM Router via MCP
 - Role selection with arrow-key navigation
 - Model switching (Haiku, Sonnet, Opus)
 - Tool listing per role
@@ -233,42 +233,42 @@ npm run test:watch
 
 ## CLI Usage
 
-The AEGIS CLI (`@aegis/cli`) provides multiple commands for project management and interactive use.
+The MYCELIUM CLI (`@mycelium/cli`) provides multiple commands for project management and interactive use.
 
 ### Project Management Commands
 
 ```bash
-# Initialize a new AEGIS project
-aegis init [directory]
-aegis init --minimal          # Without example skills
+# Initialize a new MYCELIUM project
+mycelium init [directory]
+mycelium init --minimal          # Without example skills
 
 # Manage skills
-aegis skill add <name>                    # Add new skill from template
-aegis skill add <name> --template <tpl>   # Use specific template
-aegis skill list                          # List all skills
-aegis skill templates                     # Show available templates
+mycelium skill add <name>                    # Add new skill from template
+mycelium skill add <name> --template <tpl>   # Use specific template
+mycelium skill list                          # List all skills
+mycelium skill templates                     # Show available templates
 
 # Available skill templates:
 #   basic, browser-limited, code-reviewer, data-analyst,
 #   flight-booking, personal-assistant
 
 # Policy verification
-aegis policy check --role <role>          # Check permissions for role
-aegis policy test --agent <name> --skills <skills>  # Test A2A resolution
-aegis policy roles                        # List all available roles
+mycelium policy check --role <role>          # Check permissions for role
+mycelium policy test --agent <name> --skills <skills>  # Test A2A resolution
+mycelium policy roles                        # List all available roles
 
 # MCP server management
-aegis mcp start                           # Start MCP server
-aegis mcp start --dev                     # Development mode (tsx)
-aegis mcp start --background              # Run in background
-aegis mcp status                          # Check server status
+mycelium mcp start                           # Start MCP server
+mycelium mcp start --dev                     # Development mode (tsx)
+mycelium mcp start --background              # Run in background
+mycelium mcp status                          # Check server status
 ```
 
 ### Interactive Mode (Default)
 ```bash
-aegis                          # Start interactive chat
-aegis --role developer         # Start with specific role
-aegis --model claude-sonnet-4-5-20250929  # Use specific model
+mycelium                          # Start interactive chat
+mycelium --role developer         # Start with specific role
+mycelium --model claude-sonnet-4-5-20250929  # Use specific model
 ```
 
 REPL Commands:
@@ -282,16 +282,16 @@ REPL Commands:
 ### Sub-Agent Mode
 ```bash
 # Simple query
-aegis-cli "What is 2+2?"
+mycelium-cli "What is 2+2?"
 
 # With specific role
-aegis-cli --role mentor "Review this code"
+mycelium-cli --role mentor "Review this code"
 
 # JSON output for orchestration
-aegis-cli --role frontend --json "Create a button"
+mycelium-cli --role frontend --json "Create a button"
 
 # Read from stdin
-echo "Explain this" | aegis-cli --role mentor
+echo "Explain this" | mycelium-cli --role mentor
 ```
 
 ## Key Type Definitions
@@ -364,9 +364,9 @@ interface A2AAgentSkill {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
     },
-    "aegis-skills": {
+    "mycelium-skills": {
       "command": "node",
-      "args": ["node_modules/aegis-skills/index.js", "..."]
+      "args": ["node_modules/mycelium-skills/index.js", "..."]
     }
   }
 }
@@ -376,11 +376,11 @@ interface A2AAgentSkill {
 ```json
 {
   "mcpServers": {
-    "aegis-router": {
+    "mycelium-router": {
       "command": "node",
       "args": ["dist/mcp-server.js"],
       "env": {
-        "AEGIS_CONFIG_PATH": "config.json"
+        "MYCELIUM_CONFIG_PATH": "config.json"
       }
     }
   }
@@ -389,9 +389,9 @@ interface A2AAgentSkill {
 
 ## Environment Variables
 
-- `AEGIS_ROUTER_PATH` - Path to MCP server (default: `dist/mcp-server.js`)
-- `AEGIS_CONFIG_PATH` - Path to config file (default: `config.json`)
-- `AEGIS_CLI_PATH` - Path to CLI for sub-agent spawning
+- `MYCELIUM_ROUTER_PATH` - Path to MCP server (default: `dist/mcp-server.js`)
+- `MYCELIUM_CONFIG_PATH` - Path to config file (default: `config.json`)
+- `MYCELIUM_CLI_PATH` - Path to CLI for sub-agent spawning
 - `ANTHROPIC_API_KEY` - API key for direct API usage (optional)
 
 ## Testing
@@ -400,14 +400,14 @@ Tests use Vitest and are distributed across packages (34 test files):
 
 | Package | Test Files | Description |
 |---------|------------|-------------|
-| `@aegis/core` | 18 | Router, MCP client, tool discovery, rate limiting, audit logging, agent, **thinking extraction** |
-| `@aegis/rbac` | 9 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
-| `@aegis/a2a` | 2 | IdentityResolver, types for A2A capability-based matching |
-| `@aegis/cli` | 1 | CLI command tests |
-| `@aegis/shared` | 1 | Error classes, type exports |
-| `@aegis/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
-| `@aegis/gateway` | 1 | Gateway constants |
-| `@aegis/audit` | 2 | Audit constants, **thinking signature capture** |
+| `@mycelium/core` | 18 | Router, MCP client, tool discovery, rate limiting, audit logging, agent, **thinking extraction** |
+| `@mycelium/rbac` | 9 | RoleManager, ToolVisibility, Memory, Skill integration, **Red Team** |
+| `@mycelium/a2a` | 2 | IdentityResolver, types for A2A capability-based matching |
+| `@mycelium/cli` | 1 | CLI command tests |
+| `@mycelium/shared` | 1 | Error classes, type exports |
+| `@mycelium/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
+| `@mycelium/gateway` | 1 | Gateway constants |
+| `@mycelium/audit` | 2 | Audit constants, **thinking signature capture** |
 
 ```bash
 # Run all tests (from root)
@@ -439,12 +439,12 @@ npx vitest --watch
 ### Test Categories
 - **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver, types
 - **Integration tests**: Skill integration, role switching, memory permissions
-- **E2E tests**: Full flow with aegis-skills server (`packages/core/tests/real-e2e.test.ts`)
+- **E2E tests**: Full flow with mycelium-skills server (`packages/core/tests/real-e2e.test.ts`)
 - **Red Team tests**: Security verification loop (`packages/rbac/tests/red-team-verification.test.ts`)
 
 ### Red Team Verification Loop (検証ループ)
 
-セキュリティ製品であるAEGISでは、「自分で自分の成果物をテストさせる」検証ループを採用しています。
+セキュリティ製品であるMYCELIUMでは、「自分で自分の成果物をテストさせる」検証ループを採用しています。
 
 **原則**: Routerのコードを書いた後、許可されていないロールで危険なツールを呼び出し、正しく拒否されることを確認する
 
@@ -490,7 +490,7 @@ it('MUST deny guest access to delete_database', () => {
 ### Tool Name Format
 Tools are prefixed with their server name:
 - `filesystem__read_file` (from filesystem server)
-- `aegis-skills__list_skills` (from aegis-skills server)
+- `mycelium-skills__list_skills` (from mycelium-skills server)
 
 ### Role Switching Flow
 1. Agent calls `set_role` with `role_id`
@@ -678,7 +678,7 @@ When A2A mode is enabled:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  Agent Card (A2A Protocol)          Aegis Skill Definition      │
+│  Agent Card (A2A Protocol)          Mycelium Skill Definition      │
 │  ┌─────────────────────────┐        ┌─────────────────────────┐ │
 │  │ name: "react-builder"   │        │ identity:               │ │
 │  │ skills:                 │   →    │   skillMatching:        │ │
@@ -722,7 +722,7 @@ identity:
 
   trustedPrefixes:
     - "claude-"
-    - "aegis-"
+    - "mycelium-"
 ```
 
 ```yaml
@@ -849,8 +849,8 @@ When multiple skills define matching rules:
 #### Enabling A2A Mode
 
 ```typescript
-// In AegisRouterCore constructor
-const router = new AegisRouterCore(logger, {
+// In MyceliumRouterCore constructor
+const router = new MyceliumRouterCore(logger, {
   a2aMode: true
 });
 
@@ -899,19 +899,19 @@ interface IdentityResolution {
 
 ## Related Projects
 
-- [Aegis-skills](https://github.com/Shin0205go/Aegis-skills) - Skill MCP Server that provides skill definitions
+- [Mycelium-skills](https://github.com/Shin0205go/Mycelium-skills) - Skill MCP Server that provides skill definitions
 - [Claude Agent SDK](https://github.com/anthropics/claude-code) - Anthropic's agent SDK
 
 ## Common Tasks
 
-### Creating a New AEGIS Project
+### Creating a New MYCELIUM Project
 ```bash
 # Initialize with example skills
-aegis init my-project
+mycelium init my-project
 cd my-project
 
 # Or minimal setup
-aegis init my-project --minimal
+mycelium init my-project --minimal
 
 # This creates:
 #   config.json         - MCP server configuration
@@ -924,7 +924,7 @@ aegis init my-project --minimal
 ### Adding a New Skill
 ```bash
 # Add from template
-aegis skill add my-skill --template code-reviewer
+mycelium skill add my-skill --template code-reviewer
 
 # Edit the generated skill
 # skills/my-skill/SKILL.md
@@ -938,27 +938,27 @@ aegis skill add my-skill --template code-reviewer
 ### Creating a New Role
 Roles are auto-generated from skill definitions. To add a new role:
 1. Create/modify skill with `allowedRoles` including the new role
-2. Use `aegis skill add <name>` or create `skills/<name>/SKILL.md` manually
+2. Use `mycelium skill add <name>` or create `skills/<name>/SKILL.md` manually
 3. Restart router to reload skill manifest
 4. Role will be available via `set_role` or in interactive mode
 
 ### Verifying Policies
 ```bash
 # Check what a role can access
-aegis policy check --role developer
+mycelium policy check --role developer
 
 # Test A2A identity resolution
-aegis policy test --agent my-agent --skills react,typescript
+mycelium policy test --agent my-agent --skills react,typescript
 
 # List all roles derived from skills
-aegis policy roles
+mycelium policy roles
 ```
 
 ### Debugging
 - Set log level in Logger constructor
 - Check `logs/` directory for output
 - Use `--json` flag for structured output in sub-agent mode
-- Use `aegis mcp status` to check server status
+- Use `mycelium mcp status` to check server status
 
 ### Configuring Rate Limits
 ```typescript
@@ -988,7 +988,7 @@ const json = router.exportAuditLogs();
 
 ### Thinking Signature (Extended Thinking Transparency)
 
-AEGIS supports capturing the "thinking" process from Claude Opus 4.5 and other models with extended thinking. This provides complete transparency about "why" an operation was performed.
+MYCELIUM supports capturing the "thinking" process from Claude Opus 4.5 and other models with extended thinking. This provides complete transparency about "why" an operation was performed.
 
 #### What is Thinking Signature?
 
@@ -1060,7 +1060,7 @@ import {
   extractThinkingFromMessage,
   createThinkingSignature,
   hasThinkingContent
-} from '@aegis/core';
+} from '@mycelium/core';
 
 for await (const message of queryResult) {
   // Check if message has thinking blocks
