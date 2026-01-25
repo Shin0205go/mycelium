@@ -172,7 +172,7 @@ export const initCommand = new Command('init')
       console.log(chalk.cyan('Next steps:'));
       console.log(chalk.white('  1. Add more skills:     ') + chalk.yellow('mycelium skill add <name>'));
       console.log(chalk.white('  2. Check policies:      ') + chalk.yellow('mycelium policy check --role developer'));
-      console.log(chalk.white('  3. Start the server:    ') + chalk.yellow('mycelium start'));
+      console.log(chalk.white('  3. Start the server:    ') + chalk.yellow('mycelium mcp start'));
       console.log();
 
     } catch (error) {
