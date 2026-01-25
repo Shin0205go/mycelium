@@ -4,9 +4,107 @@
 
 import { Command } from 'commander';
 import { spawn } from 'child_process';
-import { access } from 'fs/promises';
+import { access, mkdir, readFile, writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
 import chalk from 'chalk';
+
+// Runtime directory for storing PID files and other state
+const MYCELIUM_DIR = '.mycelium';
+const PID_FILE = 'mcp-server.pid';
+
+interface PidInfo {
+  pid: number;
+  startedAt: string;
+  serverPath: string;
+  configPath: string;
+}
+
+/**
+ * Get the path to the PID file
+ */
+function getPidFilePath(): string {
+  return join(process.cwd(), MYCELIUM_DIR, PID_FILE);
+}
+
+/**
+ * Ensure the .mycelium directory exists
+ */
+async function ensureMyceliumDir(): Promise<void> {
+  const dir = join(process.cwd(), MYCELIUM_DIR);
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch {
+    // Directory already exists
+  }
+}
+
+/**
+ * Save PID info to file
+ */
+async function savePidInfo(info: PidInfo): Promise<void> {
+  await ensureMyceliumDir();
+  await writeFile(getPidFilePath(), JSON.stringify(info, null, 2));
+}
+
+/**
+ * Read PID info from file
+ */
+async function readPidInfo(): Promise<PidInfo | null> {
+  try {
+    const content = await readFile(getPidFilePath(), 'utf-8');
+    return JSON.parse(content) as PidInfo;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove PID file
+ */
+async function removePidFile(): Promise<void> {
+  try {
+    await unlink(getPidFilePath());
+  } catch {
+    // File doesn't exist
+  }
+}
+
+/**
+ * Check if a process with given PID is running
+ */
+function isProcessRunning(pid: number): boolean {
+  try {
+    // Sending signal 0 doesn't actually send a signal but checks if the process exists
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Format uptime from start date to now
+ */
+function formatUptime(startedAt: string): string {
+  const start = new Date(startedAt);
+  const now = new Date();
+  const diffMs = now.getTime() - start.getTime();
+
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    return `${days}d ${hours % 24}h ${minutes % 60}m`;
+  } else if (hours > 0) {
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds % 60}s`;
+  } else {
+    return `${seconds}s`;
+  }
+}
 
 export const mcpCommand = new Command('mcp')
   .description('MCP server management');
@@ -89,8 +187,19 @@ mcpCommand
         });
         child.unref();
 
+        // Save PID info for status command
+        if (child.pid) {
+          await savePidInfo({
+            pid: child.pid,
+            startedAt: new Date().toISOString(),
+            serverPath,
+            configPath
+          });
+        }
+
         console.log(chalk.green(`✓ Server started in background (PID: ${child.pid})`));
-        console.log(chalk.cyan('Stop with: ') + chalk.white(`kill ${child.pid}`));
+        console.log(chalk.cyan('Check status: ') + chalk.white('mycelium mcp status'));
+        console.log(chalk.cyan('Stop server: ') + chalk.white('mycelium mcp stop'));
       } else {
         // Foreground mode
         console.log(chalk.green('✓ Server starting...'));
@@ -125,10 +234,108 @@ mcpCommand
 mcpCommand
   .command('status')
   .description('Check MCP server status')
-  .action(() => {
+  .action(async () => {
     console.log(chalk.blue('📊 MCP Server Status'));
     console.log();
-    console.log(chalk.gray('  Status checking not yet implemented.'));
-    console.log(chalk.gray('  Use `ps aux | grep mycelium` to check running servers.'));
+
+    const pidInfo = await readPidInfo();
+
+    if (!pidInfo) {
+      console.log(chalk.yellow('  No server info found.'));
+      console.log(chalk.gray('  The server may not have been started in background mode,'));
+      console.log(chalk.gray('  or the PID file was removed.'));
+      console.log();
+      console.log(chalk.cyan('  Start server: ') + chalk.white('mycelium mcp start --background'));
+      console.log();
+      return;
+    }
+
+    const isRunning = isProcessRunning(pidInfo.pid);
+
+    if (isRunning) {
+      console.log(chalk.green('  ● Server is running'));
+      console.log();
+      console.log(chalk.white('  PID:      ') + chalk.cyan(pidInfo.pid.toString()));
+      console.log(chalk.white('  Uptime:   ') + chalk.cyan(formatUptime(pidInfo.startedAt)));
+      console.log(chalk.white('  Started:  ') + chalk.gray(new Date(pidInfo.startedAt).toLocaleString()));
+      console.log(chalk.white('  Server:   ') + chalk.gray(pidInfo.serverPath));
+      console.log(chalk.white('  Config:   ') + chalk.gray(pidInfo.configPath));
+      console.log();
+      console.log(chalk.cyan('  Stop with: ') + chalk.white('mycelium mcp stop'));
+    } else {
+      console.log(chalk.red('  ○ Server is not running'));
+      console.log();
+      console.log(chalk.gray(`  Last known PID: ${pidInfo.pid}`));
+      console.log(chalk.gray(`  Last started:   ${new Date(pidInfo.startedAt).toLocaleString()}`));
+      console.log();
+
+      // Clean up stale PID file
+      await removePidFile();
+      console.log(chalk.gray('  (Stale PID file removed)'));
+      console.log();
+      console.log(chalk.cyan('  Start server: ') + chalk.white('mycelium mcp start --background'));
+    }
+    console.log();
+  });
+
+// mycelium mcp stop
+mcpCommand
+  .command('stop')
+  .description('Stop the MCP server running in background')
+  .option('-f, --force', 'Force kill (SIGKILL instead of SIGTERM)')
+  .action(async (options: { force?: boolean }) => {
+    console.log(chalk.blue('🛑 Stopping MCP Server...'));
+    console.log();
+
+    const pidInfo = await readPidInfo();
+
+    if (!pidInfo) {
+      console.log(chalk.yellow('  No server info found.'));
+      console.log(chalk.gray('  No background server is being tracked.'));
+      console.log();
+      return;
+    }
+
+    const isRunning = isProcessRunning(pidInfo.pid);
+
+    if (!isRunning) {
+      console.log(chalk.yellow('  Server is not running.'));
+      console.log(chalk.gray(`  (PID ${pidInfo.pid} is not active)`));
+      console.log();
+
+      // Clean up stale PID file
+      await removePidFile();
+      console.log(chalk.gray('  Stale PID file removed.'));
+      console.log();
+      return;
+    }
+
+    try {
+      const signal = options.force ? 'SIGKILL' : 'SIGTERM';
+      process.kill(pidInfo.pid, signal);
+
+      console.log(chalk.green(`  ✓ Sent ${signal} to process ${pidInfo.pid}`));
+
+      // Wait briefly and check if it stopped
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      if (isProcessRunning(pidInfo.pid)) {
+        console.log(chalk.yellow('  Process still running, waiting...'));
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        if (isProcessRunning(pidInfo.pid)) {
+          console.log(chalk.yellow('  Process did not stop gracefully.'));
+          console.log(chalk.cyan('  Use: ') + chalk.white('mycelium mcp stop --force'));
+        } else {
+          console.log(chalk.green('  ✓ Server stopped'));
+          await removePidFile();
+        }
+      } else {
+        console.log(chalk.green('  ✓ Server stopped'));
+        await removePidFile();
+      }
+    } catch (error) {
+      console.error(chalk.red('  ✗ Failed to stop server:'), error);
+    }
     console.log();
   });

@@ -19,7 +19,9 @@ function runCli(args: string, cwd?: string): string {
     });
   } catch (error) {
     const err = error as { stdout?: string; stderr?: string; message: string };
-    return err.stdout || err.stderr || err.message;
+    // Combine stdout and stderr to capture all output
+    const output = [err.stdout, err.stderr].filter(Boolean).join('\n');
+    return output || err.message;
   }
 }
 
@@ -158,6 +160,55 @@ describe('MYCELIUM CLI', () => {
       expect(output).toContain('admin');
       expect(output).toContain('developer');
       expect(output).toContain('guest');
+    });
+  });
+
+  describe('mycelium mcp', () => {
+    let testDir: string;
+
+    beforeAll(() => {
+      testDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-mcp-test-'));
+      runCli('init', testDir);
+    });
+
+    afterAll(() => {
+      if (testDir && existsSync(testDir)) {
+        rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should show mcp help', () => {
+      const output = runCli('mcp --help');
+      expect(output).toContain('start');
+      expect(output).toContain('status');
+      expect(output).toContain('stop');
+    });
+
+    it('should show status when no server is running', () => {
+      const output = runCli('mcp status', testDir);
+      expect(output).toContain('MCP Server Status');
+      expect(output).toContain('No server info found');
+    });
+
+    it('should show stop message when no server is running', () => {
+      const output = runCli('mcp stop', testDir);
+      expect(output).toContain('No server info found');
+    });
+
+    it('should detect missing config for start', () => {
+      const emptyDir = mkdtempSync(join(tmpdir(), 'mycelium-cli-mcp-empty-'));
+      try {
+        const output = runCli('mcp start', emptyDir);
+        expect(output).toContain('Config file not found');
+      } finally {
+        rmSync(emptyDir, { recursive: true, force: true });
+      }
+    });
+
+    it('should detect missing server for start', () => {
+      // testDir has config but no built server
+      const output = runCli('mcp start', testDir);
+      expect(output).toContain('MCP server not found');
     });
   });
 });
