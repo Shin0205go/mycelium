@@ -5,7 +5,7 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo } from './mcp-client.js';
+import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo, ToolCommandInfo } from './mcp-client.js';
 import { createQuery, isToolUseMessage, getToolUseInfo, type SDKMessage } from './agent.js';
 import { SessionStore, createSessionStore, type Session, type SessionSummary } from '@mycelium/session';
 import { createBanner, createSpinner, icons, suggestCommand, errorBox } from './ui.js';
@@ -32,6 +32,12 @@ export class InteractiveCLI {
 
   // Dynamic commands loaded from skills
   private skillCommands: Map<string, SkillCommandInfo> = new Map();
+
+  // Tool commands auto-generated from available tools
+  private toolCommands: Map<string, ToolCommandInfo> = new Map();
+
+  // Tools to exclude from slash commands (handled specially)
+  private readonly excludedTools = ['set_role', 'list_roles', 'spawn_sub_agent'];
 
   // Built-in commands (always available)
   private readonly builtInCommands = [
@@ -325,15 +331,107 @@ export class InteractiveCLI {
     }
   }
 
+  /**
+   * Extract tool name from prefixed name (server__toolName -> toolName)
+   */
+  private extractToolName(prefixedName: string): string {
+    const parts = prefixedName.split('__');
+    return parts.length > 1 ? parts[1] : prefixedName;
+  }
+
+  /**
+   * Register tool commands from available tools in manifest
+   */
+  private registerToolCommands(tools: AgentManifest['availableTools']): void {
+    this.toolCommands.clear();
+    const nameCount = new Map<string, number>();
+
+    // Count tool names to detect duplicates
+    for (const tool of tools) {
+      const shortName = this.extractToolName(tool.name);
+      // Skip excluded tools
+      if (this.excludedTools.includes(shortName)) continue;
+      nameCount.set(shortName, (nameCount.get(shortName) || 0) + 1);
+    }
+
+    // Register commands
+    for (const tool of tools) {
+      const shortName = this.extractToolName(tool.name);
+      // Skip excluded tools
+      if (this.excludedTools.includes(shortName)) continue;
+
+      const isDuplicate = (nameCount.get(shortName) || 0) > 1;
+      const cmdName = isDuplicate ? `${tool.source}:${shortName}` : shortName;
+
+      this.toolCommands.set(cmdName, {
+        command: cmdName,
+        fullToolName: tool.name,
+        source: tool.source,
+        description: tool.description
+      });
+    }
+  }
+
+  /**
+   * Execute a tool command
+   */
+  private async executeToolCommand(cmd: ToolCommandInfo, args: string[]): Promise<void> {
+    try {
+      console.log(chalk.gray(`\n  Executing ${cmd.fullToolName}...`));
+
+      // Parse arguments - for now, join as a single input or use key=value pairs
+      const toolArgs: Record<string, unknown> = {};
+      for (const arg of args) {
+        if (arg.includes('=')) {
+          const [key, ...valueParts] = arg.split('=');
+          toolArgs[key] = valueParts.join('=');
+        } else if (args.length === 1) {
+          // Single argument without key - try common parameter names
+          toolArgs['path'] = arg;
+          toolArgs['id'] = arg;
+          toolArgs['name'] = arg;
+        }
+      }
+
+      const result = await this.mcp.callTool(cmd.fullToolName, toolArgs) as {
+        content?: Array<{ type?: string; text?: string }>;
+        isError?: boolean;
+      };
+
+      if (result?.isError) {
+        console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+      } else {
+        const text = result?.content?.[0]?.text;
+        if (text) {
+          try {
+            const json = JSON.parse(text);
+            console.log(chalk.green(`\n  ✓ Success`));
+            console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
+          } catch {
+            console.log(chalk.green(`\n  ✓ ${text}\n`));
+          }
+        } else {
+          console.log(chalk.green(`\n  ✓ Command executed\n`));
+        }
+      }
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log(chalk.red(`  Failed to execute /${cmd.command}: ${err.message}\n`));
+    }
+  }
+
   private async switchRole(roleId: string): Promise<void> {
     try {
       console.log(chalk.gray(`Switching to role: ${roleId}...`));
       this.manifest = await this.mcp.switchRole(roleId);
       this.currentRole = roleId;
 
+      // Register tool commands from available tools
+      this.registerToolCommands(this.manifest.availableTools);
+
       console.log(chalk.green(`\n✓ Role: ${chalk.bold(this.manifest.role.name)}`));
       console.log(chalk.gray(`  ${this.manifest.role.description}`));
-      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount}`));
+      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount} (${this.toolCommands.size} as commands)`));
       console.log(chalk.gray(`  Servers: ${this.manifest.availableServers.join(', ')}\n`));
     } catch (error: unknown) {
       const err = error as Error;
@@ -439,10 +537,11 @@ export class InteractiveCLI {
         const matches = this.models.filter(m => m.startsWith(partial));
         return [matches.map(m => `/model ${m}`), line];
       }
-      // Combine built-in commands with dynamic skill commands
+      // Combine built-in, skill, and tool commands
       const allCommands = [
         ...this.builtInCommands,
-        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`)
+        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`),
+        ...Array.from(this.toolCommands.keys()).map(c => `/${c}`)
       ];
       const matches = allCommands.filter(c => c.startsWith(line));
       return [matches, line];
@@ -617,6 +716,31 @@ export class InteractiveCLI {
           const usage = cmd.usage || `/${cmd.command}`;
           const paddedUsage = usage.padEnd(16);
           console.log('  ' + chalk.bold(paddedUsage) + ' ' + cmd.description + chalk.gray(` [${skillName}]`));
+        }
+      }
+    }
+
+    // Show tool commands (auto-generated from available tools)
+    if (this.toolCommands.size > 0) {
+      // Group by server
+      const byServer = new Map<string, ToolCommandInfo[]>();
+      for (const cmd of this.toolCommands.values()) {
+        const list = byServer.get(cmd.source) || [];
+        list.push(cmd);
+        byServer.set(cmd.source, list);
+      }
+
+      console.log();
+      console.log(chalk.gray('  Tool Commands:'));
+      for (const [server, cmds] of byServer) {
+        console.log(chalk.gray(`    [${server}]`));
+        const displayCmds = cmds.slice(0, 5);  // Show max 5 per server
+        for (const cmd of displayCmds) {
+          const desc = cmd.description?.slice(0, 40) || '';
+          console.log(`      /${chalk.bold(cmd.command.padEnd(25))} ${chalk.gray(desc)}`);
+        }
+        if (cmds.length > 5) {
+          console.log(chalk.gray(`      ... and ${cmds.length - 5} more`));
         }
       }
     }
@@ -1134,18 +1258,25 @@ export class InteractiveCLI {
             if (skillCmd) {
               await this.executeSkillCommand(skillCmd, args);
             } else {
-              // Suggest similar commands using fuzzy matching
-              const allCommands = [
-                ...this.builtInCommands.map(c => c.slice(1)),
-                ...Array.from(this.skillCommands.keys())
-              ];
-              const suggestions = suggestCommand(cmd, allCommands);
-              if (suggestions.length > 0) {
-                console.log(chalk.yellow(`Unknown command: /${cmd}`));
-                console.log(chalk.gray(`Did you mean: ${suggestions.map(s => `/${s}`).join(', ')}?`));
+              // Check if it's a tool command
+              const toolCmd = this.toolCommands.get(cmd.toLowerCase());
+              if (toolCmd) {
+                await this.executeToolCommand(toolCmd, args);
               } else {
-                console.log(chalk.yellow(`Unknown command: /${cmd}`));
-                console.log(chalk.gray('Type /help for available commands'));
+                // Suggest similar commands using fuzzy matching
+                const allCommands = [
+                  ...this.builtInCommands.map(c => c.slice(1)),
+                  ...Array.from(this.skillCommands.keys()),
+                  ...Array.from(this.toolCommands.keys())
+                ];
+                const suggestions = suggestCommand(cmd, allCommands);
+                if (suggestions.length > 0) {
+                  console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                  console.log(chalk.gray(`Did you mean: ${suggestions.map(s => `/${s}`).join(', ')}?`));
+                } else {
+                  console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                  console.log(chalk.gray('Type /help for available commands'));
+                }
               }
             }
         }

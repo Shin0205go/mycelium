@@ -80,6 +80,13 @@ export interface ListCommandsResult {
   commands: SkillCommandInfo[];
 }
 
+export interface ToolCommandInfo {
+  command: string;           // スラッシュコマンド名
+  fullToolName: string;      // 完全なツール名 (server__tool)
+  source: string;            // サーバー名
+  description?: string;      // ツールの説明
+}
+
 export class MCPClient extends EventEmitter {
   private process: ChildProcess | null = null;
   private buffer: string = '';
