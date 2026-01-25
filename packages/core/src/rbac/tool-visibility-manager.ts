@@ -11,8 +11,7 @@ import { RoleManager } from './role-manager.js';
  * Options for ToolVisibilityManager
  */
 export interface ToolVisibilityOptions {
-  /** Hide the set_role tool (for A2A mode) */
-  hideSetRoleTool?: boolean;
+  // Reserved for future options
 }
 
 /**
@@ -32,26 +31,10 @@ export class ToolVisibilityManager {
   // Current role reference
   private currentRole: Role | null = null;
 
-  // A2A mode: hide set_role tool
-  private hideSetRoleTool: boolean = false;
-
   constructor(logger: Logger, roleManager: RoleManager, options?: ToolVisibilityOptions) {
     this.logger = logger;
     this.roleManager = roleManager;
-    this.hideSetRoleTool = options?.hideSetRoleTool ?? false;
-    this.logger.debug('ToolVisibilityManager initialized', {
-      hideSetRoleTool: this.hideSetRoleTool
-    });
-  }
-
-  /**
-   * Set whether to hide the set_role tool (for A2A mode)
-   */
-  setHideSetRoleTool(hide: boolean): void {
-    this.hideSetRoleTool = hide;
-    // Re-filter visible tools
-    this.updateVisibleTools();
-    this.logger.debug(`set_role tool visibility: ${hide ? 'hidden' : 'visible'}`);
+    this.logger.debug('ToolVisibilityManager initialized');
   }
 
   // ============================================================================
@@ -196,43 +179,9 @@ export class ToolVisibilityManager {
   }
 
   /**
-   * Add system tools (always visible) and memory tools (permission-based)
+   * Add system tools (memory tools are permission-based)
    */
   private addSystemTool(): void {
-    // set_role tool - only add if not in A2A mode (hideSetRoleTool = false)
-    if (!this.hideSetRoleTool) {
-      const setRoleTool: Tool = {
-        name: 'set_role',
-        description: 'Switch to a specific role and get the system instruction and available tools for that role. ' +
-          'Use this tool to change your operational context and capabilities.',
-        inputSchema: {
-          type: 'object' as const,
-          properties: {
-            role_id: {
-              type: 'string',
-              description: 'The role ID to switch to. Use "list" to see available roles.'
-            },
-            includeToolDescriptions: {
-              type: 'boolean',
-              description: 'Whether to include full tool descriptions in the response',
-              default: true
-            }
-          },
-          required: ['role_id']
-        }
-      };
-
-      // Register set_role (visible when not in A2A mode)
-      const setRoleInfo: ToolInfo = {
-        tool: setRoleTool,
-        sourceServer: 'mycelium-router',
-        prefixedName: 'set_role',
-        visible: true,
-        visibilityReason: 'system_tool'
-      };
-      this.visibleTools.set('set_role', setRoleInfo);
-    }
-
     // Check if current role has memory permission
     const roleId = this.currentRole?.id;
     const hasMemoryAccess = roleId ? this.roleManager.hasMemoryAccess(roleId) : false;
@@ -375,17 +324,6 @@ export class ToolVisibilityManager {
    * Check if a tool is accessible (throws if not)
    */
   checkAccess(toolName: string): void {
-    // set_role: accessible only when not in A2A mode
-    if (toolName === 'set_role') {
-      if (this.hideSetRoleTool) {
-        throw new Error(
-          `Tool 'set_role' is disabled in A2A mode. ` +
-          `Role is automatically assigned based on agent identity at connection time.`
-        );
-      }
-      return;
-    }
-
     // Memory tools require memory permission
     if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
       const roleId = this.currentRole?.id;
@@ -401,11 +339,8 @@ export class ToolVisibilityManager {
 
     if (!this.visibleTools.has(toolName)) {
       const roleId = this.currentRole?.id || 'none';
-      const hint = this.hideSetRoleTool
-        ? 'Check available tools for your assigned role.'
-        : 'Use set_role to switch roles or check available tools.';
       throw new Error(
-        `Tool '${toolName}' is not accessible for role '${roleId}'. ${hint}`
+        `Tool '${toolName}' is not accessible for role '${roleId}'. Check available tools for your skill.`
       );
     }
   }
@@ -414,11 +349,6 @@ export class ToolVisibilityManager {
    * Check if a tool is visible (returns boolean)
    */
   isVisible(toolName: string): boolean {
-    // set_role: visible only when not in A2A mode
-    if (toolName === 'set_role') {
-      return !this.hideSetRoleTool;
-    }
-
     // Memory tools are visible only if role has memory permission
     if (ToolVisibilityManager.MEMORY_TOOLS.includes(toolName)) {
       const roleId = this.currentRole?.id;

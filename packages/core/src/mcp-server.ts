@@ -17,7 +17,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
-import { MyceliumRouterCore, createMyceliumRouterCore, ROUTER_TOOLS } from './router/mycelium-router-core.js';
+import { MyceliumCore, createMyceliumCore, ROUTER_TOOLS } from './router/mycelium-core.js';
 
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
@@ -165,8 +165,8 @@ async function spawnInteractiveSubAgent(
   const escapedPrompt = escapeForAppleScript(initialPrompt);
   const escapedCliPath = escapeForAppleScript(MYCELIUM_CLI_PATH);
 
-  // Build a prompt that instructs Claude to first switch roles, then execute the task
-  const fullPrompt = `まず set_role を使って "${role}" ロールに切り替えてください。その後、以下のタスクを実行してください：
+  // Build the task prompt
+  const fullPrompt = `以下のタスクを実行してください：
 
 ${initialPrompt}`;
 
@@ -229,7 +229,7 @@ async function main() {
   );
 
   // Initialize Router Core with explicit paths
-  const routerCore = createMyceliumRouterCore(logger, {
+  const routerCore = createMyceliumCore(logger, {
     rolesDir: join(PROJECT_ROOT, 'roles'),
     cwd: PROJECT_ROOT,
   });
@@ -267,66 +267,37 @@ async function main() {
   await routerCore.loadRolesFromSkillsServer();
   logger.info('Roles loaded');
 
-  // Auto-switch to role if MYCELIUM_CURRENT_ROLE is set
-  const currentRoleEnv = process.env.MYCELIUM_CURRENT_ROLE;
-  if (currentRoleEnv) {
-    logger.info(`Auto-switching to role from env: ${currentRoleEnv}`);
-    try {
-      await routerCore.routeRequest({
-        method: 'tools/call',
-        params: {
-          name: 'set_role',
-          arguments: { role_id: currentRoleEnv }
-        }
-      });
-      logger.info(`Successfully switched to role: ${currentRoleEnv}`);
-    } catch (error) {
-      logger.warn(`Failed to switch to role ${currentRoleEnv}:`, error);
-    }
+  // Set initial skill if MYCELIUM_CURRENT_SKILL is set
+  const currentSkillEnv = process.env.MYCELIUM_CURRENT_SKILL;
+  if (currentSkillEnv) {
+    logger.info(`Using skill from env: ${currentSkillEnv}`);
   }
 
   // List Tools Handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logger.info('ListTools request received');
 
-    // Add the set_role tool (always available)
-    const setRoleTool = {
-      name: 'set_role',
-      description: 'Switch agent role and get the manifest with available tools and system instruction',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role_id: {
-            type: 'string',
-            description: 'The role ID to switch to',
-          },
-        },
-        required: ['role_id'],
-      },
-    };
-
     // Get tools from backend servers via router
     let backendTools: any[] = [];
     try {
       const response = await routerCore.routeRequest({ method: 'tools/list' });
       const rawTools = response?.result?.tools || response?.tools || [];
-      // Filter out set_role from backend to avoid duplicates
-      backendTools = rawTools.filter((t: any) => t.name !== 'set_role');
+      backendTools = rawTools;
       logger.info(`Got ${backendTools.length} tools from backend servers`);
     } catch (error) {
       logger.warn('Failed to get tools from backend servers:', error);
     }
 
-    // Build tools list: set_role always available, others based on RBAC
-    const allTools = [setRoleTool, ...backendTools];
+    // Build tools list from backend and router tools
+    const allTools = [...backendTools];
 
-    // Add router-level tools if current role has access (defined in ROUTER_TOOLS)
+    // Add router-level tools if current role/skill has access (defined in ROUTER_TOOLS)
     for (const tool of ROUTER_TOOLS) {
       try {
         routerCore.checkToolAccess(tool.name);
         allTools.push(tool);
       } catch {
-        // Role doesn't have access to this tool
+        // Skill doesn't have access to this tool
       }
     }
 
@@ -345,7 +316,6 @@ async function main() {
 
     // Check tool access (skip for router system tools - always available)
     const ROUTER_SYSTEM_TOOLS = [
-      'set_role',
       'mycelium-router__get_context',
       'mycelium-router__list_roles',
       'mycelium-router__spawn_sub_agent'
@@ -469,49 +439,6 @@ async function main() {
       }
     }
 
-    // Handle set_role (check both exact match and suffix)
-    if (name === 'set_role' || name.endsWith('__set_role')) {
-      logger.info(`✅ Handling set_role (matched: ${name})`);
-      logger.info(`📋 Arguments: ${JSON.stringify(args)}`);
-      const roleId = (args as any)?.role_id;
-      logger.info(`🎭 Role ID: ${roleId}`);
-
-      try {
-        // Start required servers for this role (lazy loading)
-        logger.info(`Switching to role: ${roleId}, starting required servers...`);
-        await routerCore.startServersForRole(roleId);
-
-        // Get manifest (this updates currentRole and visibleTools)
-        const manifest = await routerCore.setRole({ role: roleId });
-
-        // Notify client that tools have changed AFTER role is updated
-        try {
-          await server.sendToolListChanged();
-          logger.info('Sent tools/list_changed notification');
-        } catch (notifyError) {
-          logger.warn('Failed to send tools/list_changed notification:', notifyError);
-        }
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(manifest, null, 2),
-            },
-          ],
-        };
-      } catch (error: any) {
-        logger.error(`Failed to switch to role ${roleId}:`, error);
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error.message}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
 
     // Route to backend server with audit logging
     try {

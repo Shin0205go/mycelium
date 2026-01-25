@@ -17,6 +17,7 @@ import {
   getDefaultContextPath,
   type WorkflowContext,
 } from '../lib/context.js';
+import { AdhocAgent } from './adhoc-agent.js';
 
 export interface WorkflowAgentConfig {
   model?: string;
@@ -311,7 +312,22 @@ ${chalk.bold('Commands:')}
       console.log();
     } else if (onFailure === 'auto') {
       console.log(chalk.cyan('Auto-escalating to Adhoc agent...'));
-      // TODO: Implement auto-escalation
+      console.log();
+
+      // Close the workflow agent's readline before starting adhoc
+      if (this.rl) {
+        this.rl.close();
+        this.rl = null;
+      }
+
+      // Create and run adhoc agent with the failure context
+      const adhocAgent = new AdhocAgent({
+        model: this.config.model,
+        contextPath,
+        useApiKey: this.config.useApiKey,
+      });
+
+      await adhocAgent.run();
     }
   }
 

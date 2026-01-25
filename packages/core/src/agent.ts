@@ -297,7 +297,7 @@ export function extractThinkingFromMessage(
 
 /**
  * Create a ThinkingSignature from extracted thinking.
- * This can be passed to MyceliumRouterCore.setThinkingContext() for audit logging.
+ * This can be passed to MyceliumCore.setThinkingContext() for audit logging.
  *
  * @param extracted - The extracted thinking from a message
  * @param thinkingTokens - Optional number of thinking tokens used

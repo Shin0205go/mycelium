@@ -80,15 +80,15 @@ export const ROUTER_TOOLS: Tool[] = [
 ];
 
 /**
- * MyceliumRouterCore - Central routing system for MYCELIUM
+ * MyceliumCore - Central routing system for MYCELIUM
  *
  * This class serves as the "司令塔" (command center) that:
  * 1. Manages connections to multiple sub-MCP servers
- * 2. Maintains a virtual tool table filtered by current role
- * 3. Handles role switching via set_role
+ * 2. Maintains a virtual tool table filtered by current skill
+ * 3. Spawns sub-agents with skill-based tool access
  * 4. Emits notifications when tools change
  */
-export class MyceliumRouterCore extends EventEmitter {
+export class MyceliumCore extends EventEmitter {
   private logger: Logger;
   private stdioRouter: StdioRouter;
   private roleManager: RoleManager;
@@ -111,9 +111,6 @@ export class MyceliumRouterCore extends EventEmitter {
   private initialized: boolean = false;
   private initializationPromise: Promise<void> | null = null;
 
-  // A2A mode: when true, set_role tool is disabled
-  private a2aMode: boolean = false;
-
   // Current thinking context for the next tool call
   // Set this before executeToolCall to capture "why" in audit logs
   private pendingThinkingContext: ThinkingSignature | null = null;
@@ -125,13 +122,11 @@ export class MyceliumRouterCore extends EventEmitter {
       configFile?: string;
       memoryDir?: string;
       identityConfigPath?: string;
-      a2aMode?: boolean;
       cwd?: string;
     }
   ) {
     super();
     this.logger = logger;
-    this.a2aMode = options?.a2aMode ?? false;
 
     // Initialize StdioRouter for managing upstream servers
     this.stdioRouter = new StdioRouter(logger, { cwd: options?.cwd });
@@ -139,10 +134,8 @@ export class MyceliumRouterCore extends EventEmitter {
     // Initialize role manager
     this.roleManager = createRoleManager(logger);
 
-    // Initialize tool visibility manager (with A2A mode awareness)
-    this.toolVisibility = createToolVisibilityManager(logger, this.roleManager, {
-      hideSetRoleTool: this.a2aMode
-    });
+    // Initialize tool visibility manager
+    this.toolVisibility = createToolVisibilityManager(logger, this.roleManager);
 
     // Initialize audit logger
     this.auditLogger = createAuditLogger(logger);
@@ -164,14 +157,12 @@ export class MyceliumRouterCore extends EventEmitter {
       visibleTools: new Map(),
       metadata: {
         initializedAt: new Date(),
-        roleSwitchCount: 0,
         sessionId: uuidv4()
       }
     };
 
-    this.logger.debug('MyceliumRouterCore created', {
-      sessionId: this.state.metadata.sessionId,
-      a2aMode: this.a2aMode
+    this.logger.debug('MyceliumCore created', {
+      sessionId: this.state.metadata.sessionId
     });
   }
 
@@ -240,14 +231,13 @@ export class MyceliumRouterCore extends EventEmitter {
   }
 
   /**
-   * Resolve agent identity and set role automatically (A2A mode)
+   * Resolve agent identity and set skill automatically
    *
-   * This is the main entry point for A2A connections. Instead of
-   * using set_role, agents are assigned roles based on their identity
-   * (clientInfo.name from MCP handshake).
+   * This is the main entry point for sub-agent connections. Agents
+   * are assigned skills based on their identity.
    *
    * @param identity Agent identity from MCP connection
-   * @returns The resolved role information
+   * @returns The resolved skill information
    */
   async setRoleFromIdentity(identity: AgentIdentity): Promise<AgentManifest> {
     this.logger.info(`🔐 A2A Identity resolution for: ${identity.name}`);
@@ -271,7 +261,7 @@ export class MyceliumRouterCore extends EventEmitter {
       resolution.roleId = defaultRoleId;
     }
 
-    // Set the role internally (without exposing set_role tool)
+    // Set the skill internally
     const manifest = await this.setRole({
       role: resolution.roleId,
       includeToolDescriptions: true
@@ -291,31 +281,6 @@ export class MyceliumRouterCore extends EventEmitter {
    */
   getCurrentIdentity(): IdentityResolution | null {
     return this.currentIdentity;
-  }
-
-  /**
-   * Check if running in A2A mode
-   */
-  isA2AMode(): boolean {
-    return this.a2aMode;
-  }
-
-  /**
-   * Enable A2A mode (disables set_role tool)
-   */
-  enableA2AMode(): void {
-    this.a2aMode = true;
-    this.toolVisibility.setHideSetRoleTool(true);
-    this.logger.info('A2A mode enabled - set_role tool disabled');
-  }
-
-  /**
-   * Disable A2A mode (enables set_role tool)
-   */
-  disableA2AMode(): void {
-    this.a2aMode = false;
-    this.toolVisibility.setHideSetRoleTool(false);
-    this.logger.info('A2A mode disabled - set_role tool enabled');
   }
 
   // ============================================================================
@@ -642,20 +607,20 @@ export class MyceliumRouterCore extends EventEmitter {
   }
 
   // ============================================================================
-  // set_role - Role Switching Implementation
+  // Skill Assignment - Internal Implementation
   // ============================================================================
 
   /**
-   * Execute set_role - the core role switching function
+   * Set skill for the current session (internal use)
    *
-   * This is the key function that:
+   * This function:
    * 1. Fetches remote instruction (SKILL.md) from backend if configured
    * 2. Combines persona + skill instruction for the final system prompt
    * 3. Updates internal state to activate needed sub-servers
    * 4. Sends tools/list_changed notification to clients
    *
    * Flow for agent with remote skill:
-   * 1. Client requests role switch
+   * 1. Sub-agent spawns with a skill
    * 2. MYCELIUM fetches SKILL.md from backend server via prompts/get
    * 3. MYCELIUM combines its persona definition with the skill instruction
    * 4. MYCELIUM sends tools/list_changed to client
@@ -808,25 +773,6 @@ export class MyceliumRouterCore extends EventEmitter {
   async routeRequest(request: any): Promise<any> {
     const { method, params } = request;
 
-    // Handle set_role - reject in A2A mode
-    if (method === 'tools/call' && params?.name === 'set_role') {
-      if (this.a2aMode) {
-        return {
-          result: {
-            content: [
-              {
-                type: 'text',
-                text: 'Error: set_role is disabled in A2A mode. ' +
-                  'Role is automatically assigned based on agent identity at connection time.'
-              }
-            ],
-            isError: true
-          }
-        };
-      }
-      return await this.handleSetRole(params.arguments || {});
-    }
-
     // Handle memory tools
     if (method === 'tools/call' && params?.name === 'save_memory') {
       return await this.handleSaveMemory(params.arguments || {});
@@ -879,13 +825,13 @@ export class MyceliumRouterCore extends EventEmitter {
   // ============================================================================
 
   /**
-   * Check if the current role has memory access
+   * Check if the current skill has memory access
    * Throws an error if access is denied
    */
   private checkMemoryAccess(): string {
     const roleId = this.state.currentRole?.id;
     if (!roleId) {
-      throw new Error('No role selected. Use set_role first.');
+      throw new Error('No skill selected. Skill must be assigned at spawn time.');
     }
 
     if (!this.roleManager.hasMemoryAccess(roleId)) {
@@ -1137,60 +1083,10 @@ export class MyceliumRouterCore extends EventEmitter {
   }
 
   /**
-   * Handle set_role tool call
-   */
-  private async handleSetRole(args: Record<string, any>): Promise<any> {
-    try {
-      const manifest = await this.setRole({
-        role: args.role_id,
-        includeToolDescriptions: args.includeToolDescriptions !== false
-      });
-
-      // Format as MCP tool result
-      return {
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: manifest.systemInstruction
-            },
-            {
-              type: 'text',
-              text: `\n\n---\n\n## Available Tools (${manifest.availableTools.length})\n\n` +
-                manifest.availableTools
-                  .map(t => `- **${t.name}** (${t.source})${t.description ? `: ${t.description}` : ''}`)
-                  .join('\n')
-            }
-          ],
-          isError: false,
-          metadata: {
-            role: manifest.role,
-            toolCount: manifest.metadata.toolCount,
-            serverCount: manifest.metadata.serverCount,
-            generatedAt: manifest.metadata.generatedAt.toISOString()
-          }
-        }
-      };
-    } catch (error) {
-      return {
-        result: {
-          content: [
-            {
-              type: 'text',
-              text: `Error: ${error instanceof Error ? error.message : String(error)}`
-            }
-          ],
-          isError: true
-        }
-      };
-    }
-  }
-
-  /**
-   * Get the filtered tools list for the current role
+   * Get the filtered tools list for the current skill
    */
   private getFilteredToolsList(): any {
-    // Get visible tools from ToolVisibilityManager (includes set_role)
+    // Get visible tools from ToolVisibilityManager
     const tools = this.toolVisibility.getVisibleTools();
 
     return {
@@ -1606,16 +1502,15 @@ export class MyceliumRouterCore extends EventEmitter {
 }
 
 // Export factory function
-export function createMyceliumRouterCore(
+export function createMyceliumCore(
   logger: Logger,
   options?: {
     rolesDir?: string;
     configFile?: string;
     memoryDir?: string;
     identityConfigPath?: string;
-    a2aMode?: boolean;
     cwd?: string;
   }
-): MyceliumRouterCore {
-  return new MyceliumRouterCore(logger, options);
+): MyceliumCore {
+  return new MyceliumCore(logger, options);
 }

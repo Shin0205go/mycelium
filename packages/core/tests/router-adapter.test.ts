@@ -64,72 +64,9 @@ describe('RouterAdapter', () => {
     });
   });
 
-  describe('isManifestTool', () => {
-    it('should return true for set_role', () => {
-      expect(adapter.isManifestTool('set_role')).toBe(true);
-    });
-
-    it('should return false for other tools', () => {
-      expect(adapter.isManifestTool('other_tool')).toBe(false);
-      expect(adapter.isManifestTool('list_roles')).toBe(false);
-    });
-  });
-
-  describe('getManifestToolDefinition', () => {
-    it('should return set_role tool definition', () => {
-      const tool = adapter.getManifestToolDefinition();
-
-      expect(tool.name).toBe('set_role');
-      expect(tool.description).toBeDefined();
-      expect(tool.inputSchema).toBeDefined();
-      expect(tool.inputSchema.properties).toHaveProperty('role');
-    });
-  });
-
-  describe('getListRolesToolDefinition', () => {
-    it('should return list_roles tool definition', () => {
-      const tool = adapter.getListRolesToolDefinition();
-
-      expect(tool.name).toBe('list_roles');
-      expect(tool.description).toBeDefined();
-      expect(tool.inputSchema).toBeDefined();
-    });
-  });
-
-  describe('handleSetRole', () => {
-    beforeEach(async () => {
-      await adapter.initialize();
-    });
-
-    it('should return error for invalid role', async () => {
-      const result = await adapter.handleSetRole({ role_id: 'nonexistent' });
-
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain('Error');
-    });
-  });
-
-  describe('handleListRoles', () => {
-    beforeEach(async () => {
-      await adapter.initialize();
-    });
-
-    it('should return roles list', async () => {
-      const result = await adapter.handleListRoles({});
-
-      expect(result.isError).toBe(false);
-      expect(result.content[0].text).toContain('Roles');
-    });
-  });
-
   describe('checkToolAccess', () => {
     it('should allow all tools when disabled', () => {
       expect(adapter.checkToolAccess('any_tool')).toBeNull();
-    });
-
-    it('should allow set_role when enabled', () => {
-      adapter.enable();
-      expect(adapter.checkToolAccess('set_role')).toBeNull();
     });
 
     it('should allow tools when no role set', async () => {
@@ -140,14 +77,6 @@ describe('RouterAdapter', () => {
   });
 
   describe('filterToolsList', () => {
-    it('should add manifest tool when disabled', () => {
-      const tools = adapter.filterToolsList([
-        { name: 'tool1', inputSchema: { type: 'object' } },
-      ]);
-
-      expect(tools.some(t => t.name === 'set_role')).toBe(true);
-    });
-
     it('should include original tools', () => {
       const original = [
         { name: 'tool1', inputSchema: { type: 'object' as const } },

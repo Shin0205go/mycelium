@@ -1,49 +1,35 @@
 // ============================================================================
 // MYCELIUM Router Adapter
-// Integrates MyceliumRouterCore with existing MCP proxy infrastructure
+// Integrates MyceliumCore with existing MCP proxy infrastructure
 // ============================================================================
 
 import { Logger } from '../utils/logger.js';
-import { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
+import { MyceliumCore, createMyceliumCore } from './mycelium-core.js';
 import type { MCPServerConfig, ListRolesResult } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type {
-  AgentManifest,
-  SetRoleOptions
-} from '../types/router-types.js';
 
 /**
- * RouterAdapter - Bridge between MyceliumRouterCore and existing MCP proxy
+ * RouterAdapter - Bridge between MyceliumCore and existing MCP proxy
  *
  * This adapter:
  * 1. Wraps the Router Core for easy integration with MCPStdioPolicyProxy
- * 2. Provides methods to handle set_role tool calls
- * 3. Manages tools/list_changed notifications
- * 4. Filters tool lists based on current role
+ * 2. Manages tools/list_changed notifications
+ * 3. Filters tool lists based on current skill
  */
 export class RouterAdapter {
   private logger: Logger;
-  private routerCore: MyceliumRouterCore;
+  private routerCore: MyceliumCore;
   private enabled: boolean = false;
   private notificationCallback?: () => Promise<void>;
 
   constructor(logger: Logger, options?: { rolesDir?: string; configFile?: string }) {
     this.logger = logger;
-    this.routerCore = createMyceliumRouterCore(logger, options);
+    this.routerCore = createMyceliumCore(logger, options);
 
     // Set up event handlers
-    this.routerCore.on('roleSwitch', (event) => {
-      this.logger.info('Role switch event received', {
-        from: event.previousRole,
-        to: event.newRole,
-        toolsAdded: event.addedTools.length,
-        toolsRemoved: event.removedTools.length
-      });
-    });
-
     this.routerCore.on('toolsChanged', (event) => {
       this.logger.debug('Tools changed event', {
-        role: event.role,
+        skill: event.skill,
         reason: event.reason,
         count: event.toolCount
       });
@@ -59,23 +45,23 @@ export class RouterAdapter {
   }
 
   /**
-   * Enable role-based routing
+   * Enable skill-based routing
    */
   enable(): void {
     this.enabled = true;
-    this.logger.info('Role-based routing enabled');
+    this.logger.info('Skill-based routing enabled');
   }
 
   /**
-   * Disable role-based routing (pass-through mode)
+   * Disable skill-based routing (pass-through mode)
    */
   disable(): void {
     this.enabled = false;
-    this.logger.info('Role-based routing disabled');
+    this.logger.info('Skill-based routing disabled');
   }
 
   /**
-   * Check if role-based routing is enabled
+   * Check if skill-based routing is enabled
    */
   isEnabled(): boolean {
     return this.enabled;
@@ -119,105 +105,7 @@ export class RouterAdapter {
   }
 
   /**
-   * Check if a tool call is for set_role
-   */
-  isManifestTool(toolName: string): boolean {
-    return toolName === 'set_role';
-  }
-
-  /**
-   * Handle set_role tool call
-   */
-  async handleSetRole(args: Record<string, any>): Promise<{
-    content: Array<{ type: string; text: string }>;
-    isError: boolean;
-    metadata?: Record<string, any>;
-  }> {
-    try {
-      const manifest = await this.routerCore.setRole({
-        role: args.role_id,
-        includeToolDescriptions: args.includeToolDescriptions !== false
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: manifest.systemInstruction
-          },
-          {
-            type: 'text',
-            text: this.formatToolsList(manifest)
-          }
-        ],
-        isError: false,
-        metadata: {
-          role: manifest.role,
-          toolCount: manifest.metadata.toolCount,
-          serverCount: manifest.metadata.serverCount,
-          generatedAt: manifest.metadata.generatedAt.toISOString()
-        }
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error switching role: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
-  }
-
-  /**
-   * Format the tools list for display
-   */
-  private formatToolsList(manifest: AgentManifest): string {
-    const lines: string[] = [
-      '',
-      '---',
-      '',
-      `## Role: ${manifest.role.name}`,
-      '',
-      manifest.role.description,
-      '',
-      `### Available Tools (${manifest.availableTools.length})`,
-      ''
-    ];
-
-    // Group tools by source server
-    const toolsByServer = new Map<string, typeof manifest.availableTools>();
-    for (const tool of manifest.availableTools) {
-      const serverTools = toolsByServer.get(tool.source) || [];
-      serverTools.push(tool);
-      toolsByServer.set(tool.source, serverTools);
-    }
-
-    for (const [server, tools] of toolsByServer) {
-      lines.push(`#### ${server}`);
-      for (const tool of tools) {
-        if (tool.description) {
-          lines.push(`- **${tool.name}**: ${tool.description}`);
-        } else {
-          lines.push(`- **${tool.name}**`);
-        }
-      }
-      lines.push('');
-    }
-
-    lines.push(`### Active Servers (${manifest.availableServers.length})`);
-    lines.push('');
-    for (const server of manifest.availableServers) {
-      lines.push(`- ${server}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Check if a tool is accessible for the current role
+   * Check if a tool is accessible for the current skill
    * Returns null if accessible, error message if not
    */
   checkToolAccess(toolName: string): string | null {
@@ -225,21 +113,9 @@ export class RouterAdapter {
       return null; // Pass-through mode
     }
 
-    // set_role is always accessible
-    if (this.isManifestTool(toolName)) {
-      return null;
-    }
-
-    const currentRole = this.routerCore.getCurrentRole();
-    if (!currentRole) {
-      return null; // No role = allow all
-    }
-
     // Check if tool is in visible tools
-    // This is a simple check - the router core handles the detailed logic
     try {
-      // Attempt to route a dummy request to check access
-      // The actual routing will be done by the proxy
+      this.routerCore.checkToolAccess(toolName);
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
@@ -247,124 +123,15 @@ export class RouterAdapter {
   }
 
   /**
-   * Filter tools list based on current role
+   * Filter tools list based on current skill
    */
   filterToolsList(tools: Tool[]): Tool[] {
     if (!this.enabled) {
-      // When disabled, just add the manifest tool
-      return [...tools, this.getManifestToolDefinition()];
+      return tools;
     }
 
-    // Get visible tools from router core
-    const filteredRequest = this.routerCore.routeRequest({
-      jsonrpc: '2.0',
-      id: 0,
-      method: 'tools/list',
-      params: {}
-    });
-
-    // For now, return all tools plus manifest tool
-    // The router core will filter when enabled
-    return [...tools, this.getManifestToolDefinition()];
-  }
-
-  /**
-   * Get the manifest tool definition
-   */
-  getManifestToolDefinition(): Tool {
-    return {
-      name: 'set_role',
-      description:
-        'Switch to a specific role and get the system instruction and available tools for that role. ' +
-        'Use this tool to change your operational context and capabilities. ' +
-        'Call list_roles first to see available roles.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          role: {
-            type: 'string',
-            description: 'The role ID to activate (e.g., "frontend", "db_admin", "security")'
-          },
-          includeToolDescriptions: {
-            type: 'boolean',
-            description: 'Whether to include full tool descriptions in the response',
-            default: true
-          }
-        },
-        required: ['role']
-      }
-    };
-  }
-
-  /**
-   * Get the list_roles tool definition
-   */
-  getListRolesToolDefinition(): Tool {
-    return {
-      name: 'list_roles',
-      description:
-        'List all available roles that can be activated using set_role. ' +
-        'Shows role ID, name, description, and whether it is currently active.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          includeInactive: {
-            type: 'boolean',
-            description: 'Whether to include inactive roles',
-            default: false
-          }
-        },
-        required: []
-      }
-    };
-  }
-
-  /**
-   * Handle list_roles tool call
-   */
-  async handleListRoles(args: Record<string, any>): Promise<{
-    content: Array<{ type: string; text: string }>;
-    isError: boolean;
-  }> {
-    try {
-      const result = this.routerCore.listRoles();
-
-      const lines: string[] = [
-        '# Available Roles',
-        '',
-        `Current Role: ${result.currentRole || 'none'}`,
-        `Default Role: ${result.defaultRole}`,
-        '',
-        '## Roles',
-        ''
-      ];
-
-      for (const role of result.roles) {
-        const marker = role.isCurrent ? '→ ' : '  ';
-        const serverInfo = role.serverCount === -1 ? 'all servers' : `${role.serverCount} servers`;
-        lines.push(
-          `${marker}**${role.id}** - ${role.name}`,
-          `   ${role.description}`,
-          `   (${serverInfo}, ${role.isActive ? 'active' : 'inactive'})`,
-          ''
-        );
-      }
-
-      return {
-        content: [{ type: 'text', text: lines.join('\n') }],
-        isError: false
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error listing roles: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ],
-        isError: true
-      };
-    }
+    // The router core will filter based on skill
+    return tools;
   }
 
   /**
@@ -398,7 +165,7 @@ export class RouterAdapter {
   /**
    * Get the underlying router core (for advanced use cases)
    */
-  getRouterCore(): MyceliumRouterCore {
+  getRouterCore(): MyceliumCore {
     return this.routerCore;
   }
 

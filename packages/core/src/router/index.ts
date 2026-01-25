@@ -4,7 +4,11 @@
 // ============================================================================
 
 // Core router
-export { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
+export { MyceliumCore, createMyceliumCore } from './mycelium-core.js';
+
+// Backwards compatibility aliases
+export { MyceliumCore as MyceliumRouterCore } from './mycelium-core.js';
+export { createMyceliumCore as createMyceliumRouterCore } from './mycelium-core.js';
 
 // RBAC components (from local ./rbac, not @mycelium/rbac)
 export {
