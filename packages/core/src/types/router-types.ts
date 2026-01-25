@@ -17,9 +17,9 @@ import type {
   RoleManifest
 } from '@mycelium/shared';
 
-// Import A2A types (NOT re-exported, consumers should import from @mycelium/a2a)
-// SkillDefinition extends BaseSkillDefinition with A2A identity config
-import type { SkillDefinition } from '@mycelium/a2a';
+// Import A2A types (merged from @mycelium/a2a)
+// SkillDefinition extends BaseSkillDefinition with identity config
+import type { SkillDefinition } from '../rbac/identity-resolver.js';
 
 // ============================================================================
 // Role Configuration File Format

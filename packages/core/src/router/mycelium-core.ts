@@ -5,18 +5,19 @@
 
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
-import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@mycelium/gateway';
+import { StdioRouter, type UpstreamServerInfo } from '../mcp/stdio-router.js';
 import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '../rbac/index.js';
-import { IdentityResolver, createIdentityResolver, type SkillDefinition, type AgentIdentity, type IdentityResolution, type IdentityConfig } from '@mycelium/a2a';
-import { AuditLogger, createAuditLogger } from '@mycelium/audit';
-import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
+import { IdentityResolver, createIdentityResolver, type SkillDefinition, type AgentIdentity, type IdentityResolution } from '../rbac/identity-resolver.js';
+import { AuditLogger, createAuditLogger } from './audit-logger.js';
+import { RateLimiter, createRateLimiter, type RoleQuota } from './rate-limiter.js';
 import type {
   Role,
   ToolInfo,
   ListRolesResult,
   SkillManifest,
   ThinkingSignature,
-  ToolCallContext
+  ToolCallContext,
+  MCPServerConfig
 } from '@mycelium/shared';
 import type {
   MyceliumRouterState,
@@ -157,7 +158,8 @@ export class MyceliumCore extends EventEmitter {
       visibleTools: new Map(),
       metadata: {
         initializedAt: new Date(),
-        sessionId: uuidv4()
+        sessionId: uuidv4(),
+        roleSwitchCount: 0
       }
     };
 

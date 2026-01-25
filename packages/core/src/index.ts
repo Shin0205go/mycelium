@@ -20,9 +20,13 @@ export * from './types/index.js';
 // Utils - export specific items to avoid Logger class/interface conflict
 export { Logger, logger } from './utils/logger.js';
 
-// Note: @mycelium/a2a and @mycelium/audit are NOT re-exported
-// Consumers should import directly from those packages:
-//   import { IdentityResolver } from '@mycelium/a2a';
-//   import { createAuditLogger } from '@mycelium/audit';
+// Identity resolver (merged from @mycelium/a2a)
+export {
+  IdentityResolver,
+  createIdentityResolver,
+  type SkillDefinition,
+  type AgentIdentity,
+  type IdentityResolution
+} from './rbac/identity-resolver.js';
 
 export const CORE_VERSION = '1.0.0';
