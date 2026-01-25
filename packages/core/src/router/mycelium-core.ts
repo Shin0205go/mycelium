@@ -80,7 +80,7 @@ export const ROUTER_TOOLS: Tool[] = [
 ];
 
 /**
- * MyceliumRouterCore - Central routing system for MYCELIUM
+ * MyceliumCore - Central routing system for MYCELIUM
  *
  * This class serves as the "司令塔" (command center) that:
  * 1. Manages connections to multiple sub-MCP servers
@@ -88,7 +88,7 @@ export const ROUTER_TOOLS: Tool[] = [
  * 3. Handles role switching via set_role
  * 4. Emits notifications when tools change
  */
-export class MyceliumRouterCore extends EventEmitter {
+export class MyceliumCore extends EventEmitter {
   private logger: Logger;
   private stdioRouter: StdioRouter;
   private roleManager: RoleManager;
@@ -169,7 +169,7 @@ export class MyceliumRouterCore extends EventEmitter {
       }
     };
 
-    this.logger.debug('MyceliumRouterCore created', {
+    this.logger.debug('MyceliumCore created', {
       sessionId: this.state.metadata.sessionId,
       a2aMode: this.a2aMode
     });
@@ -1606,7 +1606,7 @@ export class MyceliumRouterCore extends EventEmitter {
 }
 
 // Export factory function
-export function createMyceliumRouterCore(
+export function createMyceliumCore(
   logger: Logger,
   options?: {
     rolesDir?: string;
@@ -1616,6 +1616,6 @@ export function createMyceliumRouterCore(
     a2aMode?: boolean;
     cwd?: string;
   }
-): MyceliumRouterCore {
-  return new MyceliumRouterCore(logger, options);
+): MyceliumCore {
+  return new MyceliumCore(logger, options);
 }

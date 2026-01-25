@@ -1,10 +1,10 @@
 // ============================================================================
 // MYCELIUM Router Adapter
-// Integrates MyceliumRouterCore with existing MCP proxy infrastructure
+// Integrates MyceliumCore with existing MCP proxy infrastructure
 // ============================================================================
 
 import { Logger } from '../utils/logger.js';
-import { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
+import { MyceliumCore, createMyceliumCore } from './mycelium-core.js';
 import type { MCPServerConfig, ListRolesResult } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type {
@@ -13,7 +13,7 @@ import type {
 } from '../types/router-types.js';
 
 /**
- * RouterAdapter - Bridge between MyceliumRouterCore and existing MCP proxy
+ * RouterAdapter - Bridge between MyceliumCore and existing MCP proxy
  *
  * This adapter:
  * 1. Wraps the Router Core for easy integration with MCPStdioPolicyProxy
@@ -23,13 +23,13 @@ import type {
  */
 export class RouterAdapter {
   private logger: Logger;
-  private routerCore: MyceliumRouterCore;
+  private routerCore: MyceliumCore;
   private enabled: boolean = false;
   private notificationCallback?: () => Promise<void>;
 
   constructor(logger: Logger, options?: { rolesDir?: string; configFile?: string }) {
     this.logger = logger;
-    this.routerCore = createMyceliumRouterCore(logger, options);
+    this.routerCore = createMyceliumCore(logger, options);
 
     // Set up event handlers
     this.routerCore.on('roleSwitch', (event) => {
@@ -398,7 +398,7 @@ export class RouterAdapter {
   /**
    * Get the underlying router core (for advanced use cases)
    */
-  getRouterCore(): MyceliumRouterCore {
+  getRouterCore(): MyceliumCore {
     return this.routerCore;
   }
 

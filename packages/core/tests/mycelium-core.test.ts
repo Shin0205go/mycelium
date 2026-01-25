@@ -1,12 +1,12 @@
 /**
- * Integration Tests for MyceliumRouterCore
+ * Integration Tests for MyceliumCore
  *
  * These tests verify the core functionality of the router
  * using real implementations (not mocks) to ensure proper integration.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { MyceliumRouterCore, createMyceliumRouterCore } from '../src/router/mycelium-router-core.js';
+import { MyceliumCore, createMyceliumCore } from '../src/router/mycelium-core.js';
 import type { Logger } from '@mycelium/shared';
 
 // Test logger that silences output
@@ -17,11 +17,11 @@ const testLogger: Logger = {
   error: () => {}
 };
 
-describe('MyceliumRouterCore', () => {
-  let router: MyceliumRouterCore;
+describe('MyceliumCore', () => {
+  let router: MyceliumCore;
 
   beforeEach(() => {
-    router = new MyceliumRouterCore(testLogger);
+    router = new MyceliumCore(testLogger);
   });
 
   afterEach(async () => {
@@ -35,23 +35,23 @@ describe('MyceliumRouterCore', () => {
 
   describe('constructor and factory', () => {
     it('should create router with default options', () => {
-      const router = new MyceliumRouterCore(testLogger);
-      expect(router).toBeInstanceOf(MyceliumRouterCore);
+      const router = new MyceliumCore(testLogger);
+      expect(router).toBeInstanceOf(MyceliumCore);
       expect(router.isA2AMode()).toBe(false);
     });
 
     it('should create router with A2A mode enabled', () => {
-      const router = new MyceliumRouterCore(testLogger, { a2aMode: true });
+      const router = new MyceliumCore(testLogger, { a2aMode: true });
       expect(router.isA2AMode()).toBe(true);
     });
 
     it('should create router via factory function', () => {
-      const router = createMyceliumRouterCore(testLogger);
-      expect(router).toBeInstanceOf(MyceliumRouterCore);
+      const router = createMyceliumCore(testLogger);
+      expect(router).toBeInstanceOf(MyceliumCore);
     });
 
     it('should pass options to factory function', () => {
-      const router = createMyceliumRouterCore(testLogger, { a2aMode: true });
+      const router = createMyceliumCore(testLogger, { a2aMode: true });
       expect(router.isA2AMode()).toBe(true);
     });
   });
@@ -236,7 +236,7 @@ describe('MyceliumRouterCore', () => {
   });
 });
 
-describe('MyceliumRouterCore Error Handling', () => {
+describe('MyceliumCore Error Handling', () => {
   const testLogger: Logger = {
     debug: () => {},
     info: () => {},
@@ -245,7 +245,7 @@ describe('MyceliumRouterCore Error Handling', () => {
   };
 
   it('should throw when setting invalid role', async () => {
-    const router = new MyceliumRouterCore(testLogger);
+    const router = new MyceliumCore(testLogger);
     await router.initialize();
 
     await expect(router.setRole({ role: 'nonexistent-role-xyz' }))

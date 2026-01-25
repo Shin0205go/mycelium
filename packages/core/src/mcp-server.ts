@@ -17,7 +17,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
-import { MyceliumRouterCore, createMyceliumRouterCore, ROUTER_TOOLS } from './router/mycelium-router-core.js';
+import { MyceliumCore, createMyceliumCore, ROUTER_TOOLS } from './router/mycelium-core.js';
 
 // Get the directory of this script (works with ES modules)
 const __filename = fileURLToPath(import.meta.url);
@@ -229,7 +229,7 @@ async function main() {
   );
 
   // Initialize Router Core with explicit paths
-  const routerCore = createMyceliumRouterCore(logger, {
+  const routerCore = createMyceliumCore(logger, {
     rolesDir: join(PROJECT_ROOT, 'roles'),
     cwd: PROJECT_ROOT,
   });

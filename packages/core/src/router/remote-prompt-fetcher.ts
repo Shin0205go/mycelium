@@ -50,7 +50,7 @@ export class RemotePromptFetcher {
 
   /**
    * Set the router for sending MCP requests
-   * This is called by MyceliumRouterCore after initialization
+   * This is called by MyceliumCore after initialization
    */
   setRouter(router: PromptRouter): void {
     this.router = router;
