@@ -76,6 +76,24 @@ export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Re
     envToUse = envWithoutApiKey as Record<string, string>;
   }
 
+  // Pass through Claude Code environment variables for OAuth
+  const claudeCodeEnvVars = [
+    'CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR',
+    'CLAUDE_CODE_SESSION_ID',
+    'CLAUDE_CODE_CONTAINER_ID',
+    'CLAUDECODE',
+  ];
+  for (const key of claudeCodeEnvVars) {
+    if (process.env[key]) {
+      envToUse[key] = process.env[key]!;
+    }
+  }
+
+  // Check for OAuth token file descriptor (used by Claude Code)
+  const oauthFd = process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR
+    ? parseInt(process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, 10)
+    : undefined;
+
   return {
     tools: [],
     // Only allow MCP tools - disable all built-in tools for RBAC enforcement
@@ -90,6 +108,8 @@ export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Re
     maxTurns: 20,
     includePartialMessages: true,
     persistSession: false,
+    // Use OAuth if available (Claude Code environment)
+    ...(oauthFd !== undefined && { oauthTokenFromFd: oauthFd }),
   };
 }
 
