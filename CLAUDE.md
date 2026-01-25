@@ -627,19 +627,39 @@ interface SkillGrants {
 ```
 
 ### MCP Integration (`.mcp.json`)
+
+Myceliumは**Claude CodeのMCPサーバー**として統合できます。これにより、Claude Codeから直接Myceliumのスキルとツールにアクセスできます。
+
 ```json
 {
   "mcpServers": {
     "mycelium-router": {
       "command": "node",
-      "args": ["dist/mcp-server.js"],
+      "args": ["packages/core/dist/mcp-server.js"],
       "env": {
-        "MYCELIUM_CONFIG_PATH": "config.json"
+        "MYCELIUM_CONFIG_PATH": "config.json",
+        "MYCELIUM_CURRENT_ROLE": "developer"
       }
     }
   }
 }
 ```
+
+**Claude Code統合の利点**:
+- Claude Codeの認証を継承（API Key不要）
+- スキルベースのツール制限がClaude Code内で機能
+- 既存のClaude Codeワークフローとシームレスに統合
+
+**使用可能なツール**（mycelium-router経由）:
+| ツール | 説明 |
+|--------|------|
+| `mycelium-router__get_context` | 現在のロールとコンテキスト取得 |
+| `mycelium-router__list_roles` | 利用可能なロール一覧 |
+| `mycelium-skills__list_skills` | スキル一覧（ロールでフィルタ） |
+| `mycelium-skills__get_skill` | スキル詳細取得 |
+| `mycelium-skills__run_script` | スキルスクリプト実行 |
+
+**セッション再起動が必要**: `.mcp.json`を変更した後、Claude Codeセッションを再起動してください。
 
 ## Environment Variables
 

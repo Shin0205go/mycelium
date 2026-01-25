@@ -2,9 +2,10 @@
   "mcpServers": {
     "mycelium-router": {
       "command": "node",
-      "args": ["dist/mcp-server.js"],
+      "args": ["packages/core/dist/mcp-server.js"],
       "env": {
-        "MYCELIUM_CONFIG_PATH": "config.json"
+        "MYCELIUM_CONFIG_PATH": "config.json",
+        "MYCELIUM_CURRENT_ROLE": "developer"
       }
     }
   }
