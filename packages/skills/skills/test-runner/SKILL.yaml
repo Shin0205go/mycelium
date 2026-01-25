@@ -1,0 +1,14 @@
+# Test Runner Skill - Run vitest tests
+name: test-runner
+description: プロジェクトのテストを実行し、結果を報告するスキル。vitestを使用してユニットテストを実行。
+
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+  - tester
+
+allowedTools:
+  - mycelium-sandbox__bash
+  - filesystem__read_file
+  - filesystem__list_directory

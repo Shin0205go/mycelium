@@ -10,7 +10,6 @@
  * Used for investigating workflow failures and making fixes.
  */
 
-import { join } from 'path';
 import * as readline from 'readline';
 import chalk from 'chalk';
 import {
@@ -19,6 +18,7 @@ import {
   formatContextForDisplay,
   type WorkflowContext,
 } from '../lib/context.js';
+import { createAgentOptions } from '../lib/agent.js';
 
 /**
  * Dangerous tool categories that require approval
@@ -84,66 +84,24 @@ Please investigate this failure and help the user understand what went wrong.`;
 }
 
 /**
- * Create MCP server config for full tool access via mycelium-router
- */
-function createAdhocMcpConfig(): Record<string, unknown> {
-  const projectRoot = process.cwd();
-
-  // Try monorepo path first, then installed package
-  const routerPath = process.env.MYCELIUM_ROUTER_PATH ||
-    join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-  const configPath = process.env.MYCELIUM_CONFIG_PATH ||
-    join(projectRoot, 'config.json');
-
-  return {
-    'mycelium-router': {
-      command: 'node',
-      args: [routerPath],
-      env: {
-        MYCELIUM_CONFIG_PATH: configPath,
-        // Use adhoc role - has filesystem, git, shell access for investigation
-        MYCELIUM_CURRENT_ROLE: 'adhoc',
-      },
-    },
-  };
-}
-
-/**
  * Create agent options for Adhoc Agent
+ * Uses centralized createAgentOptions with adhoc role
  */
 export function createAdhocAgentOptions(
   config: AdhocAgentConfig = {},
   context?: WorkflowContext
 ): Record<string, unknown> {
-  let envToUse: Record<string, string>;
-
-  if (config.useApiKey) {
-    envToUse = process.env as Record<string, string>;
-  } else {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { ANTHROPIC_API_KEY, ...envWithoutApiKey } = process.env;
-    envToUse = envWithoutApiKey as Record<string, string>;
-  }
-
   const systemPrompt = context
     ? createContextSystemPrompt(context)
     : config.systemPrompt || ADHOC_SYSTEM_PROMPT;
 
-  return {
-    tools: [],
-    // Only allow MCP tools - disable all built-in tools for RBAC enforcement
-    allowedTools: ['mcp__mycelium-router__*'],
-    env: envToUse,
-    mcpServers: createAdhocMcpConfig(),
-    model: config.model || 'claude-sonnet-4-5-20250929',
-    cwd: process.cwd(),
+  return createAgentOptions({
+    model: config.model,
     systemPrompt,
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,
+    useApiKey: config.useApiKey,
+    currentRole: 'adhoc',
     maxTurns: 50,
-    includePartialMessages: true,
-    persistSession: false,
-  };
+  });
 }
 
 /**
@@ -314,6 +272,17 @@ export class AdhocAgent {
     } catch (error) {
       console.log(chalk.yellow(`Failed to load context: ${(error as Error).message}`));
     }
+  }
+
+  /**
+   * Show authentication help
+   */
+  private showAuthHelp(): void {
+    console.error(chalk.red('\n✗ Authentication Error\n'));
+    console.log(chalk.yellow('Please authenticate with one of:'));
+    console.log(chalk.cyan('  1. claude login') + chalk.gray(' (Max plan)'));
+    console.log(chalk.cyan('  2. export ANTHROPIC_API_KEY=...') + chalk.gray(' (API key)'));
+    console.log();
   }
 
   /**
@@ -497,12 +466,29 @@ ${chalk.bold('Approval Options:')}
         // Handle final result
         if (message.type === 'result') {
           if (message.subtype !== 'success') {
-            console.log(chalk.red(`\nError: ${message.errors?.join(', ') || 'Unknown error'}`));
+            const errorMsg = message.errors?.join(', ') || 'Unknown error';
+            console.log(chalk.red(`\nError: ${errorMsg}`));
+
+            // Check for auth errors
+            if (errorMsg.includes('API key') ||
+                errorMsg.includes('/login') ||
+                errorMsg.includes('authentication')) {
+              this.showAuthHelp();
+            }
           }
         }
       }
     } catch (error) {
-      console.error(chalk.red(`Error: ${(error as Error).message}`));
+      const errorMsg = (error as Error).message || '';
+      console.error(chalk.red(`Error: ${errorMsg}`));
+
+      // Check for auth errors
+      if (errorMsg.includes('API key') ||
+          errorMsg.includes('/login') ||
+          errorMsg.includes('authentication') ||
+          errorMsg.includes('Unauthorized')) {
+        this.showAuthHelp();
+      }
     }
   }
 

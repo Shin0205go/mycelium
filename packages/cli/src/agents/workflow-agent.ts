@@ -9,7 +9,6 @@
  * On failure, saves context for Adhoc agent handoff.
  */
 
-import { join } from 'path';
 import * as readline from 'readline';
 import chalk from 'chalk';
 import {
@@ -17,6 +16,7 @@ import {
   getDefaultContextPath,
   type WorkflowContext,
 } from '../lib/context.js';
+import { createAgentOptions } from '../lib/agent.js';
 import { AdhocAgent } from './adhoc-agent.js';
 
 export interface WorkflowAgentConfig {
@@ -38,59 +38,17 @@ interface ScriptResult {
 const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator. Use the available tools to complete user requests.`;
 
 /**
- * Create MCP server config via mycelium-router with orchestrator role
- * This ensures RBAC is applied - only mycelium-skills tools are accessible
- */
-function createWorkflowMcpConfig(): Record<string, unknown> {
-  const projectRoot = process.cwd();
-
-  const routerPath = process.env.MYCELIUM_ROUTER_PATH ||
-    join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
-  const configPath = process.env.MYCELIUM_CONFIG_PATH ||
-    join(projectRoot, 'config.json');
-
-  return {
-    'mycelium-router': {
-      command: 'node',
-      args: [routerPath],
-      env: {
-        MYCELIUM_CONFIG_PATH: configPath,
-        // Use orchestrator role - restricted to mycelium-skills tools only
-        MYCELIUM_CURRENT_ROLE: 'orchestrator',
-      },
-    },
-  };
-}
-
-/**
  * Create agent options for Workflow Agent
+ * Uses centralized createAgentOptions with orchestrator role
  */
 export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Record<string, unknown> {
-  let envToUse: Record<string, string>;
-
-  if (config.useApiKey) {
-    envToUse = process.env as Record<string, string>;
-  } else {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { ANTHROPIC_API_KEY, ...envWithoutApiKey } = process.env;
-    envToUse = envWithoutApiKey as Record<string, string>;
-  }
-
-  return {
-    tools: [],
-    // Only allow MCP tools - disable all built-in tools for RBAC enforcement
-    allowedTools: ['mcp__mycelium-router__*'],
-    env: envToUse,
-    mcpServers: createWorkflowMcpConfig(),
-    model: config.model || 'claude-sonnet-4-5-20250929',
-    cwd: process.cwd(),
+  return createAgentOptions({
+    model: config.model,
     systemPrompt: config.systemPrompt || WORKFLOW_SYSTEM_PROMPT,
-    permissionMode: 'bypassPermissions',
-    allowDangerouslySkipPermissions: true,
+    useApiKey: config.useApiKey,
+    currentRole: 'orchestrator',
     maxTurns: 20,
-    includePartialMessages: true,
-    persistSession: false,
-  };
+  });
 }
 
 /**

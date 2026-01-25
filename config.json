@@ -23,6 +23,11 @@
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp"]
+    },
+    "shell": {
+      "command": "npx",
+      "args": ["-y", "@anthropic-ai/mcp-shell"],
+      "comment": "Shell server for running commands"
     }
   },
   "roles": {

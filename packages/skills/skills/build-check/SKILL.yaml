@@ -1,0 +1,13 @@
+# Build Check Skill - Verify TypeScript build
+name: build-check
+description: TypeScriptビルドを実行し、コンパイルエラーを報告するスキル。npm run buildを実行してビルド結果を確認。
+
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+
+allowedTools:
+  - mycelium-sandbox__bash
+  - filesystem__read_file
+  - filesystem__list_directory

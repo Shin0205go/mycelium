@@ -1,0 +1,15 @@
+# Documentation Updater Skill - Update CLAUDE.md and docs
+name: doc-updater
+description: ドキュメント（CLAUDE.md等）を更新するスキル。コードベースを読み取り、ドキュメントを編集。
+
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+  - editor
+
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+  - filesystem__list_directory
+  - filesystem__search_files
