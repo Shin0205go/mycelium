@@ -275,6 +275,17 @@ export class AdhocAgent {
   }
 
   /**
+   * Show authentication help
+   */
+  private showAuthHelp(): void {
+    console.error(chalk.red('\n✗ Authentication Error\n'));
+    console.log(chalk.yellow('Please authenticate with one of:'));
+    console.log(chalk.cyan('  1. claude login') + chalk.gray(' (Max plan)'));
+    console.log(chalk.cyan('  2. export ANTHROPIC_API_KEY=...') + chalk.gray(' (API key)'));
+    console.log();
+  }
+
+  /**
    * Run the adhoc agent interactively
    */
   async run(): Promise<void> {
@@ -455,12 +466,29 @@ ${chalk.bold('Approval Options:')}
         // Handle final result
         if (message.type === 'result') {
           if (message.subtype !== 'success') {
-            console.log(chalk.red(`\nError: ${message.errors?.join(', ') || 'Unknown error'}`));
+            const errorMsg = message.errors?.join(', ') || 'Unknown error';
+            console.log(chalk.red(`\nError: ${errorMsg}`));
+
+            // Check for auth errors
+            if (errorMsg.includes('API key') ||
+                errorMsg.includes('/login') ||
+                errorMsg.includes('authentication')) {
+              this.showAuthHelp();
+            }
           }
         }
       }
     } catch (error) {
-      console.error(chalk.red(`Error: ${(error as Error).message}`));
+      const errorMsg = (error as Error).message || '';
+      console.error(chalk.red(`Error: ${errorMsg}`));
+
+      // Check for auth errors
+      if (errorMsg.includes('API key') ||
+          errorMsg.includes('/login') ||
+          errorMsg.includes('authentication') ||
+          errorMsg.includes('Unauthorized')) {
+        this.showAuthHelp();
+      }
     }
   }
 
