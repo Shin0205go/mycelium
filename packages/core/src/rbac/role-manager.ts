@@ -182,12 +182,6 @@ export class RoleManager {
    * Check if a tool is allowed for a role (including inherited permissions)
    */
   isToolAllowedForRole(roleId: string, toolName: string, serverName: string): boolean {
-    // System tools are always allowed
-    const SYSTEM_TOOLS = ['set_role'];
-    if (SYSTEM_TOOLS.includes(toolName)) {
-      return true;
-    }
-
     const role = this.roles.get(roleId);
     if (!role) return false;
 
