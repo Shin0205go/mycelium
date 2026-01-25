@@ -28,7 +28,6 @@ const createMockRouter = () => ({
   loadRolesFromSkillsServer: vi.fn().mockResolvedValue(undefined),
   routeRequest: vi.fn().mockResolvedValue({ tools: [] }),
   routeToolCall: vi.fn().mockResolvedValue('result'),
-  setRole: vi.fn().mockResolvedValue({ role: { id: 'admin' } }),
   listRoles: vi.fn().mockReturnValue([{ id: 'admin' }, { id: 'guest' }]),
   checkToolAccess: vi.fn(),
   startServersForRole: vi.fn().mockResolvedValue(undefined),
@@ -44,27 +43,6 @@ describe('MCP Server Request Handlers', () => {
   });
 
   describe('ListTools Handler', () => {
-    it('should always include set_role tool', async () => {
-      // Simulate handler logic
-      const manifestTool = {
-        name: 'set_role',
-        description: 'Switch agent role and get the manifest with available tools and system instruction',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            role_id: {
-              type: 'string',
-              description: 'The role ID to switch to. Use "list" to see available roles.',
-            },
-          },
-          required: ['role_id'],
-        },
-      };
-
-      expect(manifestTool.name).toBe('set_role');
-      expect(manifestTool.inputSchema.required).toContain('role_id');
-    });
-
     it('should always include spawn_sub_agent tool', async () => {
       const spawnSubAgentTool = {
         name: 'spawn_sub_agent',
@@ -88,7 +66,6 @@ describe('MCP Server Request Handlers', () => {
 
     it('should combine system tools with backend tools', async () => {
       const systemTools = [
-        { name: 'set_role' },
         { name: 'spawn_sub_agent' }
       ];
 
@@ -102,55 +79,9 @@ describe('MCP Server Request Handlers', () => {
       const backendTools = await mockRouter.routeRequest({ method: 'tools/list' });
       const allTools = [...systemTools, ...backendTools.tools];
 
-      expect(allTools).toHaveLength(4);
-      expect(allTools.map(t => t.name)).toContain('set_role');
+      expect(allTools).toHaveLength(3);
       expect(allTools.map(t => t.name)).toContain('spawn_sub_agent');
       expect(allTools.map(t => t.name)).toContain('filesystem__read_file');
-    });
-
-    it('should filter out duplicate set_role from backend', async () => {
-      mockRouter.routeRequest.mockResolvedValue({
-        tools: [
-          { name: 'set_role' }, // Should be filtered
-          { name: 'filesystem__read_file' }
-        ]
-      });
-
-      const response = await mockRouter.routeRequest({ method: 'tools/list' });
-      const rawTools = response.tools || [];
-      const backendTools = rawTools.filter((t: any) => t.name !== 'set_role');
-
-      expect(backendTools).toHaveLength(1);
-      expect(backendTools[0].name).toBe('filesystem__read_file');
-    });
-  });
-
-  describe('CallTool Handler - set_role', () => {
-    it('should list roles when role_id is "list"', async () => {
-      const roleId = 'list';
-
-      if (roleId === 'list') {
-        const roles = mockRouter.listRoles();
-        expect(roles).toHaveLength(2);
-        expect(roles[0].id).toBe('admin');
-      }
-    });
-
-    it('should switch role and return manifest', async () => {
-      const roleId = 'developer';
-
-      await mockRouter.startServersForRole(roleId);
-      const manifest = await mockRouter.setRole({ role: roleId });
-
-      expect(mockRouter.startServersForRole).toHaveBeenCalledWith('developer');
-      expect(mockRouter.setRole).toHaveBeenCalledWith({ role: 'developer' });
-      expect(manifest.role.id).toBe('admin'); // Mock returns admin
-    });
-
-    it('should handle role switch error', async () => {
-      mockRouter.setRole.mockRejectedValue(new Error('Role not found'));
-
-      await expect(mockRouter.setRole({ role: 'nonexistent' })).rejects.toThrow('Role not found');
     });
   });
 
@@ -294,7 +225,7 @@ Claude: Here is the result of the task.
     });
 
     it('should skip access check for system tools', () => {
-      const systemTools = ['set_role', 'spawn_sub_agent'];
+      const systemTools = ['spawn_sub_agent'];
 
       for (const tool of systemTools) {
         // System tools bypass checkToolAccess
@@ -438,18 +369,6 @@ describe('Sub-Agent Spawning', () => {
 });
 
 describe('Tool Name Handling', () => {
-  it('should match set_role with exact name', () => {
-    const name = 'set_role';
-    const isSetRole = name === 'set_role' || name.endsWith('__set_role');
-    expect(isSetRole).toBe(true);
-  });
-
-  it('should match set_role with prefixed name', () => {
-    const name = 'mcp__mycelium-router__set_role';
-    const isSetRole = name === 'set_role' || name.endsWith('__set_role');
-    expect(isSetRole).toBe(true);
-  });
-
   it('should match spawn_sub_agent with exact name', () => {
     const name = 'spawn_sub_agent';
     const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
@@ -464,10 +383,8 @@ describe('Tool Name Handling', () => {
 
   it('should not match regular tools', () => {
     const name = 'filesystem__read_file';
-    const isSetRole = name === 'set_role' || name.endsWith('__set_role');
     const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
 
-    expect(isSetRole).toBe(false);
     expect(isSpawn).toBe(false);
   });
 });

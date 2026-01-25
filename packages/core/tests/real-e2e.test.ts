@@ -469,44 +469,6 @@ describe('Real E2E: mycelium-skills Server Integration', () => {
       expect(role2).toBeDefined();
     });
 
-    it('should always allow set_role system tool for all roles', async () => {
-      if (!serverReady) {
-        console.log('Skipping: server not ready');
-        return;
-      }
-
-      const response = await sendRequest(serverProcess!, 'tools/call', {
-        name: 'list_skills',
-        arguments: {}
-      });
-
-      const parsed = JSON.parse(response.result.content[0].text);
-      const skills: SkillData[] = parsed.skills || parsed;
-
-      const manifest: SkillManifest<BaseSkillDefinition> = {
-        skills: skills.map(s => ({
-          id: s.id,
-          displayName: s.displayName,
-          description: s.description || '',
-          allowedRoles: s.allowedRoles || [],
-          allowedTools: s.allowedTools || []
-        })),
-        version: '1.0.0',
-        generatedAt: new Date()
-      };
-
-      const roleManager = new RoleManager(testLogger);
-      await roleManager.loadFromSkillManifest(manifest);
-
-      // set_role should be allowed for ALL roles
-      const roleIds = roleManager.getRoleIds().filter(id => id !== '*');
-      for (const roleId of roleIds) {
-        const isAllowed = roleManager.isToolAllowedForRole(roleId, 'set_role', 'mycelium-router');
-        expect(isAllowed).toBe(true);
-      }
-      console.log(`set_role is allowed for all ${roleIds.length} roles`);
-    });
-
     it('should deny tools not in skill allowedTools', async () => {
       if (!serverReady) {
         console.log('Skipping: server not ready');
@@ -556,7 +518,7 @@ describe('Real E2E: mycelium-skills Server Integration', () => {
     });
   });
 
-  describe('Complete Workflow: list_skills -> set_role', () => {
+  describe('Complete Workflow: list_skills -> role generation', () => {
     it('should complete full E2E workflow with real server', async () => {
       if (!serverReady) {
         console.log('Skipping: server not ready');
@@ -622,13 +584,6 @@ describe('Real E2E: mycelium-skills Server Integration', () => {
         }
       }
       console.log(`  -> Verified ${totalChecks} tool-role permissions`);
-
-      // Step 5: Verify set_role is always available
-      console.log('Step 5: Verifying set_role availability...');
-      for (const roleId of roleIds) {
-        expect(roleManager.isToolAllowedForRole(roleId, 'set_role', 'mycelium-router')).toBe(true);
-      }
-      console.log(`  -> set_role available for all ${roleIds.length} roles`);
 
       console.log('Complete workflow passed!');
     });

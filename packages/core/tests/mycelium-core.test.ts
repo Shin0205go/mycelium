@@ -37,22 +37,11 @@ describe('MyceliumCore', () => {
     it('should create router with default options', () => {
       const router = new MyceliumCore(testLogger);
       expect(router).toBeInstanceOf(MyceliumCore);
-      expect(router.isA2AMode()).toBe(false);
-    });
-
-    it('should create router with A2A mode enabled', () => {
-      const router = new MyceliumCore(testLogger, { a2aMode: true });
-      expect(router.isA2AMode()).toBe(true);
     });
 
     it('should create router via factory function', () => {
       const router = createMyceliumCore(testLogger);
       expect(router).toBeInstanceOf(MyceliumCore);
-    });
-
-    it('should pass options to factory function', () => {
-      const router = createMyceliumCore(testLogger, { a2aMode: true });
-      expect(router.isA2AMode()).toBe(true);
     });
   });
 
@@ -73,29 +62,6 @@ describe('MyceliumCore', () => {
       expect(state).toBeDefined();
       expect(state.visibleToolsCount).toBeGreaterThanOrEqual(0);
       expect(state.connectedServersCount).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  describe('A2A mode', () => {
-    it('should enable A2A mode', () => {
-      expect(router.isA2AMode()).toBe(false);
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
-    });
-
-    it('should disable A2A mode', () => {
-      router.enableA2AMode();
-      router.disableA2AMode();
-      expect(router.isA2AMode()).toBe(false);
-    });
-
-    it('should toggle A2A mode multiple times', () => {
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
-      router.disableA2AMode();
-      expect(router.isA2AMode()).toBe(false);
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
     });
   });
 
