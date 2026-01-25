@@ -23,7 +23,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@mycelium/adhoc": "*",
     "@mycelium/core": "*",
     "@mycelium/session": "*",
     "@mycelium/shared": "*",
