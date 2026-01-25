@@ -628,36 +628,47 @@ interface SkillGrants {
 
 ### MCP Integration (`.mcp.json`)
 
-Myceliumは**Claude CodeのMCPサーバー**として統合できます。これにより、Claude Codeから直接Myceliumのスキルとツールにアクセスできます。
+Myceliumは**Claude CodeのMCPサーバー**として統合できます。`mycelium-skills`サーバーを使用することで、Claude Codeはオーケストレーターとして動作し、スキルスクリプトのみを実行できます（filesystemやshellへの直接アクセスは不可）。
 
 ```json
 {
   "mcpServers": {
-    "mycelium-router": {
+    "mycelium-skills": {
       "command": "node",
-      "args": ["packages/core/dist/mcp-server.js"],
-      "env": {
-        "MYCELIUM_CONFIG_PATH": "config.json",
-        "MYCELIUM_CURRENT_ROLE": "developer"
-      }
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
     }
   }
 }
 ```
 
-**Claude Code統合の利点**:
-- Claude Codeの認証を継承（API Key不要）
-- スキルベースのツール制限がClaude Code内で機能
-- 既存のClaude Codeワークフローとシームレスに統合
+**アーキテクチャ**:
+```
+Claude Code (Orchestrator)
+    │
+    │ list_skills, run_script のみ
+    ▼
+mycelium-skills (MCP Server)
+    │
+    │ スクリプト実行
+    ▼
+Skill Scripts (Worker)
+    └── 各スキルが必要な操作を実行
+```
 
-**使用可能なツール**（mycelium-router経由）:
+**使用可能なツール**:
 | ツール | 説明 |
 |--------|------|
-| `mycelium-router__get_context` | 現在のロールとコンテキスト取得 |
-| `mycelium-router__list_roles` | 利用可能なロール一覧 |
-| `mycelium-skills__list_skills` | スキル一覧（ロールでフィルタ） |
-| `mycelium-skills__get_skill` | スキル詳細取得 |
-| `mycelium-skills__run_script` | スキルスクリプト実行 |
+| `list_skills` | スキル一覧（ロールでフィルタ可能） |
+| `get_skill` | スキル詳細取得 |
+| `run_script` | スキルスクリプト実行 |
+| `list_resources` | スキルリソース一覧 |
+| `get_resource` | スキルリソース取得 |
+
+**設計上の利点**:
+- ❌ filesystem, shell, git への直接アクセス不可
+- ✅ スキルスクリプト経由でのみ操作可能
+- ✅ 再現性の高いタスク実行
+- ✅ コンテキストがクリーンに保たれる
 
 **セッション再起動が必要**: `.mcp.json`を変更した後、Claude Codeセッションを再起動してください。
 

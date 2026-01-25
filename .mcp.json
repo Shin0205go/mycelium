@@ -1,12 +1,8 @@
 {
   "mcpServers": {
-    "mycelium-router": {
+    "mycelium-skills": {
       "command": "node",
-      "args": ["packages/core/dist/mcp-server.js"],
-      "env": {
-        "MYCELIUM_CONFIG_PATH": "config.json",
-        "MYCELIUM_CURRENT_ROLE": "developer"
-      }
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
     }
   }
 }
