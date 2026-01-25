@@ -26,11 +26,21 @@ Myceliumのアプローチ：
 - **Role-Based Agents**: Agents are spawned with specific roles via `MYCELIUM_CURRENT_ROLE` environment variable
 - **Interactive CLI**: REPL interface with Claude Agent SDK for role-aware conversations
 
-## MYCELIUM Architecture Rules
+## MYCELIUM Design Philosophy
+
+### Core Principles
+
+1. **Workflow優先**: 全タスクはまずWorkflow Agent（制限付き）で実行。Adhocは例外的使用のみ
+2. **スキルベース制限**: エージェントは必要最小限のツールのみアクセス可能
+3. **コンテキスト保護**: 不要なツール呼び出しを防ぎ、コンテキストをクリーンに保つ
+4. **高い再現性**: 同じスキル＋同じプロンプト＝一貫した結果
+
+### Architecture Rules
 
 - **Inverted RBAC**: Roles are NOT defined manually. Skills declare `allowedRoles`.
 - **Trust Boundary**: The Router implies the Agent's identity; the Agent does not claim it.
 - **Source of Truth**: The MCP Server (@mycelium/skills) is the only source of permission logic.
+- **Minimal Access**: Agents should have access only to tools required for their specific task.
 
 ## Architecture
 
@@ -312,16 +322,16 @@ packages/
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@mycelium/cli` | Command-line interface with workflow/adhoc modes, dynamic command generation |
-| `@mycelium/shared` | Common types and interfaces used across all packages |
-| `@mycelium/core` | Integration layer with RBAC, MCP proxy, and MyceliumRouterCore |
-| `@mycelium/orchestrator` | Worker agent management with skill-based tool restrictions |
-| `@mycelium/adhoc` | Unrestricted agent for edge cases with approval workflow |
-| `@mycelium/skills` | Skill MCP Server for loading and serving skill definitions |
-| `@mycelium/session` | Session persistence and management via MCP |
-| `@mycelium/sandbox` | OS-level sandboxed command execution |
+| Package | Description | 設計思想との関係 |
+|---------|-------------|-----------------|
+| `@mycelium/cli` | Command-line interface with workflow/adhoc modes | **エントリーポイント**: Workflow優先の実行フロー |
+| `@mycelium/shared` | Common types and interfaces | 型定義の一元管理 |
+| `@mycelium/core` | Integration layer with RBAC, MCP proxy | **中核**: ツールフィルタリングによるコンテキスト保護 |
+| `@mycelium/orchestrator` | Worker agent management | **並列実行**: スキル単位でワーカーを分離 |
+| `@mycelium/adhoc` | Unrestricted agent for edge cases | **例外処理**: 調査・デバッグ専用 |
+| `@mycelium/skills` | Skill MCP Server | **ツール定義**: 最小限のツールセットを宣言 |
+| `@mycelium/session` | Session persistence | 会話状態の保存・復元 |
+| `@mycelium/sandbox` | OS-level sandboxed execution | 安全なコード実行環境 |
 
 ## Key Components
 
@@ -1068,6 +1078,19 @@ The Adhoc Agent classifies tools by risk level for approval workflow:
 
 ## Common Tasks
 
+### タスク実行の基本フロー
+
+```
+[1] スキルを確認
+    $ mycelium workflow --list
+
+[2] Workflowで実行（推奨）
+    $ mycelium workflow "run tests"
+
+[3] 失敗した場合のみAdhocで調査
+    $ mycelium adhoc --context ./workflow-context.json
+```
+
 ### Creating a New MYCELIUM Project
 ```bash
 # Initialize with example skills
@@ -1085,7 +1108,10 @@ mycelium init my-project --minimal
 #   skills/admin-access/SKILL.md
 ```
 
-### Adding a New Skill
+### Adding a New Skill（スキル追加）
+
+新しいタスクを自動化したい場合、スキルを作成します：
+
 ```bash
 # Add from template
 mycelium skill add my-skill --template code-reviewer
@@ -1093,6 +1119,11 @@ mycelium skill add my-skill --template code-reviewer
 # Edit the generated skill
 # skills/my-skill/SKILL.md
 ```
+
+**スキル作成のチェックリスト**:
+- [ ] `allowedTools` は必要最小限か？
+- [ ] 単一のタスクに集中しているか？
+- [ ] 説明は明確か？
 
 ### Adding a New Backend Server
 1. Add configuration to `config.json` under `mcpServers`
@@ -1115,162 +1146,19 @@ mycelium policy check --role developer
 mycelium policy roles
 ```
 
-### Debugging
+### Debugging（デバッグ）
+
+**Workflow失敗時の調査手順**:
+1. コンテキストファイルを確認: `cat ./workflow-context.json`
+2. Adhocで調査: `mycelium adhoc --context ./workflow-context.json`
+3. 根本原因を特定したら、スキルを修正
+4. Workflowで再実行して確認
+
+**その他のデバッグオプション**:
 - Set log level in Logger constructor
 - Check `logs/` directory for output
 - Use `--json` flag for structured output in sub-agent mode
 - Use `mycelium mcp status` to check server status
-
-### Configuring Rate Limits
-```typescript
-// Set quota for a role
-router.setRoleQuota('guest', {
-  maxCallsPerMinute: 10,
-  maxCallsPerHour: 100,
-  maxConcurrent: 3,
-  toolLimits: {
-    'expensive_tool': { maxCallsPerMinute: 2 }
-  }
-});
-```
-
-### Accessing Audit Logs
-```typescript
-// Get statistics
-const stats = router.getAuditStats();
-
-// Get recent denials
-const denials = router.getRecentDenials(10);
-
-// Export for compliance
-const csv = router.exportAuditLogsCsv();
-const json = router.exportAuditLogs();
-```
-
-### Thinking Signature (Extended Thinking Transparency)
-
-MYCELIUM supports capturing the "thinking" process from Claude Opus 4.5 and other models with extended thinking. This provides complete transparency about "why" an operation was performed.
-
-#### What is Thinking Signature?
-
-When Claude Opus 4.5 uses extended thinking, the model's reasoning process is captured and stored in the audit log alongside each tool call. This enables:
-
-- **Transparency**: Complete visibility into the model's decision-making
-- **Compliance**: Auditable records of why operations were performed
-- **Debugging**: Understanding unexpected behavior through reasoning analysis
-- **Security**: Detecting suspicious reasoning patterns
-
-#### ThinkingSignature Interface
-
-```typescript
-interface ThinkingSignature {
-  /** The full thinking content from the model */
-  thinking: string;
-
-  /** Model that produced this thinking (e.g., 'claude-opus-4-5-20251101') */
-  modelId?: string;
-
-  /** Number of thinking tokens used */
-  thinkingTokens?: number;
-
-  /** Timestamp when thinking was captured */
-  capturedAt: Date;
-
-  /** Optional summarized version */
-  summary?: string;
-
-  /** Type: 'extended_thinking', 'chain_of_thought', or 'reasoning' */
-  type: 'extended_thinking' | 'chain_of_thought' | 'reasoning';
-
-  /** Cache metrics from the API call */
-  cacheMetrics?: {
-    cacheReadTokens?: number;
-    cacheCreationTokens?: number;
-  };
-}
-```
-
-#### Capturing Thinking in Tool Calls
-
-```typescript
-// Method 1: Set thinking context before tool call
-router.setThinkingContext({
-  thinking: "I need to read the file to understand the code structure...",
-  type: 'extended_thinking',
-  modelId: 'claude-opus-4-5-20251101',
-  capturedAt: new Date(),
-});
-await router.executeToolCall('filesystem__read_file', { path: '/src/index.ts' });
-
-// Method 2: Pass thinking directly to executeToolCall
-await router.executeToolCall(
-  'filesystem__write_file',
-  { path: '/src/config.ts', content: '...' },
-  {
-    thinking: "The user wants to update the configuration...",
-    type: 'extended_thinking',
-    capturedAt: new Date(),
-  }
-);
-```
-
-#### Extracting Thinking from Agent SDK Messages
-
-```typescript
-import {
-  extractThinkingFromMessage,
-  createThinkingSignature,
-  hasThinkingContent
-} from '@mycelium/core';
-
-for await (const message of queryResult) {
-  // Check if message has thinking blocks
-  if (hasThinkingContent(message)) {
-    const extracted = extractThinkingFromMessage(message, 'claude-opus-4-5-20251101');
-
-    if (extracted && extracted.hasToolUse) {
-      // Capture thinking before tool call is executed
-      router.setThinkingContext(createThinkingSignature(extracted, thinkingTokens));
-    }
-  }
-}
-```
-
-#### Accessing Thinking in Audit Logs
-
-```typescript
-// Get entries with thinking signatures
-const entriesWithThinking = router.getEntriesWithThinking(50);
-
-// Get thinking statistics
-const thinkingStats = router.getThinkingStats();
-// Returns: {
-//   entriesWithThinking: 42,
-//   thinkingCoverageRate: 0.75,
-//   totalThinkingTokens: 15000,
-//   avgThinkingTokens: 357,
-//   byType: { extended_thinking: 40, chain_of_thought: 2, reasoning: 0 }
-// }
-
-// Export detailed thinking report for audits
-const report = router.exportThinkingReport();
-```
-
-#### Query Audit Logs by Thinking
-
-```typescript
-// Query entries with thinking
-const withThinking = auditLogger.query({
-  hasThinking: true,
-  result: 'allowed',
-  limit: 100
-});
-
-// Query by thinking type
-const extendedThinking = auditLogger.query({
-  thinkingType: 'extended_thinking'
-});
-```
 
 ### Using Role Memory
 Agents can use memory tools to persist knowledge across sessions:
@@ -1304,3 +1192,98 @@ await router.routeRequest({
 ```
 
 Memory files are stored at `memory/{role_id}.memory.md` and can be directly edited.
+
+## Best Practices
+
+### Workflow優先の開発
+
+**原則**: 全てのタスクはまずWorkflow Agentで実行を試みる
+
+```bash
+# ✅ 推奨: Workflowで実行
+mycelium workflow "run tests and fix failures"
+
+# ⚠️ 例外: 調査が必要な場合のみAdhoc
+mycelium adhoc --context ./workflow-context.json
+```
+
+### スキル設計のガイドライン
+
+**最小限のツールを宣言する**
+
+```yaml
+# ✅ 良い例: 必要最小限のツール
+id: code-formatter
+allowedTools:
+  - filesystem__read_file
+  - filesystem__write_file
+
+# ❌ 悪い例: 不要なツールを含む
+id: code-formatter
+allowedTools:
+  - filesystem__*      # 削除操作も含まれてしまう
+  - shell__exec        # フォーマットに不要
+```
+
+**タスク単位でスキルを分離する**
+
+```yaml
+# ✅ 良い例: 単一責任のスキル
+id: test-runner
+description: Run tests and report results
+allowedTools:
+  - shell__exec  # テスト実行のみ
+  - filesystem__read_file
+
+# ❌ 悪い例: 複数責任を持つスキル
+id: dev-all
+description: Everything for development
+allowedTools:
+  - filesystem__*
+  - shell__*
+  - git__*
+```
+
+### コンテキスト管理
+
+**Workflowでコンテキストをクリーンに保つ**
+
+| モード | コンテキスト | 推奨用途 |
+|--------|-------------|----------|
+| Workflow | クリーン（スキルツールのみ） | 定型タスク、自動化、CI/CD |
+| Adhoc | 汚れやすい（全ツール） | 調査、デバッグ、一時的な修正 |
+
+**段階的エスカレーション**
+
+```
+[1] Workflow実行 → 成功 → 完了
+         ↓
+      失敗
+         ↓
+[2] コンテキスト保存 → Adhocで調査 → 根本原因特定
+         ↓
+[3] スキル修正 → Workflowで再実行
+```
+
+### 再現性の確保
+
+**同じ結果を得るために**
+
+1. **スキルを固定**: 同じスキルIDを使用
+2. **ツールセットを制限**: 不要なツールへのアクセスを削除
+3. **モデルを固定**: `--model` オプションで指定
+4. **プロンプトを標準化**: スキルのSKILL.mdにテンプレートを定義
+
+```bash
+# 再現性の高い実行例
+mycelium workflow --model claude-sonnet-4-5-20250929 "run lint check"
+```
+
+### アンチパターン
+
+| パターン | 問題点 | 解決策 |
+|----------|--------|--------|
+| 全てAdhocで実行 | コンテキスト汚染、再現性低下 | Workflow優先に切り替え |
+| `allowedTools: ["*"]` | 不要なツールにアクセス | 必要なツールのみ列挙 |
+| 1つのスキルで全部やる | 責任が曖昧、デバッグ困難 | タスク単位でスキル分割 |
+| Adhocで本番修正 | 監査証跡なし、再現不可 | Workflowスキルを作成して実行 |
