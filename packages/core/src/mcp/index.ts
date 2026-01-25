@@ -2,8 +2,8 @@
 // MYCELIUM Router - MCP Module Exports
 // ============================================================================
 
-// Re-export StdioRouter from @mycelium/gateway for backward compatibility
-export { StdioRouter, type UpstreamServerInfo } from '@mycelium/gateway';
+// StdioRouter (merged from @mycelium/gateway)
+export { StdioRouter, type UpstreamServerInfo } from './stdio-router.js';
 
 export * from './tool-discovery.js';
 export * from './dynamic-tool-discovery.js';

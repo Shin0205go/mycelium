@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { DANGEROUS_TOOL_CATEGORIES } from '@mycelium/adhoc';
+import { DANGEROUS_TOOL_CATEGORIES } from '../src/agents/adhoc-agent.js';
 
 // Test the approval check logic directly
 // (We can't easily test the full AdhocAgent class due to SDK dependencies)
