@@ -513,28 +513,8 @@ async function main() {
       }
     }
 
-    // Route to backend server with audit logging
+    // Route to backend server
     try {
-      // Check for thinking context in request metadata (custom extension)
-      // This can be passed by clients that capture extended thinking
-      const meta = (request.params as any)._meta;
-      if (meta?.thinking) {
-        logger.debug('Thinking context received from client', {
-          type: meta.thinking.type,
-          thinkingTokens: meta.thinking.thinkingTokens,
-        });
-        routerCore.setThinkingContext({
-          thinking: meta.thinking.thinking,
-          type: meta.thinking.type || 'reasoning',
-          modelId: meta.thinking.modelId,
-          thinkingTokens: meta.thinking.thinkingTokens,
-          capturedAt: new Date(meta.thinking.capturedAt || Date.now()),
-          summary: meta.thinking.summary,
-          cacheMetrics: meta.thinking.cacheMetrics,
-        });
-      }
-
-      // Use executeToolCall for proper audit logging with thinking
       const result = await routerCore.executeToolCall(name, args as Record<string, unknown>);
       return {
         content: [

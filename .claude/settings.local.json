@@ -18,7 +18,24 @@
       "Bash(timeout 15 sh -c 'echo \"\"{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"id\\\\\"\":1,\\\\\"\"method\\\\\"\":\\\\\"\"initialize\\\\\"\",\\\\\"\"params\\\\\"\":{\\\\\"\"protocolVersion\\\\\"\":\\\\\"\"2024-11-05\\\\\"\",\\\\\"\"clientInfo\\\\\"\":{\\\\\"\"name\\\\\"\":\\\\\"\"test\\\\\"\",\\\\\"\"version\\\\\"\":\\\\\"\"1.0.0\\\\\"\"},\\\\\"\"capabilities\\\\\"\":{}}}\n{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"method\\\\\"\":\\\\\"\"initialized\\\\\"\",\\\\\"\"params\\\\\"\":{}}\n{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"id\\\\\"\":2,\\\\\"\"method\\\\\"\":\\\\\"\"tools/call\\\\\"\",\\\\\"\"params\\\\\"\":{\\\\\"\"name\\\\\"\":\\\\\"\"mycelium-router__list_roles\\\\\"\",\\\\\"\"arguments\\\\\"\":{}}}\"\" | MCP_TRANSPORT=stdio LOG_SILENT=true node packages/core/dist/mcp-server.js 2>/dev/null')",
       "Bash(DEBUG=*)",
       "Bash(npm start -w @mycelium/cli)",
-      "Bash(node packages/cli/dist/index.js:*)"
+      "Bash(node packages/cli/dist/index.js:*)",
+      "Bash(xargs -I {} sh -c \"echo \"\"=== {} ===\"\" && cat {} | grep -E \"\"name|description\"\"\")",
+      "Bash(xargs:*)",
+      "Bash(for pkg in a2a audit cli core gateway router sandbox session shared skills)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash([ -f /Users/shingo/Develop/mycelium/packages/$pkg/package.json ])",
+      "Bash(done)",
+      "Bash(find:*)",
+      "Bash(git commit:*)",
+      "Bash(du:*)",
+      "Bash(npm run test:*)",
+      "Bash(git worktree:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git branch:*)",
+      "Bash(wc:*)",
+      "Bash(tree:*)",
+      "Bash(git push:*)"
     ]
   }
 }

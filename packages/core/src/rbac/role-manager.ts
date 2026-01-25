@@ -432,14 +432,29 @@ export class RoleManager {
   generateRoleManifest(manifest: SkillManifest): RoleManifest {
     const roles: Record<string, DynamicRole> = {};
 
+    // First pass: collect all explicit role IDs
+    const allRoleIds = new Set<string>();
     for (const skill of manifest.skills) {
       for (const roleId of skill.allowedRoles) {
-        // Skip wildcard - not supported
-        if (roleId === '*') {
-          this.logger.warn(`Wildcard (*) in allowedRoles is not supported, skipping in skill: ${skill.id}`);
-          continue;
+        if (roleId !== '*') {
+          allRoleIds.add(roleId);
         }
+      }
+    }
 
+    // Second pass: process skills and handle wildcards
+    for (const skill of manifest.skills) {
+      // Determine which roles this skill applies to
+      let targetRoles: string[];
+      if (skill.allowedRoles.includes('*')) {
+        // Wildcard: apply to all known roles
+        targetRoles = Array.from(allRoleIds);
+        this.logger.debug(`Skill ${skill.id} has allowedRoles: *, applying to all ${targetRoles.length} roles`);
+      } else {
+        targetRoles = skill.allowedRoles;
+      }
+
+      for (const roleId of targetRoles) {
         if (!roles[roleId]) {
           roles[roleId] = {
             id: roleId,
@@ -483,14 +498,18 @@ export class RoleManager {
     this.roles.clear();
     this.memoryPermissions.clear();
 
+    // Get all role IDs from the generated manifest
+    const allRoleIds = Object.keys(roleManifest.roles);
+
     // Extract memory grants from skills
     for (const skill of manifest.skills) {
       if (skill.grants?.memory && skill.grants.memory !== 'none') {
-        for (const roleId of skill.allowedRoles) {
-          if (roleId === '*') {
-            // Wildcard not supported
-            continue;
-          }
+        // Determine target roles (handle wildcard)
+        const targetRoles = skill.allowedRoles.includes('*')
+          ? allRoleIds
+          : skill.allowedRoles;
+
+        for (const roleId of targetRoles) {
           this.setMemoryPermission(roleId, {
             policy: skill.grants.memory,
             teamRoles: skill.grants.memoryTeamRoles

@@ -14,18 +14,21 @@
       "command": "node",
       "args": ["packages/sandbox/dist/mcp-server.js"],
       "comment": "Sandbox MCP Server - secure code execution with OS-level isolation"
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
-      "comment": "Filesystem server - defaults to project root"
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp"]
     }
   },
   "roles": {
     "defaultRole": "default"
+  },
+  "_disabled_servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "comment": "Disabled: slow npx startup"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "comment": "Disabled: slow npx startup"
+    }
   }
 }

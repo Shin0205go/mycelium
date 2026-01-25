@@ -1,9 +1,13 @@
 // ============================================================================
-// MYCELIUM Router - MCP Module Exports
+// MYCELIUM Core - MCP Module Exports
 // ============================================================================
 
-// Re-export StdioRouter from @mycelium/gateway for backward compatibility
-export { StdioRouter, type UpstreamServerInfo } from '@mycelium/gateway';
+// StdioRouter (migrated from @mycelium/gateway)
+export { StdioRouter, type UpstreamServerInfo } from './stdio-router.js';
 
+// Constants
+export { TIMEOUTS, SERVER } from './constants.js';
+
+// Tool discovery
 export * from './tool-discovery.js';
 export * from './dynamic-tool-discovery.js';

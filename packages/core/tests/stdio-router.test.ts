@@ -1,9 +1,9 @@
 /**
- * Unit tests for StdioRouter (from @mycelium/gateway)
+ * Unit tests for StdioRouter
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { StdioRouter, type UpstreamServerInfo } from '@mycelium/gateway';
+import { StdioRouter } from '../src/mcp/stdio-router.js';
 import type { Logger } from '@mycelium/shared';
 import { EventEmitter } from 'events';
 

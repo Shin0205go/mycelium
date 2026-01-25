@@ -5,17 +5,23 @@
  * using real implementations (not mocks) to ensure proper integration.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MyceliumRouterCore, createMyceliumRouterCore } from '../src/router/mycelium-router-core.js';
-import type { Logger } from '@mycelium/shared';
+import type { Logger } from '../src/utils/logger.js';
 
 // Test logger that silences output
-const testLogger: Logger = {
-  debug: () => {},
-  info: () => {},
-  warn: () => {},
-  error: () => {}
-};
+const testLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  logger: undefined,
+  shouldLog: () => true,
+  critical: vi.fn(),
+  decision: vi.fn(),
+  violation: vi.fn(),
+  audit: vi.fn(),
+} as unknown as Logger;
 
 describe('MyceliumRouterCore', () => {
   let router: MyceliumRouterCore;
@@ -37,22 +43,11 @@ describe('MyceliumRouterCore', () => {
     it('should create router with default options', () => {
       const router = new MyceliumRouterCore(testLogger);
       expect(router).toBeInstanceOf(MyceliumRouterCore);
-      expect(router.isA2AMode()).toBe(false);
-    });
-
-    it('should create router with A2A mode enabled', () => {
-      const router = new MyceliumRouterCore(testLogger, { a2aMode: true });
-      expect(router.isA2AMode()).toBe(true);
     });
 
     it('should create router via factory function', () => {
       const router = createMyceliumRouterCore(testLogger);
       expect(router).toBeInstanceOf(MyceliumRouterCore);
-    });
-
-    it('should pass options to factory function', () => {
-      const router = createMyceliumRouterCore(testLogger, { a2aMode: true });
-      expect(router.isA2AMode()).toBe(true);
     });
   });
 
@@ -73,29 +68,6 @@ describe('MyceliumRouterCore', () => {
       expect(state).toBeDefined();
       expect(state.visibleToolsCount).toBeGreaterThanOrEqual(0);
       expect(state.connectedServersCount).toBeGreaterThanOrEqual(0);
-    });
-  });
-
-  describe('A2A mode', () => {
-    it('should enable A2A mode', () => {
-      expect(router.isA2AMode()).toBe(false);
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
-    });
-
-    it('should disable A2A mode', () => {
-      router.enableA2AMode();
-      router.disableA2AMode();
-      expect(router.isA2AMode()).toBe(false);
-    });
-
-    it('should toggle A2A mode multiple times', () => {
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
-      router.disableA2AMode();
-      expect(router.isA2AMode()).toBe(false);
-      router.enableA2AMode();
-      expect(router.isA2AMode()).toBe(true);
     });
   });
 
@@ -158,52 +130,6 @@ describe('MyceliumRouterCore', () => {
     });
   });
 
-  describe('audit and rate limiting accessors', () => {
-    it('should return audit logger instance', () => {
-      const auditLogger = router.getAuditLogger();
-      expect(auditLogger).toBeDefined();
-    });
-
-    it('should return rate limiter instance', () => {
-      const rateLimiter = router.getRateLimiter();
-      expect(rateLimiter).toBeDefined();
-    });
-
-    it('should return identity resolver instance', () => {
-      const resolver = router.getIdentityResolver();
-      expect(resolver).toBeDefined();
-    });
-
-    it('should set role quota without error', () => {
-      expect(() => {
-        router.setRoleQuota('guest', {
-          maxCallsPerMinute: 10,
-          maxCallsPerHour: 100
-        });
-      }).not.toThrow();
-    });
-
-    it('should set multiple role quotas without error', () => {
-      expect(() => {
-        router.setRoleQuotas({
-          guest: { maxCallsPerMinute: 10 },
-          admin: { maxCallsPerMinute: 100 }
-        });
-      }).not.toThrow();
-    });
-
-    it('should return audit stats', () => {
-      const stats = router.getAuditStats();
-      expect(stats).toBeDefined();
-    });
-
-    it('should return identity stats', () => {
-      const stats = router.getIdentityStats();
-      expect(stats).toBeDefined();
-      expect(stats).toHaveProperty('totalRules');
-    });
-  });
-
   describe('tools changed callback', () => {
     it('should accept callback function', () => {
       const callback = async () => {};
@@ -237,15 +163,21 @@ describe('MyceliumRouterCore', () => {
 });
 
 describe('MyceliumRouterCore Error Handling', () => {
-  const testLogger: Logger = {
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {}
-  };
+  const errorTestLogger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    logger: undefined,
+    shouldLog: () => true,
+    critical: vi.fn(),
+    decision: vi.fn(),
+    violation: vi.fn(),
+    audit: vi.fn(),
+  } as unknown as Logger;
 
   it('should throw when setting invalid role', async () => {
-    const router = new MyceliumRouterCore(testLogger);
+    const router = new MyceliumRouterCore(errorTestLogger);
     await router.initialize();
 
     await expect(router.setRole({ role: 'nonexistent-role-xyz' }))

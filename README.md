@@ -11,24 +11,26 @@
 ```
 mycelium/
 ├── packages/
-│   ├── shared/     # @mycelium/shared - 共通型定義
-│   ├── rbac/       # @mycelium/rbac - ロール管理・ツール可視性
-│   ├── a2a/        # @mycelium/a2a - A2Aエージェント間認証
-│   ├── audit/      # @mycelium/audit - 監査ログ・レート制限
-│   ├── gateway/    # @mycelium/gateway - MCPゲートウェイ
-│   ├── core/       # @mycelium/core - 統合レイヤー
-│   └── skills/     # @mycelium/skills - スキルMCPサーバー
+│   ├── shared/       # @mycelium/shared - 共通型定義
+│   ├── core/         # @mycelium/core - Router, RBAC, MCP統合
+│   ├── cli/          # @mycelium/cli - 対話型CLI
+│   ├── skills/       # @mycelium/skills - スキルMCPサーバー
+│   ├── session/      # @mycelium/session - セッション管理
+│   ├── sandbox/      # @mycelium/sandbox - 安全なコード実行
+│   ├── orchestrator/ # @mycelium/orchestrator - ワークフロー実行
+│   └── adhoc/        # @mycelium/adhoc - アドホック調査
 ```
 
 | パッケージ | 説明 |
 |-----------|------|
 | `@mycelium/shared` | 共通型定義（Role, Skill, ToolPermissions等） |
-| `@mycelium/rbac` | RoleManager, ToolVisibilityManager, RoleMemoryStore |
-| `@mycelium/a2a` | A2A Agent Card スキルベースのアイデンティティ解決 |
-| `@mycelium/audit` | 監査ログとレート制限（プレースホルダー） |
-| `@mycelium/gateway` | MCPサーバー接続管理（プレースホルダー） |
-| `@mycelium/core` | 全パッケージの統合・再エクスポート |
+| `@mycelium/core` | Router, RoleManager, ToolVisibilityManager, MCP統合 |
+| `@mycelium/cli` | 対話型REPL、ロール切替、モデル選択 |
 | `@mycelium/skills` | スキル定義を提供するMCPサーバー |
+| `@mycelium/session` | 会話セッションの保存・復元・圧縮 |
+| `@mycelium/sandbox` | OS分離による安全なコマンド実行 |
+| `@mycelium/orchestrator` | 複数ロールを使ったワークフロー実行 |
+| `@mycelium/adhoc` | 調査・デバッグ用のアドホックタスク |
 
 ## スキル駆動RBACとは？
 
@@ -51,50 +53,76 @@ mycelium/
 
 **スキルが「誰に使わせるか」を宣言** → ロールは自動生成
 
-## なぜスキル駆動か？
+## インストール
 
-### 1. サーバー側が権限を宣言（Trust Boundary）
+```bash
+npm install
+npm run build
 
-```
-従来: Agent → "俺はadminだ" → Server（信じるしかない）
-MYCELIUM: Server → "このスキルはadmin専用" → Router → Agent
-                     ↑
-               サーバーが権限を決める
-```
-
-クライアント（エージェント）を**信頼しなくていい設計**。
-
-### 2. マルチエージェント時代のアクセス制御
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Orchestrator Agent                        │
-│         ┌────────────────┼────────────────┐                  │
-│         ▼                ▼                ▼                  │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐              │
-│   │SubAgent A│    │SubAgent B│    │SubAgent C│  ← 100並行   │
-│   │(analyst) │    │(writer)  │    │(reviewer)│              │
-│   └────┬─────┘    └────┬─────┘    └────┬─────┘              │
-│        ▼               ▼               ▼                     │
-│   [DB読取のみ]    [ファイル書込]   [読取のみ]   ← ロールで制限│
-└─────────────────────────────────────────────────────────────┘
-
-Human-in-the-loop → 100回承認？ 非現実的
-Policy-in-the-loop → 事前宣言で自律実行 ✅
+# グローバルコマンドとして登録
+npm link
 ```
 
-### 3. 設定ファイル不要
+## 使用方法
 
-```yaml
-# スキルを追加するだけ（packages/skills/skills/に配置）
----
-id: new-skill
-allowedRoles: [developer, admin]
-allowedTools: [git__*, npm__*]
----
+### 対話型CLI
 
-# → developerロールが自動生成
-# → git__*, npm__* が自動的に許可
+```bash
+# 起動
+myc
+# または
+npm start
+
+# 特定ロールで起動
+myc --role developer
+
+# 特定モデルで起動
+myc --model claude-sonnet-4-5-20250929
+```
+
+#### CLIコマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `/roles` | ロール選択（矢印キーで選択） |
+| `/skills` | 現在のロールで使えるスキル一覧 |
+| `/tools` | 現在のロールで使えるツール一覧 |
+| `/status` | 現在の状態（ロール、モデル、ツール数） |
+| `/model <name>` | モデル変更 |
+| `/help` | ヘルプ表示 |
+| `/quit` | 終了 |
+
+#### セッション管理コマンド
+
+| コマンド | 説明 |
+|---------|------|
+| `/save [name]` | 現在のセッションを保存 |
+| `/sessions` | 保存済みセッション一覧 |
+| `/resume <id>` | セッションを再開 |
+| `/compress <id>` | セッションを圧縮 |
+| `/fork <id>` | セッションをフォーク |
+| `/export <id>` | セッションをエクスポート |
+
+### MCPサーバーとして起動（Claude Desktop等）
+
+```bash
+npm run start:mcp
+```
+
+`.mcp.json` 設定例：
+
+```json
+{
+  "mcpServers": {
+    "mycelium-router": {
+      "command": "node",
+      "args": ["packages/core/dist/mcp-server.js"],
+      "env": {
+        "MYCELIUM_CONFIG_PATH": "config.json"
+      }
+    }
+  }
+}
 ```
 
 ## アーキテクチャ
@@ -107,52 +135,32 @@ allowedTools: [git__*, npm__*]
 │  │  - allowedRoles: [formatter, admin]  ← スキルが宣言  │   │
 │  │  - allowedTools: [filesystem__read, docx__parse]     │   │
 │  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Skill: session-management                           │   │
+│  │  - allowedRoles: ["*"]  ← ワイルドカードで全ロール   │   │
+│  │  - allowedTools: [mycelium-session__*]               │   │
+│  └─────────────────────────────────────────────────────┘   │
 └───────────────────────┬─────────────────────────────────────┘
                         │ list_skills
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 @mycelium/core (司令塔)                         │
-│  ├── @mycelium/rbac   (RoleManager, ToolVisibilityManager)    │
-│  ├── @mycelium/a2a    (IdentityResolver)                      │
-│  └── @mycelium/shared (共通型定義)                             │
+│                 @mycelium/core (Router)                        │
+│  ├── RoleManager        (スキル→ロール変換)                  │
+│  ├── ToolVisibilityManager (ロール別ツールフィルタ)         │
+│  └── StdioRouter        (MCPサーバー接続管理)               │
 │                                                              │
 │  Skills → Roles 変換（Inverted RBAC）                       │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Role: formatter (自動生成)                          │   │
-│  │  - skills: [docx-handler]                            │   │
-│  │  - tools: [filesystem__read, docx__parse]            │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  - allowedRoles: ["*"] → 全ロールに展開                     │
+│  - allowedTools: [server__*] → ワイルドカードマッチ          │
 └───────────────────────┬─────────────────────────────────────┘
-                        │ set_role
+                        │ set_role / MCP tools
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Agent (Claude / ChatGPT / Gemini)              │
-│  - set_role("formatter") → 許可されたツールのみ表示          │
-│  - 許可されていないツールは見えない・呼べない                 │
+│              @mycelium/cli (Interactive REPL)                 │
+│  - /roles, /skills, /tools → MCP tools経由                  │
+│  - /status → get_context MCP tool                           │
+│  - Claude Agent SDK統合                                     │
 └─────────────────────────────────────────────────────────────┘
-```
-
-## インストール
-
-```bash
-npm install
-npm run build
-```
-
-## 使用方法
-
-### CLIとして起動
-
-```bash
-npm start
-# または
-npm run dev
-```
-
-### MCPサーバーとして起動（Claude Desktop等から利用）
-
-```bash
-npm run start:mcp
 ```
 
 ## スキル定義
@@ -160,22 +168,40 @@ npm run start:mcp
 スキルは `packages/skills/skills/` に配置し、`allowedRoles` を宣言：
 
 ```yaml
-# packages/skills/skills/data-analyst/SKILL.md
+# packages/skills/skills/data-analyst/SKILL.yaml
 ---
 id: data-analyst
 displayName: Data Analyst
+description: データ分析のためのスキル
+
 allowedRoles:
   - analyst
   - admin
+
 allowedTools:
   - postgres__select
   - postgres__explain
   # postgres__drop は含めない → 自動的に拒否
 ---
+```
 
-# Data Analyst Skill
+### 全ロール共通スキル
 
-データ分析のためのスキル。SELECT文の実行と実行計画の確認が可能。
+`allowedRoles: ["*"]` で全ロールに適用：
+
+```yaml
+# packages/skills/skills/session-management/SKILL.yaml
+---
+id: session-management
+displayName: Session Management
+description: セッション管理（全ロール共通）
+
+allowedRoles:
+  - "*"  # 全ロールに展開
+
+allowedTools:
+  - mycelium-session__*  # ワイルドカードで全セッションツール
+---
 ```
 
 ## 設定
@@ -185,38 +211,44 @@ allowedTools:
 ```json
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
-    },
     "mycelium-skills": {
       "command": "node",
       "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
+    },
+    "mycelium-session": {
+      "command": "node",
+      "args": ["packages/session/dist/mcp-server.js", "sessions"]
+    },
+    "mycelium-sandbox": {
+      "command": "node",
+      "args": ["packages/sandbox/dist/mcp-server.js"]
     }
   }
 }
 ```
 
-## 追加機能
+## 環境変数
 
-### 監査ログ
+| 変数 | 説明 |
+|-----|------|
+| `MYCELIUM_CONFIG_PATH` | config.jsonのパス |
+| `MYCELIUM_ROUTER_PATH` | MCPサーバーのパス |
+| `ANTHROPIC_API_KEY` | APIキー（オプション、Claude Code認証優先） |
 
-全ツール呼び出しを自動記録：
+## 開発
 
-```typescript
-const stats = router.getAuditStats();
-const csv = router.exportAuditLogsCsv();  // コンプライアンス対応
-```
+```bash
+# ビルド
+npm run build
 
-### Rate Limiting（オプション）
+# 開発モード（tsx）
+npm run dev
 
-ロールごとのQuota設定：
+# テスト
+npm test
 
-```typescript
-router.setRoleQuota('guest', {
-  maxCallsPerMinute: 10,
-  maxConcurrent: 3
-});
+# CLIデバッグ
+npm run cli:dev
 ```
 
 ## テスト

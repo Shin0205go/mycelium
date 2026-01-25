@@ -17,9 +17,9 @@ import type {
   RoleManifest
 } from '@mycelium/shared';
 
-// Import A2A types (NOT re-exported, consumers should import from @mycelium/a2a)
-// SkillDefinition extends BaseSkillDefinition with A2A identity config
-import type { SkillDefinition } from '@mycelium/a2a';
+// Use BaseSkillDefinition from shared (A2A identity features removed)
+// Alias for backward compatibility
+type SkillDefinition = import('@mycelium/shared').BaseSkillDefinition;
 
 // ============================================================================
 // Role Configuration File Format

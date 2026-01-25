@@ -132,15 +132,34 @@ export class MCPClient extends EventEmitter {
         env: { ...process.env, ...this.env }
       });
 
+      let serverReady = false;
+      let initializeStarted = false;
+
+      const tryInitialize = () => {
+        if (serverReady && !initializeStarted) {
+          initializeStarted = true;
+          this.initialize()
+            .then(() => {
+              this.initialized = true;
+              resolve();
+            })
+            .catch(reject);
+        }
+      };
+
       this.process.stdout?.on('data', (data) => {
         this.handleData(data.toString());
       });
 
       this.process.stderr?.on('data', (data) => {
-        // Log but don't fail on stderr
         const msg = data.toString().trim();
         if (msg) {
           this.emit('log', msg);
+          // Wait for server ready signal
+          if (msg.includes('running on stdio') || msg.includes('MCP Server running')) {
+            serverReady = true;
+            tryInitialize();
+          }
         }
       });
 
@@ -152,13 +171,13 @@ export class MCPClient extends EventEmitter {
         this.emit('close', code);
       });
 
-      // Initialize MCP connection
-      this.initialize()
-        .then(() => {
-          this.initialized = true;
-          resolve();
-        })
-        .catch(reject);
+      // Fallback: if no ready signal after 3 seconds, try anyway
+      setTimeout(() => {
+        if (!serverReady) {
+          serverReady = true;
+          tryInitialize();
+        }
+      }, 3000);
     });
   }
 
@@ -334,6 +353,25 @@ export class MCPClient extends EventEmitter {
     return result;
   }
 
+  /**
+   * Unwrap nested MCP tool response (router may double-wrap sub-server responses)
+   */
+  private unwrapToolResponse(text: string): unknown {
+    let parsed = JSON.parse(text);
+
+    // If the parsed result has a content array with text, unwrap it
+    while (parsed?.content?.[0]?.text) {
+      try {
+        parsed = JSON.parse(parsed.content[0].text);
+      } catch {
+        // Inner text is not JSON, return as-is
+        break;
+      }
+    }
+
+    return parsed;
+  }
+
   async listSkills(role?: string): Promise<ListSkillsResult> {
     const result = await this.sendRequest('tools/call', {
       name: 'mycelium-skills__list_skills',
@@ -349,7 +387,7 @@ export class MCPClient extends EventEmitter {
     const text = result?.content?.[0]?.text;
     if (text) {
       try {
-        return JSON.parse(text);
+        return this.unwrapToolResponse(text) as ListSkillsResult;
       } catch {
         throw new Error(`Failed to parse response: ${text.substring(0, 100)}`);
       }
@@ -372,7 +410,7 @@ export class MCPClient extends EventEmitter {
     const text = result?.content?.[0]?.text;
     if (text) {
       try {
-        return JSON.parse(text);
+        return this.unwrapToolResponse(text) as ListCommandsResult;
       } catch {
         throw new Error(`Failed to parse response: ${text.substring(0, 100)}`);
       }

@@ -1,44 +1,32 @@
 {
-  "name": "@mycelium/core",
+  "name": "@mycelium/orchestrator",
   "version": "1.0.0",
-  "description": "Mycelium Core - Router + Skill-based RBAC",
+  "description": "Mycelium Orchestrator - Worker agent management with skill-based tool restrictions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bin": {
-    "mycelium-router": "./dist/mcp-server.js"
-  },
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start:mcp": "node dist/mcp-server.js",
-    "dev:mcp": "tsx src/mcp-server.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": [
     "mycelium",
-    "core",
-    "mcp",
-    "rbac",
-    "router",
+    "orchestrator",
+    "worker",
+    "agent",
     "skill-driven"
   ],
   "license": "MIT",
   "dependencies": {
     "@mycelium/shared": "*",
-    "@mycelium/skills": "*",
+    "@mycelium/core": "*",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "chalk": "^5.3.0",
-    "uuid": "^9.0.0",
-    "winston": "^3.11.0",
-    "yaml": "^2.8.2",
-    "zod": "^4.2.1"
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/uuid": "^9.0.0",
-    "tsx": "^4.7.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.16"
   },

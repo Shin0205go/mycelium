@@ -5,10 +5,24 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo, ToolCommandInfo } from './mcp-client.js';
+import { MCPClient, AgentManifest, SkillCommandInfo, ToolCommandInfo } from './mcp-client.js';
 import { createQuery, isToolUseMessage, getToolUseInfo, type SDKMessage } from './agent.js';
-// Session management is handled via MCP tools (mycelium-session server)
 import { createBanner, createSpinner, icons, suggestCommand, errorBox } from './ui.js';
+
+// Commands and selectors
+import {
+  rolesCommand,
+  statusCommand,
+  skillsCommand,
+  toolsCommand,
+  modelCommand,
+  helpCommand,
+  executeSkillCommand,
+  executeToolCommand,
+  switchRole,
+  AVAILABLE_MODELS,
+  type CommandContext
+} from './commands/index.js';
 
 export interface InteractiveCLIOptions {
   role?: string;
@@ -25,8 +39,6 @@ export class InteractiveCLI {
   private isProcessing: boolean = false;
   private authSource: string = 'unknown';
   private useApiKey: boolean = false;
-
-  // Session management is handled via MCP tools (mycelium-session server)
 
   // Dynamic commands loaded from skills
   private skillCommands: Map<string, SkillCommandInfo> = new Map();
@@ -48,16 +60,10 @@ export class InteractiveCLI {
     '/quit'
   ];
 
-  private readonly models = [
-    'claude-3-5-haiku-20241022',
-    'claude-sonnet-4-5-20250929',
-    'claude-opus-4-20250514'
-  ];
   private currentModel: string = 'claude-3-5-haiku-20241022';
 
   constructor(private options: InteractiveCLIOptions = {}) {
     const projectRoot = process.cwd();
-    // Support both monorepo and installed package paths
     const routerPath = options.routerPath ||
       process.env.MYCELIUM_ROUTER_PATH ||
       join(projectRoot, 'packages', 'core', 'dist', 'mcp-server.js');
@@ -67,11 +73,8 @@ export class InteractiveCLI {
 
     this.mcp = new MCPClient('node', [routerPath], {
       MYCELIUM_CONFIG_PATH: configPath,
-      MCP_TRANSPORT: 'stdio',  // Tell logger to use stderr
-      LOG_SILENT: 'true'       // Suppress logs in stdio mode
+      MCP_TRANSPORT: 'stdio'
     });
-
-    // Session management is handled via MCP tools (mycelium-session server)
 
     if (options.role) {
       this.currentRole = options.role;
@@ -80,6 +83,10 @@ export class InteractiveCLI {
       this.currentModel = options.model;
     }
   }
+
+  // ============================================================================
+  // Authentication
+  // ============================================================================
 
   private async checkAuth(): Promise<boolean> {
     const claudeAuthOk = await this.tryAuth(false);
@@ -155,6 +162,23 @@ export class InteractiveCLI {
     });
   }
 
+  private formatAuthSource(source: string): string {
+    switch (source) {
+      case 'none': return 'Claude Code Auth';
+      case 'user': return 'User auth';
+      case 'ANTHROPIC_API_KEY': return chalk.yellow('API Key (charges apply)');
+      case 'project': return chalk.blue('Project API Key');
+      case 'org': return chalk.blue('Organization API Key');
+      case 'temporary': return chalk.gray('Temporary Key');
+      case 'unknown': return chalk.gray('Unknown');
+      default: return source;
+    }
+  }
+
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+
   private showBanner(): void {
     console.log(createBanner());
   }
@@ -170,9 +194,7 @@ export class InteractiveCLI {
 
     console.log(chalk.gray('Connecting to MYCELIUM Router...'));
 
-    this.mcp.on('log', () => {
-      // Suppress logs during normal operation
-    });
+    this.mcp.on('log', () => {});
 
     this.mcp.on('toolsChanged', () => {
       console.log(chalk.yellow('\n📢 Tools list updated'));
@@ -187,16 +209,17 @@ export class InteractiveCLI {
       process.exit(1);
     }
 
-    // Load dynamic commands from skills (including session commands)
+    // Load dynamic commands from skills
     await this.loadSkillCommands();
 
-    await this.switchRole(this.currentRole);
+    await this.doSwitchRole(this.currentRole);
     this.startREPL();
   }
 
-  /**
-   * Load dynamic slash commands from skill definitions
-   */
+  // ============================================================================
+  // Command Loading
+  // ============================================================================
+
   private async loadSkillCommands(): Promise<void> {
     try {
       const result = await this.mcp.listCommands();
@@ -211,125 +234,16 @@ export class InteractiveCLI {
       } else {
         console.log(chalk.gray('  No skill commands available\n'));
       }
-    } catch (error) {
-      // Skills server may not be available
+    } catch {
       console.log(chalk.gray('  Skill commands: unavailable\n'));
     }
   }
 
-  /**
-   * Execute a dynamic skill command
-   */
-  private async executeSkillCommand(cmd: SkillCommandInfo, args: string[]): Promise<void> {
-    try {
-      if (cmd.handlerType === 'tool') {
-        // Execute via MCP tool call
-        if (!cmd.toolName) {
-          console.log(chalk.red(`Command /${cmd.command} has no toolName configured`));
-          return;
-        }
-
-        // Build arguments from command args
-        const toolArgs: Record<string, unknown> = {};
-        if (cmd.arguments && args.length > 0) {
-          for (let i = 0; i < cmd.arguments.length && i < args.length; i++) {
-            toolArgs[cmd.arguments[i].name] = args[i];
-          }
-        } else if (args.length > 0) {
-          // Default: pass first arg as 'name' or 'id'
-          toolArgs['name'] = args[0];
-        }
-
-        console.log(chalk.gray(`\n  Executing ${cmd.toolName}...`));
-
-        // Call tool via MCP (tool may be prefixed with server name)
-        const toolName = cmd.toolName.includes('__')
-          ? cmd.toolName
-          : `mycelium-skills__${cmd.toolName}`;
-
-        const result = await this.mcp.callTool(toolName, toolArgs) as {
-          content?: Array<{ type?: string; text?: string }>;
-          isError?: boolean;
-        };
-
-        if (result?.isError) {
-          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
-        } else {
-          const text = result?.content?.[0]?.text;
-          if (text) {
-            try {
-              const json = JSON.parse(text);
-              console.log(chalk.green(`\n  ✓ Success`));
-              console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
-            } catch {
-              console.log(chalk.green(`\n  ✓ ${text}\n`));
-            }
-          } else {
-            console.log(chalk.green(`\n  ✓ Command executed\n`));
-          }
-        }
-      } else if (cmd.handlerType === 'script') {
-        // Execute via run_script
-        if (!cmd.scriptPath) {
-          console.log(chalk.red(`Command /${cmd.command} has no scriptPath configured`));
-          return;
-        }
-
-        console.log(chalk.gray(`\n  Running script ${cmd.scriptPath}...`));
-
-        const result = await this.mcp.callTool('mycelium-skills__run_script', {
-          skill: cmd.skillId,
-          path: cmd.scriptPath,
-          args: args,
-        }) as {
-          content?: Array<{ type?: string; text?: string }>;
-          isError?: boolean;
-        };
-
-        if (result?.isError) {
-          console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
-        } else {
-          const text = result?.content?.[0]?.text;
-          if (text) {
-            try {
-              const json = JSON.parse(text);
-              if (json.success) {
-                console.log(chalk.green(`\n  ✓ Script completed`));
-                if (json.stdout) {
-                  console.log(json.stdout);
-                }
-              } else {
-                console.log(chalk.red(`\n  ✗ Script failed (exit code: ${json.exitCode})`));
-                if (json.stderr) {
-                  console.log(chalk.red(json.stderr));
-                }
-              }
-            } catch {
-              console.log(text);
-            }
-          }
-          console.log();
-        }
-      } else {
-        console.log(chalk.yellow(`Unknown handler type: ${cmd.handlerType}`));
-      }
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.log(chalk.red(`Failed to execute /${cmd.command}: ${err.message}\n`));
-    }
-  }
-
-  /**
-   * Extract tool name from prefixed name (server__toolName -> toolName)
-   */
   private extractToolName(prefixedName: string): string {
     const parts = prefixedName.split('__');
     return parts.length > 1 ? parts[1] : prefixedName;
   }
 
-  /**
-   * Register tool commands from available tools in manifest
-   */
   private registerToolCommands(tools: AgentManifest['availableTools']): void {
     this.toolCommands.clear();
     const nameCount = new Map<string, number>();
@@ -337,7 +251,6 @@ export class InteractiveCLI {
     // Count tool names to detect duplicates
     for (const tool of tools) {
       const shortName = this.extractToolName(tool.name);
-      // Skip excluded tools
       if (this.excludedTools.includes(shortName)) continue;
       nameCount.set(shortName, (nameCount.get(shortName) || 0) + 1);
     }
@@ -345,7 +258,6 @@ export class InteractiveCLI {
     // Register commands
     for (const tool of tools) {
       const shortName = this.extractToolName(tool.name);
-      // Skip excluded tools
       if (this.excludedTools.includes(shortName)) continue;
 
       const isDuplicate = (nameCount.get(shortName) || 0) > 1;
@@ -360,172 +272,60 @@ export class InteractiveCLI {
     }
   }
 
-  /**
-   * Execute a tool command
-   */
-  private async executeToolCommand(cmd: ToolCommandInfo, args: string[]): Promise<void> {
-    try {
-      console.log(chalk.gray(`\n  Executing ${cmd.fullToolName}...`));
+  // ============================================================================
+  // Role Switching
+  // ============================================================================
 
-      // Parse arguments - for now, join as a single input or use key=value pairs
-      const toolArgs: Record<string, unknown> = {};
-      for (const arg of args) {
-        if (arg.includes('=')) {
-          const [key, ...valueParts] = arg.split('=');
-          toolArgs[key] = valueParts.join('=');
-        } else if (args.length === 1) {
-          // Single argument without key - try common parameter names
-          toolArgs['path'] = arg;
-          toolArgs['id'] = arg;
-          toolArgs['name'] = arg;
-        }
-      }
+  private async doSwitchRole(roleId: string): Promise<void> {
+    const ctx = this.getCommandContext();
+    await switchRole(ctx, roleId);
+    this.currentRole = ctx.currentRole;
+    this.manifest = ctx.manifest;
 
-      const result = await this.mcp.callTool(cmd.fullToolName, toolArgs) as {
-        content?: Array<{ type?: string; text?: string }>;
-        isError?: boolean;
-      };
-
-      if (result?.isError) {
-        console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
-      } else {
-        const text = result?.content?.[0]?.text;
-        if (text) {
-          try {
-            const json = JSON.parse(text);
-            console.log(chalk.green(`\n  ✓ Success`));
-            console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
-          } catch {
-            console.log(chalk.green(`\n  ✓ ${text}\n`));
-          }
-        } else {
-          console.log(chalk.green(`\n  ✓ Command executed\n`));
-        }
-      }
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.log(chalk.red(`  Failed to execute /${cmd.command}: ${err.message}\n`));
-    }
-  }
-
-  private async switchRole(roleId: string): Promise<void> {
-    try {
-      console.log(chalk.gray(`Switching to role: ${roleId}...`));
-      this.manifest = await this.mcp.switchRole(roleId);
-      this.currentRole = roleId;
-
-      // Register tool commands from available tools
+    // Register tool commands from available tools
+    if (this.manifest) {
       this.registerToolCommands(this.manifest.availableTools);
-
-      console.log(chalk.green(`\n✓ Role: ${chalk.bold(this.manifest.role.name)}`));
-      console.log(chalk.gray(`  ${this.manifest.role.description}`));
-      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount} (${this.toolCommands.size} as commands)`));
-      console.log(chalk.gray(`  Servers: ${this.manifest.availableServers.join(', ')}\n`));
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to switch role: ${err.message}`));
     }
   }
 
-  private async listRoles(): Promise<void> {
-    try {
-      const result = await this.mcp.listRoles();
-      const selectedRole = await this.interactiveRoleSelector(result.roles);
+  // ============================================================================
+  // Command Context
+  // ============================================================================
 
-      if (selectedRole && selectedRole !== this.currentRole) {
-        await this.switchRole(selectedRole);
-        this.rl!.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
+  private getCommandContext(): CommandContext {
+    return {
+      mcp: this.mcp,
+      currentRole: this.currentRole,
+      currentModel: this.currentModel,
+      manifest: this.manifest,
+      rl: this.rl,
+      skillCommands: this.skillCommands,
+      toolCommands: this.toolCommands,
+      authSource: this.authSource,
+      useApiKey: this.useApiKey,
+
+      setCurrentRole: (role: string) => { this.currentRole = role; },
+      setCurrentModel: (model: string) => { this.currentModel = model; },
+      setManifest: (manifest: AgentManifest | null) => {
+        this.manifest = manifest;
+        if (manifest) {
+          this.registerToolCommands(manifest.availableTools);
+        }
       }
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to list roles: ${err.message}`));
-    }
+    };
   }
 
-  private async interactiveRoleSelector(roles: ListRolesResult['roles']): Promise<string | null> {
-    return new Promise((resolve) => {
-      let selectedIndex = roles.findIndex(r => r.isCurrent);
-      if (selectedIndex === -1) selectedIndex = 0;
-
-      const render = () => {
-        process.stdout.write('\x1B[?25l');
-        console.log(chalk.cyan('\nSelect Role:') + chalk.gray(' (↑↓: move, Enter: select, q: cancel)\n'));
-
-        for (let i = 0; i < roles.length; i++) {
-          const role = roles[i];
-          const isSelected = i === selectedIndex;
-          const isCurrent = role.isCurrent;
-
-          const marker = isSelected ? chalk.cyan('▶') : ' ';
-          const name = isSelected ? chalk.cyan.bold(role.id) : (isCurrent ? chalk.green(role.id) : role.id);
-          const currentTag = isCurrent ? chalk.green(' (current)') : '';
-
-          console.log(`  ${marker} ${name}${currentTag}`);
-          console.log(chalk.gray(`    Skills: ${role.skills.join(', ') || 'none'}`));
-          console.log(chalk.gray(`    Tools: ${role.toolCount} | Servers: ${role.serverCount}\n`));
-        }
-      };
-
-      const clearScreen = () => {
-        const totalLines = roles.length * 4 + 3;
-        process.stdout.write(`\x1B[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\x1B[2K\n');
-        }
-        process.stdout.write(`\x1B[${totalLines}A`);
-      };
-
-      render();
-
-      const wasRaw = process.stdin.isRaw;
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-      }
-      process.stdin.resume();
-
-      const cleanup = () => {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(wasRaw || false);
-        }
-        process.stdin.removeListener('data', onKeyPress);
-        process.stdout.write('\x1B[?25h');
-      };
-
-      const onKeyPress = (key: Buffer) => {
-        const keyStr = key.toString();
-
-        if (keyStr === '\x1B[A' || keyStr === 'k') {
-          clearScreen();
-          selectedIndex = (selectedIndex - 1 + roles.length) % roles.length;
-          render();
-        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
-          clearScreen();
-          selectedIndex = (selectedIndex + 1) % roles.length;
-          render();
-        } else if (keyStr === '\r' || keyStr === '\n') {
-          clearScreen();
-          cleanup();
-          resolve(roles[selectedIndex].id);
-        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
-          clearScreen();
-          cleanup();
-          console.log(chalk.gray('Cancelled'));
-          resolve(null);
-        }
-      };
-
-      process.stdin.on('data', onKeyPress);
-    });
-  }
+  // ============================================================================
+  // Auto-completion
+  // ============================================================================
 
   private completer(line: string): [string[], string] {
     if (line.startsWith('/')) {
       if (line.startsWith('/model ')) {
         const partial = line.slice('/model '.length);
-        const matches = this.models.filter(m => m.startsWith(partial));
+        const matches = AVAILABLE_MODELS.filter(m => m.startsWith(partial));
         return [matches.map(m => `/model ${m}`), line];
       }
-      // Combine built-in, skill, and tool commands
       const allCommands = [
         ...this.builtInCommands,
         ...Array.from(this.skillCommands.keys()).map(c => `/${c}`),
@@ -537,275 +337,9 @@ export class InteractiveCLI {
     return [[], line];
   }
 
-  private async listTools(): Promise<void> {
-    if (!this.manifest) {
-      console.log(chalk.yellow('No role selected'));
-      return;
-    }
-
-    const tools = this.manifest.availableTools;
-    if (tools.length === 0) {
-      console.log(chalk.yellow('\nNo tools available for this role.\n'));
-      return;
-    }
-
-    await this.interactiveToolSelector(tools);
-  }
-
-  private async interactiveToolSelector(tools: AgentManifest['availableTools']): Promise<void> {
-    return new Promise((resolve) => {
-      let selectedIndex = 0;
-
-      const render = () => {
-        process.stdout.write('\x1B[?25l');
-        console.log(chalk.cyan('\nTools:') + chalk.gray(' (↑↓: move, Enter: view details, q: back)\n'));
-
-        for (let i = 0; i < tools.length; i++) {
-          const tool = tools[i];
-          const isSelected = i === selectedIndex;
-          const shortName = tool.name.replace(`${tool.source}__`, '');
-
-          const marker = isSelected ? chalk.cyan('▶') : ' ';
-          const name = isSelected ? chalk.cyan.bold(shortName) : shortName;
-          const source = chalk.gray(`[${tool.source}]`);
-
-          console.log(`  ${marker} ${name} ${source}`);
-        }
-      };
-
-      const clearScreen = () => {
-        const totalLines = tools.length + 3;
-        process.stdout.write(`\x1B[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\x1B[2K\n');
-        }
-        process.stdout.write(`\x1B[${totalLines}A`);
-      };
-
-      const showDetail = (tool: typeof tools[0]) => {
-        clearScreen();
-        const shortName = tool.name.replace(`${tool.source}__`, '');
-        console.log(chalk.cyan(`\n${chalk.bold(shortName)}`));
-        console.log(chalk.gray(`Source: ${tool.source}`));
-        console.log(chalk.gray(`Full name: ${tool.name}\n`));
-        if (tool.description) {
-          console.log(tool.description);
-        } else {
-          console.log(chalk.gray('No description available.'));
-        }
-        console.log(chalk.gray('\nPress any key to go back...'));
-      };
-
-      render();
-
-      const wasRaw = process.stdin.isRaw;
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-      }
-      process.stdin.resume();
-
-      const cleanup = () => {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(wasRaw || false);
-        }
-        process.stdin.removeListener('data', onKeyPress);
-        process.stdout.write('\x1B[?25h');
-      };
-
-      let viewingDetail = false;
-
-      const onKeyPress = (key: Buffer) => {
-        const keyStr = key.toString();
-
-        if (viewingDetail) {
-          // Any key goes back to list
-          viewingDetail = false;
-          clearScreen();
-          render();
-          return;
-        }
-
-        if (keyStr === '\x1B[A' || keyStr === 'k') {
-          clearScreen();
-          selectedIndex = (selectedIndex - 1 + tools.length) % tools.length;
-          render();
-        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
-          clearScreen();
-          selectedIndex = (selectedIndex + 1) % tools.length;
-          render();
-        } else if (keyStr === '\r' || keyStr === '\n') {
-          viewingDetail = true;
-          showDetail(tools[selectedIndex]);
-        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
-          clearScreen();
-          cleanup();
-          resolve();
-        }
-      };
-
-      process.stdin.on('data', onKeyPress);
-    });
-  }
-
-  private async listSkills(): Promise<void> {
-    try {
-      const result = await this.mcp.listRoles();
-      const currentRoleInfo = result.roles.find(r => r.id === this.currentRole);
-
-      if (!currentRoleInfo) {
-        console.log(chalk.yellow(`\nRole not found: ${this.currentRole}\n`));
-        return;
-      }
-
-      const skills = currentRoleInfo.skills || [];
-
-      if (skills.length === 0) {
-        console.log(chalk.yellow(`\nNo skills for role: ${this.currentRole}\n`));
-        return;
-      }
-
-      console.log(chalk.cyan(`\nSkills for ${chalk.bold(this.currentRole)} (${skills.length}):\n`));
-
-      for (const skill of skills) {
-        console.log(`  • ${chalk.bold(skill)}`);
-      }
-      console.log();
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to list skills: ${err.message}`));
-    }
-  }
-
-  private showHelp(): void {
-    console.log(chalk.cyan('\nCommands:\n'));
-    console.log(chalk.gray('  Built-in:'));
-    console.log('  ' + chalk.bold('/roles') + '           Select and switch roles');
-    console.log('  ' + chalk.bold('/skills') + '          List available skills');
-    console.log('  ' + chalk.bold('/tools') + '           List available tools');
-    console.log('  ' + chalk.bold('/model <name>') + '    Change model');
-    console.log('  ' + chalk.bold('/status') + '          Show current status');
-    console.log('  ' + chalk.bold('/help') + '            Show this help');
-    console.log('  ' + chalk.bold('/quit') + '            Exit');
-
-    // Show dynamic skill commands
-    if (this.skillCommands.size > 0) {
-      // Group commands by skill
-      const bySkill = new Map<string, SkillCommandInfo[]>();
-      for (const cmd of this.skillCommands.values()) {
-        const existing = bySkill.get(cmd.skillName) || [];
-        existing.push(cmd);
-        bySkill.set(cmd.skillName, existing);
-      }
-
-      console.log();
-      console.log(chalk.gray('  Skill Commands:'));
-      for (const [skillName, cmds] of bySkill) {
-        for (const cmd of cmds) {
-          const usage = cmd.usage || `/${cmd.command}`;
-          const paddedUsage = usage.padEnd(16);
-          console.log('  ' + chalk.bold(paddedUsage) + ' ' + cmd.description + chalk.gray(` [${skillName}]`));
-        }
-      }
-    }
-
-    // Show tool commands (auto-generated from available tools)
-    if (this.toolCommands.size > 0) {
-      // Group by server
-      const byServer = new Map<string, ToolCommandInfo[]>();
-      for (const cmd of this.toolCommands.values()) {
-        const list = byServer.get(cmd.source) || [];
-        list.push(cmd);
-        byServer.set(cmd.source, list);
-      }
-
-      console.log();
-      console.log(chalk.gray('  Tool Commands:'));
-      for (const [server, cmds] of byServer) {
-        console.log(chalk.gray(`    [${server}]`));
-        const displayCmds = cmds.slice(0, 5);  // Show max 5 per server
-        for (const cmd of displayCmds) {
-          const desc = cmd.description?.slice(0, 40) || '';
-          console.log(`      /${chalk.bold(cmd.command.padEnd(25))} ${chalk.gray(desc)}`);
-        }
-        if (cmds.length > 5) {
-          console.log(chalk.gray(`      ... and ${cmds.length - 5} more`));
-        }
-      }
-    }
-
-    console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
-  }
-
-  private async showStatus(): Promise<void> {
-    if (!this.manifest) {
-      console.log(chalk.yellow('No role selected'));
-      return;
-    }
-
-    const authDisplay = this.formatAuthSource(this.authSource);
-
-    // Get skills for current role
-    let skills: string[] = [];
-    try {
-      const result = await this.mcp.listRoles();
-      const roleInfo = result.roles.find(r => r.id === this.currentRole);
-      skills = roleInfo?.skills || [];
-    } catch {
-      // Ignore errors
-    }
-
-    console.log(chalk.cyan('\nCurrent Status:\n'));
-    console.log(`  Role:    ${chalk.bold(this.manifest.role.name)} (${this.currentRole})`);
-    console.log(`  Model:   ${chalk.bold(this.currentModel)}`);
-    console.log(`  Auth:    ${authDisplay}`);
-    console.log(`  Skills:  ${skills.length > 0 ? skills.join(', ') : chalk.gray('none')}`);
-    console.log(`  Tools:   ${this.manifest.metadata.toolCount}`);
-    // Get servers from available tools (same as /tools command)
-    const servers = [...new Set(this.manifest.availableTools.map(t => t.source))];
-    console.log(`  Servers: ${servers.join(', ')}`);
-    console.log();
-  }
-
-  private formatAuthSource(source: string): string {
-    switch (source) {
-      case 'none':
-        return 'Claude Code Auth';
-      case 'user':
-        return 'User auth';
-      case 'ANTHROPIC_API_KEY':
-        return chalk.yellow('API Key (charges apply)');
-      case 'project':
-        return chalk.blue('Project API Key');
-      case 'org':
-        return chalk.blue('Organization API Key');
-      case 'temporary':
-        return chalk.gray('Temporary Key');
-      case 'unknown':
-        return chalk.gray('Unknown');
-      default:
-        return source;
-    }
-  }
-
-  private showModels(): void {
-    const modelInfo: Record<string, string> = {
-      'claude-3-5-haiku-20241022': '💨 Fast & cheap',
-      'claude-sonnet-4-5-20250929': '⚖️  Balanced',
-      'claude-opus-4-20250514': '🧠 Most capable'
-    };
-
-    console.log(chalk.cyan('\nAvailable Models:\n'));
-    console.log(chalk.gray('  Usage: /model <model_name>\n'));
-    this.models.forEach(m => {
-      const current = m === this.currentModel ? chalk.green(' ← current') : '';
-      const info = modelInfo[m] || '';
-      console.log(`  • ${chalk.bold(m)} ${chalk.gray(info)}${current}`);
-    });
-    console.log();
-  }
-
-  // Session management is handled via MCP tools (mycelium-session server)
-  // Use skill commands: /save, /sessions, /resume, /compress, /fork, /export
+  // ============================================================================
+  // Chat
+  // ============================================================================
 
   private async chat(message: string): Promise<void> {
     if (this.isProcessing) {
@@ -854,7 +388,6 @@ export class InteractiveCLI {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
               const shortName = tool.name.replace('mcp__mycelium-router__', '');
-              // Update spinner with tool info
               const input = tool.input as Record<string, unknown>;
               let status = `${icons.tool} ${shortName}`;
               if (input.path) {
@@ -939,6 +472,10 @@ export class InteractiveCLI {
     }
   }
 
+  // ============================================================================
+  // REPL
+  // ============================================================================
+
   private showPrompt(): void {
     if (this.rl) {
       this.rl.prompt();
@@ -953,7 +490,8 @@ export class InteractiveCLI {
       completer: (line: string) => this.completer(line)
     });
 
-    this.showHelp();
+    const ctx = this.getCommandContext();
+    helpCommand.handler(ctx, []);
     console.log(chalk.gray('  (Tab for auto-completion)\n'));
     this.rl.prompt();
 
@@ -967,39 +505,38 @@ export class InteractiveCLI {
 
       if (input.startsWith('/')) {
         const [cmd, ...args] = input.slice(1).split(/\s+/);
+        const ctx = this.getCommandContext();
 
         switch (cmd.toLowerCase()) {
           case 'roles':
-            await this.listRoles();
+            await rolesCommand.handler(ctx, args);
+            this.currentRole = ctx.currentRole;
+            this.manifest = ctx.manifest;
+            if (this.manifest) {
+              this.registerToolCommands(this.manifest.availableTools);
+            }
+            this.rl!.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
             break;
 
           case 'tools':
-            await this.listTools();
+            await toolsCommand.handler(ctx, args);
             break;
 
           case 'skills':
-            await this.listSkills();
+            await skillsCommand.handler(ctx, args);
             break;
 
           case 'status':
-            await this.showStatus();
+            await statusCommand.handler(ctx, args);
             break;
 
           case 'model':
-            if (args[0]) {
-              if (this.models.includes(args[0]) || args[0].startsWith('claude-')) {
-                this.currentModel = args[0];
-                console.log(chalk.green(`✓ Model changed to: ${chalk.bold(this.currentModel)}`));
-              } else {
-                this.showModels();
-              }
-            } else {
-              this.showModels();
-            }
+            await modelCommand.handler(ctx, args);
+            this.currentModel = ctx.currentModel;
             break;
 
           case 'help':
-            this.showHelp();
+            await helpCommand.handler(ctx, args);
             break;
 
           case 'quit':
@@ -1008,20 +545,19 @@ export class InteractiveCLI {
             console.log(chalk.gray('\nGoodbye!\n'));
             this.mcp.disconnect();
             process.exit(0);
-            break;
 
           default:
             // Check if it's a dynamic skill command
             const skillCmd = this.skillCommands.get(cmd.toLowerCase());
             if (skillCmd) {
-              await this.executeSkillCommand(skillCmd, args);
+              await executeSkillCommand(ctx, skillCmd, args);
             } else {
               // Check if it's a tool command
               const toolCmd = this.toolCommands.get(cmd.toLowerCase());
               if (toolCmd) {
-                await this.executeToolCommand(toolCmd, args);
+                await executeToolCommand(ctx, toolCmd, args);
               } else {
-                // Suggest similar commands using fuzzy matching
+                // Suggest similar commands
                 const allCommands = [
                   ...this.builtInCommands.map(c => c.slice(1)),
                   ...Array.from(this.skillCommands.keys()),

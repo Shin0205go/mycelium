@@ -6,7 +6,12 @@
 // Core router
 export { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
 
-// RBAC components (from local ./rbac, not @mycelium/rbac)
+// Extracted components
+export { ServerManager, createServerManager } from './server-manager.js';
+export { MemoryHandler, createMemoryHandler } from './memory-handler.js';
+export { ToolRegistry, createToolRegistry, ROUTER_TOOLS } from './tool-registry.js';
+
+// RBAC components (from local ./rbac)
 export {
   RoleManager,
   createRoleManager,
@@ -30,23 +35,5 @@ export {
 
 // Router adapter for proxy integration
 export { RouterAdapter, createRouterAdapter } from './router-adapter.js';
-
-// Audit logging - from @mycelium/audit
-export {
-  AuditLogger,
-  createAuditLogger,
-  type AuditLogEntry,
-  type AuditQueryOptions,
-  type AuditStats
-} from '@mycelium/audit';
-
-// Rate limiting - from @mycelium/audit
-export {
-  RateLimiter,
-  createRateLimiter,
-  type RoleQuota,
-  type RateLimitResult,
-  type RateLimitEvent
-} from '@mycelium/audit';
 
 // Types are exported from ../types/index.js to avoid duplicate exports

@@ -312,8 +312,7 @@ export interface ListRolesResult {
 // ============================================================================
 
 /**
- * Skill definition from Skill MCP Server (base type)
- * Extended by @mycelium/a2a with identity configuration
+ * Skill definition from Skill MCP Server
  */
 export interface BaseSkillDefinition {
   /** Unique skill identifier */
