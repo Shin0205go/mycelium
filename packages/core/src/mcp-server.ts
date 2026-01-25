@@ -27,7 +27,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
 // Path to mycelium-cli for sub-agent spawning
 const MYCELIUM_CLI_PATH = process.env.MYCELIUM_CLI_PATH ||
-  join(PROJECT_ROOT, 'packages', 'core', 'dist', 'cli-entry.js');
+  join(PROJECT_ROOT, 'packages', 'cli', 'dist', 'index.js');
 
 const logger = new Logger('info');
 
