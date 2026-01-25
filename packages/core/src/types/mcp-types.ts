@@ -212,13 +212,5 @@ export interface SystemPerformanceStats {
   systemHealth: SystemHealthStats;
 }
 
-// Desktop config types
-export interface DesktopConfig {
-  mcpServers: Record<string, MCPServerConfig>;
-}
-
-export interface MCPServerConfig {
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-}
+// Desktop config types are defined in @mycelium/shared
+// Import from there: import { DesktopConfig, MCPServerConfig } from '@mycelium/shared';

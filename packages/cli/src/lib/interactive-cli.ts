@@ -5,9 +5,10 @@
 import * as readline from 'readline';
 import chalk from 'chalk';
 import { join } from 'path';
-import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo } from './mcp-client.js';
-import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo, type AgentConfig, type SDKMessage } from './agent.js';
-import { SessionStore, createSessionStore, type Session, type SessionSummary } from '@mycelium/session';
+import { MCPClient, AgentManifest, ListRolesResult, SkillCommandInfo, ToolCommandInfo } from './mcp-client.js';
+import { createQuery, isToolUseMessage, getToolUseInfo, type SDKMessage } from './agent.js';
+// Session management is handled via MCP tools (mycelium-session server)
+import { createBanner, createSpinner, icons, suggestCommand, errorBox } from './ui.js';
 
 export interface InteractiveCLIOptions {
   role?: string;
@@ -25,12 +26,16 @@ export class InteractiveCLI {
   private authSource: string = 'unknown';
   private useApiKey: boolean = false;
 
-  // Session management
-  private sessionStore: SessionStore;
-  private currentSession: Session | null = null;
+  // Session management is handled via MCP tools (mycelium-session server)
 
   // Dynamic commands loaded from skills
   private skillCommands: Map<string, SkillCommandInfo> = new Map();
+
+  // Tool commands auto-generated from available tools
+  private toolCommands: Map<string, ToolCommandInfo> = new Map();
+
+  // Tools to exclude from slash commands (handled specially)
+  private readonly excludedTools = ['set_role', 'list_roles', 'spawn_sub_agent'];
 
   // Built-in commands (always available)
   private readonly builtInCommands = [
@@ -61,12 +66,12 @@ export class InteractiveCLI {
       join(projectRoot, 'config.json');
 
     this.mcp = new MCPClient('node', [routerPath], {
-      MYCELIUM_CONFIG_PATH: configPath
+      MYCELIUM_CONFIG_PATH: configPath,
+      MCP_TRANSPORT: 'stdio',  // Tell logger to use stderr
+      LOG_SILENT: 'true'       // Suppress logs in stdio mode
     });
 
-    // Initialize session store
-    const sessionDir = join(projectRoot, 'sessions');
-    this.sessionStore = createSessionStore(sessionDir);
+    // Session management is handled via MCP tools (mycelium-session server)
 
     if (options.role) {
       this.currentRole = options.role;
@@ -151,15 +156,7 @@ export class InteractiveCLI {
   }
 
   private showBanner(): void {
-    const banner = `
-    ${chalk.cyan('    ___    _______________  _____')}
-    ${chalk.cyan('   /   |  / ____/ ____/  _// ___/')}
-    ${chalk.cyan('  / /| | / __/ / / __ / /  \\__ \\ ')}
-    ${chalk.cyan(' / ___ |/ /___/ /_/ // /  ___/ / ')}
-    ${chalk.cyan('/_/  |_/_____/\\____/___/ /____/  ')}
-    ${chalk.gray('Role-Based Access Control Router')}
-`;
-    console.log(banner);
+    console.log(createBanner());
   }
 
   async run(): Promise<void> {
@@ -190,15 +187,7 @@ export class InteractiveCLI {
       process.exit(1);
     }
 
-    // Initialize session store
-    try {
-      await this.sessionStore.initialize();
-      console.log(chalk.green('✓ Session store initialized'));
-    } catch (error) {
-      console.error(chalk.yellow('Warning: Session store failed to initialize'), error);
-    }
-
-    // Load dynamic commands from skills
+    // Load dynamic commands from skills (including session commands)
     await this.loadSkillCommands();
 
     await this.switchRole(this.currentRole);
@@ -330,15 +319,107 @@ export class InteractiveCLI {
     }
   }
 
+  /**
+   * Extract tool name from prefixed name (server__toolName -> toolName)
+   */
+  private extractToolName(prefixedName: string): string {
+    const parts = prefixedName.split('__');
+    return parts.length > 1 ? parts[1] : prefixedName;
+  }
+
+  /**
+   * Register tool commands from available tools in manifest
+   */
+  private registerToolCommands(tools: AgentManifest['availableTools']): void {
+    this.toolCommands.clear();
+    const nameCount = new Map<string, number>();
+
+    // Count tool names to detect duplicates
+    for (const tool of tools) {
+      const shortName = this.extractToolName(tool.name);
+      // Skip excluded tools
+      if (this.excludedTools.includes(shortName)) continue;
+      nameCount.set(shortName, (nameCount.get(shortName) || 0) + 1);
+    }
+
+    // Register commands
+    for (const tool of tools) {
+      const shortName = this.extractToolName(tool.name);
+      // Skip excluded tools
+      if (this.excludedTools.includes(shortName)) continue;
+
+      const isDuplicate = (nameCount.get(shortName) || 0) > 1;
+      const cmdName = isDuplicate ? `${tool.source}:${shortName}` : shortName;
+
+      this.toolCommands.set(cmdName, {
+        command: cmdName,
+        fullToolName: tool.name,
+        source: tool.source,
+        description: tool.description
+      });
+    }
+  }
+
+  /**
+   * Execute a tool command
+   */
+  private async executeToolCommand(cmd: ToolCommandInfo, args: string[]): Promise<void> {
+    try {
+      console.log(chalk.gray(`\n  Executing ${cmd.fullToolName}...`));
+
+      // Parse arguments - for now, join as a single input or use key=value pairs
+      const toolArgs: Record<string, unknown> = {};
+      for (const arg of args) {
+        if (arg.includes('=')) {
+          const [key, ...valueParts] = arg.split('=');
+          toolArgs[key] = valueParts.join('=');
+        } else if (args.length === 1) {
+          // Single argument without key - try common parameter names
+          toolArgs['path'] = arg;
+          toolArgs['id'] = arg;
+          toolArgs['name'] = arg;
+        }
+      }
+
+      const result = await this.mcp.callTool(cmd.fullToolName, toolArgs) as {
+        content?: Array<{ type?: string; text?: string }>;
+        isError?: boolean;
+      };
+
+      if (result?.isError) {
+        console.log(chalk.red(`  Error: ${result.content?.[0]?.text || 'Unknown error'}\n`));
+      } else {
+        const text = result?.content?.[0]?.text;
+        if (text) {
+          try {
+            const json = JSON.parse(text);
+            console.log(chalk.green(`\n  ✓ Success`));
+            console.log(chalk.gray(`  ${JSON.stringify(json, null, 2).split('\n').join('\n  ')}\n`));
+          } catch {
+            console.log(chalk.green(`\n  ✓ ${text}\n`));
+          }
+        } else {
+          console.log(chalk.green(`\n  ✓ Command executed\n`));
+        }
+      }
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log(chalk.red(`  Failed to execute /${cmd.command}: ${err.message}\n`));
+    }
+  }
+
   private async switchRole(roleId: string): Promise<void> {
     try {
       console.log(chalk.gray(`Switching to role: ${roleId}...`));
       this.manifest = await this.mcp.switchRole(roleId);
       this.currentRole = roleId;
 
+      // Register tool commands from available tools
+      this.registerToolCommands(this.manifest.availableTools);
+
       console.log(chalk.green(`\n✓ Role: ${chalk.bold(this.manifest.role.name)}`));
       console.log(chalk.gray(`  ${this.manifest.role.description}`));
-      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount}`));
+      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount} (${this.toolCommands.size} as commands)`));
       console.log(chalk.gray(`  Servers: ${this.manifest.availableServers.join(', ')}\n`));
     } catch (error: unknown) {
       const err = error as Error;
@@ -444,10 +525,11 @@ export class InteractiveCLI {
         const matches = this.models.filter(m => m.startsWith(partial));
         return [matches.map(m => `/model ${m}`), line];
       }
-      // Combine built-in commands with dynamic skill commands
+      // Combine built-in, skill, and tool commands
       const allCommands = [
         ...this.builtInCommands,
-        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`)
+        ...Array.from(this.skillCommands.keys()).map(c => `/${c}`),
+        ...Array.from(this.toolCommands.keys()).map(c => `/${c}`)
       ];
       const matches = allCommands.filter(c => c.startsWith(line));
       return [matches, line];
@@ -626,6 +708,31 @@ export class InteractiveCLI {
       }
     }
 
+    // Show tool commands (auto-generated from available tools)
+    if (this.toolCommands.size > 0) {
+      // Group by server
+      const byServer = new Map<string, ToolCommandInfo[]>();
+      for (const cmd of this.toolCommands.values()) {
+        const list = byServer.get(cmd.source) || [];
+        list.push(cmd);
+        byServer.set(cmd.source, list);
+      }
+
+      console.log();
+      console.log(chalk.gray('  Tool Commands:'));
+      for (const [server, cmds] of byServer) {
+        console.log(chalk.gray(`    [${server}]`));
+        const displayCmds = cmds.slice(0, 5);  // Show max 5 per server
+        for (const cmd of displayCmds) {
+          const desc = cmd.description?.slice(0, 40) || '';
+          console.log(`      /${chalk.bold(cmd.command.padEnd(25))} ${chalk.gray(desc)}`);
+        }
+        if (cmds.length > 5) {
+          console.log(chalk.gray(`      ... and ${cmds.length - 5} more`));
+        }
+      }
+    }
+
     console.log(chalk.gray('\n  Type any message to chat with Claude.\n'));
   }
 
@@ -697,238 +804,8 @@ export class InteractiveCLI {
     console.log();
   }
 
-  // ============================================================================
-  // Session Management
-  // ============================================================================
-
-  private async saveSession(name?: string): Promise<void> {
-    try {
-      if (this.currentSession) {
-        // Update existing session
-        if (name) {
-          await this.sessionStore.rename(this.currentSession.id, name);
-        }
-        await this.sessionStore.save(this.currentSession);
-        console.log(chalk.green(`\n✓ Session saved: ${this.currentSession.name || this.currentSession.id}`));
-        console.log(chalk.gray(`  Messages: ${this.currentSession.messages.length}`));
-      } else {
-        // Create new session
-        this.currentSession = await this.sessionStore.create(
-          this.currentRole,
-          name,
-          [this.currentModel]
-        );
-        this.currentSession.metadata.model = this.currentModel;
-        await this.sessionStore.save(this.currentSession);
-        console.log(chalk.green(`\n✓ New session created: ${this.currentSession.name || this.currentSession.id}`));
-      }
-      console.log();
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to save session: ${err.message}\n`));
-    }
-  }
-
-  private async listSessions(): Promise<void> {
-    try {
-      const sessions = await this.sessionStore.list({ limit: 20 });
-
-      if (sessions.length === 0) {
-        console.log(chalk.yellow('\nNo saved sessions.\n'));
-        console.log(chalk.gray('  Use /save [name] to save the current session.\n'));
-        return;
-      }
-
-      console.log(chalk.cyan(`\nSaved Sessions (${sessions.length}):\n`));
-
-      for (const session of sessions) {
-        const isCurrent = this.currentSession?.id === session.id;
-        const marker = isCurrent ? chalk.green('▶') : ' ';
-        const name = session.name || session.id;
-        const displayName = isCurrent ? chalk.green.bold(name) : chalk.bold(name);
-        const date = new Date(session.lastModifiedAt).toLocaleDateString();
-        const compressed = session.compressed ? chalk.yellow(' [compressed]') : '';
-
-        console.log(`  ${marker} ${displayName}${compressed}`);
-        console.log(chalk.gray(`    Role: ${session.roleId} | Messages: ${session.messageCount} | ${date}`));
-        if (session.preview) {
-          console.log(chalk.gray(`    "${session.preview}"`));
-        }
-        console.log();
-      }
-
-      console.log(chalk.gray('  Use /resume <id> to resume a session.\n'));
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to list sessions: ${err.message}\n`));
-    }
-  }
-
-  private async resumeSession(sessionId?: string): Promise<void> {
-    try {
-      if (!sessionId) {
-        // Interactive session selector
-        const sessions = await this.sessionStore.list({ limit: 20 });
-
-        if (sessions.length === 0) {
-          console.log(chalk.yellow('\nNo saved sessions to resume.\n'));
-          return;
-        }
-
-        const selected = await this.interactiveSessionSelector(sessions);
-        if (!selected) return;
-        sessionId = selected;
-      }
-
-      const session = await this.sessionStore.load(sessionId);
-
-      if (!session) {
-        console.log(chalk.red(`\nSession not found: ${sessionId}\n`));
-        return;
-      }
-
-      this.currentSession = session;
-
-      // Switch to session's role if different
-      if (session.roleId !== this.currentRole) {
-        await this.switchRole(session.roleId);
-        this.rl?.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
-      }
-
-      // Switch to session's model if different
-      if (session.metadata.model && session.metadata.model !== this.currentModel) {
-        this.currentModel = session.metadata.model;
-      }
-
-      console.log(chalk.green(`\n✓ Resumed session: ${session.name || session.id}`));
-      console.log(chalk.gray(`  Role: ${session.roleId} | Messages: ${session.messages.length}`));
-
-      // Show last few messages as context
-      const recentMessages = session.messages.slice(-3);
-      if (recentMessages.length > 0) {
-        console.log(chalk.gray('\n  Recent messages:'));
-        for (const msg of recentMessages) {
-          const role = msg.role === 'user' ? chalk.cyan('You') : chalk.green('Claude');
-          const preview = msg.content.slice(0, 60).replace(/\n/g, ' ');
-          console.log(chalk.gray(`    ${role}: ${preview}${msg.content.length > 60 ? '...' : ''}`));
-        }
-      }
-      console.log();
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to resume session: ${err.message}\n`));
-    }
-  }
-
-  private async interactiveSessionSelector(sessions: SessionSummary[]): Promise<string | null> {
-    return new Promise((resolve) => {
-      let selectedIndex = 0;
-
-      const render = () => {
-        process.stdout.write('\x1B[?25l');
-        console.log(chalk.cyan('\nSelect Session:') + chalk.gray(' (↑↓: move, Enter: select, q: cancel)\n'));
-
-        for (let i = 0; i < sessions.length; i++) {
-          const session = sessions[i];
-          const isSelected = i === selectedIndex;
-          const isCurrent = this.currentSession?.id === session.id;
-
-          const marker = isSelected ? chalk.cyan('▶') : ' ';
-          const name = session.name || session.id.slice(0, 12);
-          const displayName = isSelected ? chalk.cyan.bold(name) : (isCurrent ? chalk.green(name) : name);
-          const currentTag = isCurrent ? chalk.green(' (current)') : '';
-          const date = new Date(session.lastModifiedAt).toLocaleDateString();
-
-          console.log(`  ${marker} ${displayName}${currentTag}`);
-          console.log(chalk.gray(`    Role: ${session.roleId} | Messages: ${session.messageCount} | ${date}\n`));
-        }
-      };
-
-      const clearScreen = () => {
-        const totalLines = sessions.length * 3 + 3;
-        process.stdout.write(`\x1B[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\x1B[2K\n');
-        }
-        process.stdout.write(`\x1B[${totalLines}A`);
-      };
-
-      render();
-
-      const wasRaw = process.stdin.isRaw;
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-      }
-      process.stdin.resume();
-
-      const cleanup = () => {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(wasRaw || false);
-        }
-        process.stdin.removeListener('data', onKeyPress);
-        process.stdout.write('\x1B[?25h');
-      };
-
-      const onKeyPress = (key: Buffer) => {
-        const keyStr = key.toString();
-
-        if (keyStr === '\x1B[A' || keyStr === 'k') {
-          clearScreen();
-          selectedIndex = (selectedIndex - 1 + sessions.length) % sessions.length;
-          render();
-        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
-          clearScreen();
-          selectedIndex = (selectedIndex + 1) % sessions.length;
-          render();
-        } else if (keyStr === '\r' || keyStr === '\n') {
-          clearScreen();
-          cleanup();
-          resolve(sessions[selectedIndex].id);
-        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
-          clearScreen();
-          cleanup();
-          console.log(chalk.gray('Cancelled'));
-          resolve(null);
-        }
-      };
-
-      process.stdin.on('data', onKeyPress);
-    });
-  }
-
-  private async compressSession(): Promise<void> {
-    if (!this.currentSession) {
-      console.log(chalk.yellow('\nNo active session to compress.'));
-      console.log(chalk.gray('  Use /save to create a session first.\n'));
-      return;
-    }
-
-    const messageCount = this.currentSession.messages.length;
-
-    if (messageCount <= 10) {
-      console.log(chalk.yellow(`\nSession has only ${messageCount} messages, no compression needed.\n`));
-      return;
-    }
-
-    try {
-      console.log(chalk.gray(`\nCompressing session (${messageCount} messages)...`));
-
-      const compressed = await this.sessionStore.compress(this.currentSession.id, {
-        strategy: 'summarize',
-        keepRecentMessages: 10,
-      });
-
-      this.currentSession = compressed;
-
-      console.log(chalk.green(`\n✓ Session compressed`));
-      console.log(chalk.gray(`  Original: ${messageCount} messages`));
-      console.log(chalk.gray(`  Compressed: ${compressed.messages.length} messages`));
-      console.log();
-    } catch (error: unknown) {
-      const err = error as Error;
-      console.error(chalk.red(`Failed to compress session: ${err.message}\n`));
-    }
-  }
+  // Session management is handled via MCP tools (mycelium-session server)
+  // Use skill commands: /save, /sessions, /resume, /compress, /fork, /export
 
   private async chat(message: string): Promise<void> {
     if (this.isProcessing) {
@@ -938,9 +815,11 @@ export class InteractiveCLI {
 
     this.isProcessing = true;
     const systemPrompt = this.manifest?.systemInstruction;
+    const spinner = createSpinner('Thinking...');
 
     try {
       console.log();
+      spinner.start();
 
       const queryResult = await createQuery(message, {
         model: this.currentModel,
@@ -962,6 +841,7 @@ export class InteractiveCLI {
           const event = msg.event;
           if (event?.type === 'content_block_delta' && event.delta?.text) {
             if (!hasStartedOutput) {
+              spinner.stop();
               process.stdout.write(chalk.green('Claude: '));
               hasStartedOutput = true;
             }
@@ -974,11 +854,22 @@ export class InteractiveCLI {
             const tools = getToolUseInfo(msg);
             for (const tool of tools) {
               const shortName = tool.name.replace('mcp__mycelium-router__', '');
-              console.log(chalk.gray(`\n  ⚙️  Using: ${shortName}`));
+              // Update spinner with tool info
+              const input = tool.input as Record<string, unknown>;
+              let status = `${icons.tool} ${shortName}`;
+              if (input.path) {
+                const filename = String(input.path).split('/').pop();
+                status = `${icons.tool} ${shortName}: ${filename}`;
+              } else if (input.command) {
+                const cmd = String(input.command).slice(0, 25);
+                status = `${icons.tool} ${cmd}...`;
+              }
+              spinner.text = status;
+              if (!spinner.isSpinning) spinner.start();
+
               if (shortName === 'set_role') {
-                const input = tool.input as { role_id?: string };
                 if (input.role_id && input.role_id !== 'list') {
-                  pendingRoleSwitch = input.role_id;
+                  pendingRoleSwitch = input.role_id as string;
                 }
               }
             }
@@ -1006,19 +897,20 @@ export class InteractiveCLI {
         }
 
         if (msg.type === 'result') {
+          spinner.stop();
           if (hasStartedOutput) {
             console.log();
           }
 
           if (msg.subtype === 'success') {
             const cost = msg.total_cost_usd.toFixed(4);
-            const input = msg.usage.input_tokens;
-            const output = msg.usage.output_tokens;
+            const inputTokens = msg.usage.input_tokens;
+            const outputTokens = msg.usage.output_tokens;
 
             if (this.useApiKey) {
-              console.log(chalk.yellow(`\n  📊 Tokens: ${input} in / ${output} out | Cost: $${cost}`));
+              console.log(chalk.yellow(`\n  ${icons.tokens} Tokens: ${inputTokens} in / ${outputTokens} out | ${icons.cost} Cost: $${cost}`));
             } else {
-              console.log(chalk.gray(`\n  📊 Tokens: ${input} in / ${output} out | Est: $${cost}`));
+              console.log(chalk.gray(`\n  ${icons.tokens} Tokens: ${inputTokens} in / ${outputTokens} out | ${icons.cost} Est: $${cost}`));
             }
           } else {
             console.log(chalk.red(`\nError: ${msg.errors?.join(', ') || msg.subtype}`));
@@ -1028,17 +920,19 @@ export class InteractiveCLI {
 
       console.log();
     } catch (error: unknown) {
+      spinner.stop();
       const err = error as Error;
       const errorMsg = err.message || String(error);
 
       if (errorMsg.includes('Invalid API key') ||
           errorMsg.includes('/login') ||
           errorMsg.includes('exited with code 1')) {
-        console.error(chalk.red('\n⚠️  Auth error: Not logged in to Claude Code'));
-        console.log(chalk.yellow('  Please login with:'));
-        console.log(chalk.cyan('    claude login\n'));
+        console.log(errorBox('Not logged in to Claude Code', [
+          'Run: claude login',
+          'Set: export ANTHROPIC_API_KEY=...',
+        ]));
       } else {
-        console.error(chalk.red(`\nError: ${errorMsg}\n`));
+        console.log(errorBox(errorMsg));
       }
     } finally {
       this.isProcessing = false;
@@ -1122,8 +1016,26 @@ export class InteractiveCLI {
             if (skillCmd) {
               await this.executeSkillCommand(skillCmd, args);
             } else {
-              console.log(chalk.yellow(`Unknown command: /${cmd}`));
-              console.log(chalk.gray('Type /help for available commands'));
+              // Check if it's a tool command
+              const toolCmd = this.toolCommands.get(cmd.toLowerCase());
+              if (toolCmd) {
+                await this.executeToolCommand(toolCmd, args);
+              } else {
+                // Suggest similar commands using fuzzy matching
+                const allCommands = [
+                  ...this.builtInCommands.map(c => c.slice(1)),
+                  ...Array.from(this.skillCommands.keys()),
+                  ...Array.from(this.toolCommands.keys())
+                ];
+                const suggestions = suggestCommand(cmd, allCommands);
+                if (suggestions.length > 0) {
+                  console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                  console.log(chalk.gray(`Did you mean: ${suggestions.map(s => `/${s}`).join(', ')}?`));
+                } else {
+                  console.log(chalk.yellow(`Unknown command: /${cmd}`));
+                  console.log(chalk.gray('Type /help for available commands'));
+                }
+              }
             }
         }
       } else {

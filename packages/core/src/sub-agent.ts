@@ -1,5 +1,5 @@
 /**
- * SubAgent - Non-interactive mode for aegis-cli
+ * SubAgent - Non-interactive mode for mycelium-cli
  * Used when spawned as a child process by an orchestrator agent
  */
 
@@ -7,7 +7,18 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { MCPClient } from './mcp-client.js';
 import { createQuery, extractTextFromMessage, isToolUseMessage, getToolUseInfo } from './agent.js';
-import type { CliArgs } from './args.js';
+
+// CLI arguments interface for sub-agent mode
+export interface CliArgs {
+  interactive: boolean;
+  role?: string;
+  prompt?: string;
+  json: boolean;
+  model?: string;
+  useApiKey: boolean;
+  help: boolean;
+  version: boolean;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

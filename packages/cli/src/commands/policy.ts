@@ -166,7 +166,7 @@ policyCommand
       // Dynamic import to avoid build-time dependency
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const importDynamic = new Function('modulePath', 'return import(modulePath)');
-      const rbacModule = await importDynamic('@mycelium/rbac');
+      const rbacModule = await importDynamic('@mycelium/core');
       const RoleManager = rbacModule.RoleManager;
 
       // Create role manager and load skills

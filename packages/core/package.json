@@ -1,19 +1,16 @@
 {
   "name": "@mycelium/core",
   "version": "1.0.0",
-  "description": "AEGIS Core - Integration Layer with CLI",
+  "description": "Mycelium Core - Router + Skill-based RBAC",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "mycelium": "./dist/cli-entry.js",
     "mycelium-router": "./dist/mcp-server.js"
   },
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/cli-entry.js",
     "start:mcp": "node dist/mcp-server.js",
-    "dev": "tsx src/cli-entry.ts",
     "dev:mcp": "tsx src/mcp-server.ts",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -22,7 +19,6 @@
     "mycelium",
     "core",
     "mcp",
-    "agent",
     "rbac",
     "router",
     "skill-driven"
@@ -30,7 +26,6 @@
   "license": "MIT",
   "dependencies": {
     "@mycelium/shared": "*",
-    "@mycelium/rbac": "*",
     "@mycelium/a2a": "*",
     "@mycelium/gateway": "*",
     "@mycelium/audit": "*",

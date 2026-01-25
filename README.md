@@ -1,4 +1,4 @@
-# AEGIS
+# MYCELIUM
 
 **Skill-Driven RBAC for the Agentic AI Era**
 
@@ -9,34 +9,34 @@
 ## パッケージ構成
 
 ```
-aegis/
+mycelium/
 ├── packages/
-│   ├── shared/     # @aegis/shared - 共通型定義
-│   ├── rbac/       # @aegis/rbac - ロール管理・ツール可視性
-│   ├── a2a/        # @aegis/a2a - A2Aエージェント間認証
-│   ├── audit/      # @aegis/audit - 監査ログ・レート制限
-│   ├── gateway/    # @aegis/gateway - MCPゲートウェイ
-│   ├── core/       # @aegis/core - 統合レイヤー
-│   └── skills/     # @aegis/skills - スキルMCPサーバー
+│   ├── shared/     # @mycelium/shared - 共通型定義
+│   ├── rbac/       # @mycelium/rbac - ロール管理・ツール可視性
+│   ├── a2a/        # @mycelium/a2a - A2Aエージェント間認証
+│   ├── audit/      # @mycelium/audit - 監査ログ・レート制限
+│   ├── gateway/    # @mycelium/gateway - MCPゲートウェイ
+│   ├── core/       # @mycelium/core - 統合レイヤー
+│   └── skills/     # @mycelium/skills - スキルMCPサーバー
 ```
 
 | パッケージ | 説明 |
 |-----------|------|
-| `@aegis/shared` | 共通型定義（Role, Skill, ToolPermissions等） |
-| `@aegis/rbac` | RoleManager, ToolVisibilityManager, RoleMemoryStore |
-| `@aegis/a2a` | A2A Agent Card スキルベースのアイデンティティ解決 |
-| `@aegis/audit` | 監査ログとレート制限（プレースホルダー） |
-| `@aegis/gateway` | MCPサーバー接続管理（プレースホルダー） |
-| `@aegis/core` | 全パッケージの統合・再エクスポート |
-| `@aegis/skills` | スキル定義を提供するMCPサーバー |
+| `@mycelium/shared` | 共通型定義（Role, Skill, ToolPermissions等） |
+| `@mycelium/rbac` | RoleManager, ToolVisibilityManager, RoleMemoryStore |
+| `@mycelium/a2a` | A2A Agent Card スキルベースのアイデンティティ解決 |
+| `@mycelium/audit` | 監査ログとレート制限（プレースホルダー） |
+| `@mycelium/gateway` | MCPサーバー接続管理（プレースホルダー） |
+| `@mycelium/core` | 全パッケージの統合・再エクスポート |
+| `@mycelium/skills` | スキル定義を提供するMCPサーバー |
 
 ## スキル駆動RBACとは？
 
-従来のRBACは「ロールがツールを定義」する。AEGISは逆転の発想：
+従来のRBACは「ロールがツールを定義」する。MYCELIUMは逆転の発想：
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  従来のRBAC                    AEGIS (スキル駆動)            │
+│  従来のRBAC                    MYCELIUM (スキル駆動)            │
 │                                                              │
 │  Role: admin                   Skill: docx-handler           │
 │    └── tools: [a, b, c]          └── allowedRoles: [admin]   │
@@ -57,7 +57,7 @@ aegis/
 
 ```
 従来: Agent → "俺はadminだ" → Server（信じるしかない）
-AEGIS: Server → "このスキルはadmin専用" → Router → Agent
+MYCELIUM: Server → "このスキルはadmin専用" → Router → Agent
                      ↑
                サーバーが権限を決める
 ```
@@ -101,7 +101,7 @@ allowedTools: [git__*, npm__*]
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 @aegis/skills (MCP Server)                  │
+│                 @mycelium/skills (MCP Server)                  │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  Skill: docx-handler                                 │   │
 │  │  - allowedRoles: [formatter, admin]  ← スキルが宣言  │   │
@@ -111,10 +111,10 @@ allowedTools: [git__*, npm__*]
                         │ list_skills
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                 @aegis/core (司令塔)                         │
-│  ├── @aegis/rbac   (RoleManager, ToolVisibilityManager)    │
-│  ├── @aegis/a2a    (IdentityResolver)                      │
-│  └── @aegis/shared (共通型定義)                             │
+│                 @mycelium/core (司令塔)                         │
+│  ├── @mycelium/rbac   (RoleManager, ToolVisibilityManager)    │
+│  ├── @mycelium/a2a    (IdentityResolver)                      │
+│  └── @mycelium/shared (共通型定義)                             │
 │                                                              │
 │  Skills → Roles 変換（Inverted RBAC）                       │
 │  ┌─────────────────────────────────────────────────────┐   │
@@ -189,7 +189,7 @@ allowedTools:
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
     },
-    "aegis-skills": {
+    "mycelium-skills": {
       "command": "node",
       "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
     }

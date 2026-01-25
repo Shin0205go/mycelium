@@ -24,3 +24,6 @@ allowedTools:
   - git__branch
   - git__checkout
   - shell__run_command
+  - mycelium-sandbox__bash
+  - mycelium-sandbox__sandbox_exec
+  - mycelium-sandbox__sandbox_exec_script

@@ -5,12 +5,11 @@
 
 import { Logger } from '../utils/logger.js';
 import { MyceliumRouterCore, createMyceliumRouterCore } from './mycelium-router-core.js';
-import type { MCPServerConfig } from '../types/mcp-types.js';
+import type { MCPServerConfig, ListRolesResult } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type {
   AgentManifest,
-  SetRoleOptions,
-  ListRolesResult
+  SetRoleOptions
 } from '../types/router-types.js';
 
 /**

@@ -56,7 +56,7 @@ export class StdioRouter extends EventEmitter {
   loadServersFromDesktopConfig(config: { mcpServers: Record<string, MCPServerConfig> }): void {
     Object.entries(config.mcpServers).forEach(([name, serverConfig]) => {
       // Exclude MYCELIUM proxy itself
-      if (name !== 'aegis-proxy' && name !== 'aegis') {
+      if (name !== 'mycelium-proxy' && name !== 'mycelium') {
         this.addServerFromConfig(name, serverConfig);
       }
     });

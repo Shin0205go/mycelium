@@ -107,28 +107,28 @@ describe('StdioRouter', () => {
       expect(servers.length).toBe(2);
     });
 
-    it('should exclude aegis-proxy server', () => {
+    it('should exclude mycelium-proxy server', () => {
       router.loadServersFromDesktopConfig({
         mcpServers: {
           server1: { command: 'node', args: ['s1.js'] },
-          'aegis-proxy': { command: 'node', args: ['proxy.js'] },
+          'mycelium-proxy': { command: 'node', args: ['proxy.js'] },
         },
       });
 
       const servers = router.getAvailableServers();
-      expect(servers.some(s => s.name === 'aegis-proxy')).toBe(false);
+      expect(servers.some(s => s.name === 'mycelium-proxy')).toBe(false);
     });
 
-    it('should exclude aegis server', () => {
+    it('should exclude mycelium server', () => {
       router.loadServersFromDesktopConfig({
         mcpServers: {
           server1: { command: 'node', args: ['s1.js'] },
-          aegis: { command: 'node', args: ['aegis.js'] },
+          mycelium: { command: 'node', args: ['mycelium.js'] },
         },
       });
 
       const servers = router.getAvailableServers();
-      expect(servers.some(s => s.name === 'aegis')).toBe(false);
+      expect(servers.some(s => s.name === 'mycelium')).toBe(false);
     });
   });
 

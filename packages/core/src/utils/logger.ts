@@ -23,7 +23,7 @@ export class Logger {
         winston.format.errors({ stack: true }),
         winston.format.json()
       ),
-      defaultMeta: { service: 'aegis' },
+      defaultMeta: { service: 'mycelium' },
       transports: [
         // コンソール出力（サイレントモードでは完全に無効化）
         new winston.transports.Console({

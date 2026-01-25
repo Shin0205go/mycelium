@@ -76,8 +76,35 @@ export interface SkillCommandInfo {
   usage?: string;
 }
 
+export interface RouterContext {
+  role: {
+    id: string;
+    name: string;
+    description: string;
+  } | null;
+  systemInstruction: string | null;
+  availableTools: Array<{
+    name: string;
+    source: string;
+    description?: string;
+  }>;
+  availableServers: string[];
+  metadata: {
+    sessionId: string;
+    roleSwitchCount: number;
+    lastRoleSwitch: string | null;
+  };
+}
+
 export interface ListCommandsResult {
   commands: SkillCommandInfo[];
+}
+
+export interface ToolCommandInfo {
+  command: string;           // スラッシュコマンド名
+  fullToolName: string;      // 完全なツール名 (server__tool)
+  source: string;            // サーバー名
+  description?: string;      // ツールの説明
 }
 
 export class MCPClient extends EventEmitter {
@@ -230,26 +257,68 @@ export class MCPClient extends EventEmitter {
     const result = await this.sendRequest('tools/call', {
       name: 'mycelium-router__list_roles',
       arguments: {}
-    }) as { content?: Array<{ text?: string }> };
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
 
     const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
+    if (!text) {
+      throw new Error('Failed to list roles: no response');
     }
-    throw new Error('Failed to list roles');
+
+    // Check if response is an error message (not JSON)
+    if (result.isError || text.startsWith('Error:') || text.startsWith('Access denied:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to list roles: ${text}`);
+    }
   }
 
   async switchRole(roleId: string): Promise<AgentManifest> {
     const result = await this.sendRequest('tools/call', {
       name: 'set_role',
       arguments: { role_id: roleId }
-    }) as { content?: Array<{ text?: string }> };
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
 
     const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
+    if (!text) {
+      throw new Error('Failed to switch role: no response');
     }
-    throw new Error('Failed to switch role');
+
+    // Check if response is an error message (not JSON)
+    if (result.isError || text.startsWith('Error:') || text.startsWith('Access denied:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to switch role: ${text}`);
+    }
+  }
+
+  async getContext(): Promise<RouterContext> {
+    const result = await this.sendRequest('tools/call', {
+      name: 'mycelium-router__get_context',
+      arguments: {}
+    }) as { content?: Array<{ text?: string }>; isError?: boolean };
+
+    const text = result?.content?.[0]?.text;
+    if (!text) {
+      throw new Error('Failed to get context: no response');
+    }
+
+    if (result.isError || text.startsWith('Error:')) {
+      throw new Error(text);
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`Failed to get context: ${text}`);
+    }
   }
 
   async listTools(): Promise<unknown[]> {

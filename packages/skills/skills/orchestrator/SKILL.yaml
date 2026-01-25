@@ -2,13 +2,13 @@
 name: orchestrator
 description: タスクの調整と他のロールへの委譲を行うコーディネーターロール。Workflowエージェントが使用。
 
-# AEGIS RBAC extensions
+# MYCELIUM RBAC extensions
 allowedRoles:
   - orchestrator
 allowedTools:
-  - aegis-router__list_roles
-  - aegis-router__spawn_sub_agent
-  - aegis-skills__list_skills
-  - aegis-skills__get_skill
-  - aegis-skills__get_resource
+  - mycelium-router__list_roles
+  - mycelium-router__spawn_sub_agent
+  - mycelium-skills__list_skills
+  - mycelium-skills__get_skill
+  - mycelium-skills__get_resource
   # Note: run_script はサブエージェント側で実行

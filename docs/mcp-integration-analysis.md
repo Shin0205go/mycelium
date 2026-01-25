@@ -145,7 +145,7 @@ interface SessionTools {
 
 **提案: Skills/Commands MCP Server の強化**
 
-現在の`@aegis/skills`を拡張し、スラッシュコマンドを動的に生成:
+現在の`@mycelium/skills`を拡張し、スラッシュコマンドを動的に生成:
 
 ```yaml
 # skills/custom-command/SKILL.md

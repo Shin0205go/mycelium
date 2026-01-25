@@ -6,7 +6,19 @@
       "Bash(npm test:*)",
       "Bash(npm update:*)",
       "Bash(node check-tools.mjs:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm install)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(timeout 5 node:*)",
+      "Skill(example-skills:mcp-builder)",
+      "Bash(MCP_TRANSPORT=stdio LOG_SILENT=true node:*)",
+      "Bash(timeout 15 sh -c 'echo \"\"{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"id\\\\\"\":1,\\\\\"\"method\\\\\"\":\\\\\"\"initialize\\\\\"\",\\\\\"\"params\\\\\"\":{\\\\\"\"protocolVersion\\\\\"\":\\\\\"\"2024-11-05\\\\\"\",\\\\\"\"clientInfo\\\\\"\":{\\\\\"\"name\\\\\"\":\\\\\"\"test\\\\\"\",\\\\\"\"version\\\\\"\":\\\\\"\"1.0.0\\\\\"\"},\\\\\"\"capabilities\\\\\"\":{}}}\n{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"method\\\\\"\":\\\\\"\"initialized\\\\\"\",\\\\\"\"params\\\\\"\":{}}\n{\\\\\"\"jsonrpc\\\\\"\":\\\\\"\"2.0\\\\\"\",\\\\\"\"id\\\\\"\":2,\\\\\"\"method\\\\\"\":\\\\\"\"tools/call\\\\\"\",\\\\\"\"params\\\\\"\":{\\\\\"\"name\\\\\"\":\\\\\"\"mycelium-router__list_roles\\\\\"\",\\\\\"\"arguments\\\\\"\":{}}}\"\" | MCP_TRANSPORT=stdio LOG_SILENT=true node packages/core/dist/mcp-server.js 2>/dev/null')",
+      "Bash(DEBUG=*)",
+      "Bash(npm start -w @mycelium/cli)",
+      "Bash(node packages/cli/dist/index.js:*)"
     ]
   }
 }

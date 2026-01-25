@@ -1,7 +1,7 @@
 {
   "name": "@mycelium/skills",
   "version": "1.0.0",
-  "description": "AEGIS Skills - Skill MCP Server with declarative role permissions",
+  "description": "MYCELIUM Skills - Skill MCP Server with declarative role permissions",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

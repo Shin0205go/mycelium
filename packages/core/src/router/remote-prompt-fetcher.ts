@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { Logger } from '../utils/logger.js';
-import type { RemoteInstruction } from '../types/router-types.js';
+import type { RemoteInstruction } from '@mycelium/shared';
 
 /**
  * Cache entry for remote prompts
@@ -99,7 +99,7 @@ export class RemotePromptFetcher {
       // We prefix the request to indicate which server should handle it
       const routedRequest = {
         ...request,
-        _aegis_target_server: config.backend
+        _mycelium_target_server: config.backend
       };
 
       const response = await this.router.routeRequest(routedRequest);

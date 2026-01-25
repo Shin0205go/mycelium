@@ -6,28 +6,27 @@
 import { EventEmitter } from 'events';
 import { Logger } from '../utils/logger.js';
 import { StdioRouter, type UpstreamServerInfo, type MCPServerConfig } from '@mycelium/gateway';
-import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '@mycelium/rbac';
-import { IdentityResolver, createIdentityResolver } from '@mycelium/a2a';
+import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '../rbac/index.js';
+import { IdentityResolver, createIdentityResolver, type SkillDefinition, type AgentIdentity, type IdentityResolution, type IdentityConfig } from '@mycelium/a2a';
 import { AuditLogger, createAuditLogger } from '@mycelium/audit';
 import { RateLimiter, createRateLimiter, type RoleQuota } from '@mycelium/audit';
 import type {
   Role,
+  ToolInfo,
+  ListRolesResult,
+  SkillManifest,
+  ThinkingSignature,
+  ToolCallContext
+} from '@mycelium/shared';
+import type {
   MyceliumRouterState,
   SubServerInfo,
-  ToolInfo,
   AgentManifest,
   ManifestTool,
   RoleSwitchEvent,
   ToolsChangedEvent,
-  SetRoleOptions,
-  ListRolesResult,
-  SkillManifest,
-  SkillDefinition,
-  AgentIdentity,
-  IdentityResolution,
-  IdentityConfig
+  SetRoleOptions
 } from '../types/router-types.js';
-import type { ThinkingSignature, ToolCallContext } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -36,6 +35,14 @@ import { v4 as uuidv4 } from 'uuid';
  * These are tools provided by mycelium-router itself (not backend MCP servers)
  */
 export const ROUTER_TOOLS: Tool[] = [
+  {
+    name: 'mycelium-router__get_context',
+    description: 'Get current router context including active role, system instruction, available tools count, and connected servers. Use this to query current state without switching roles.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
   {
     name: 'mycelium-router__list_roles',
     description: 'Get a list of available roles with their skills and capabilities',
@@ -477,14 +484,14 @@ export class MyceliumRouterCore extends EventEmitter {
     return {
       routeRequest: async (request: any): Promise<any> => {
         // Check if this is a targeted request (for a specific backend)
-        const targetServer = request._aegis_target_server;
+        const targetServer = request._mycelium_target_server;
 
         if (targetServer) {
           // Route to specific server
           this.logger.debug(`Routing prompts/get to server: ${targetServer}`);
 
-          // Strip the _aegis_target_server and modify request for specific server
-          const { _aegis_target_server, ...cleanRequest } = request;
+          // Strip the _mycelium_target_server and modify request for specific server
+          const { _mycelium_target_server, ...cleanRequest } = request;
 
           // Route through stdioRouter with server prefix
           return await this.stdioRouter.routeToServer(targetServer, cleanRequest);
@@ -1405,6 +1412,49 @@ export class MyceliumRouterCore extends EventEmitter {
       systemInstruction: this.state.currentRole?.systemInstruction ?? null,
       visibleToolsCount: this.toolVisibility.getVisibleCount(),
       connectedServersCount: this.state.connectedServers.size
+    };
+  }
+
+  /**
+   * Get detailed context for CLI and external tools
+   * Returns current role, manifest-like data, and available resources
+   */
+  getContext(): {
+    role: {
+      id: string;
+      name: string;
+      description: string;
+    } | null;
+    systemInstruction: string | null;
+    availableTools: Array<{ name: string; source: string; description?: string }>;
+    availableServers: string[];
+    metadata: {
+      sessionId: string;
+      roleSwitchCount: number;
+      lastRoleSwitch: Date | null;
+    };
+  } {
+    const role = this.state.currentRole;
+    const visibleToolsInfo = this.toolVisibility.getVisibleToolsInfo();
+
+    return {
+      role: role ? {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+      } : null,
+      systemInstruction: role?.systemInstruction ?? null,
+      availableTools: visibleToolsInfo.map(info => ({
+        name: info.tool.name,
+        source: info.sourceServer,
+        description: info.tool.description,
+      })),
+      availableServers: Array.from(this.state.connectedServers.keys()),
+      metadata: {
+        sessionId: this.state.metadata.sessionId,
+        roleSwitchCount: this.state.metadata.roleSwitchCount,
+        lastRoleSwitch: this.state.metadata.lastRoleSwitch ?? null,
+      },
     };
   }
 

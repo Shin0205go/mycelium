@@ -325,7 +325,7 @@ describe('AuditLogger', () => {
       const csv = auditLogger.exportCsv();
       const lines = csv.split('\n');
 
-      expect(lines[0]).toBe('id,timestamp,sessionId,role,tool,sourceServer,result,reason,durationMs');
+      expect(lines[0]).toBe('id,timestamp,sessionId,role,tool,sourceServer,result,reason,durationMs,hasThinking,thinkingType,thinkingTokens');
       expect(lines[1]).toContain('"admin"');
       expect(lines[1]).toContain('"tool"');
       expect(lines[1]).toContain('"allowed"');

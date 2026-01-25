@@ -12,7 +12,7 @@ import type {
   DynamicRole,
   RoleManifest,
   MemoryPolicy,
-  BaseSkillDefinition
+  ToolPermissions
 } from '@mycelium/shared';
 
 /**
@@ -134,11 +134,11 @@ export class RoleManager {
    * Get effective tool permissions for a role (including inherited)
    * Child permissions take precedence over parent
    */
-  getEffectiveToolPermissions(roleId: string): import('@mycelium/shared').ToolPermissions {
+  getEffectiveToolPermissions(roleId: string): ToolPermissions {
     const chain = this.getInheritanceChain(roleId);
 
     // Start with empty permissions and merge from root to child
-    const effective: import('@mycelium/shared').ToolPermissions = {
+    const effective: ToolPermissions = {
       allow: [],
       deny: [],
       allowPatterns: [],
