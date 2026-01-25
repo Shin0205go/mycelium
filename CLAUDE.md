@@ -11,7 +11,7 @@ Mycelium-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy rout
 - **MCP (Model Context Protocol)**: Anthropic's protocol for tool/resource integration
 - **Skill-Driven RBAC**: Skills declare which roles can use them; roles are dynamically generated from skill definitions
 - **Router Proxy**: Routes tool calls from Claude to appropriate backend MCP servers
-- **Dynamic Role Switching**: Agents can switch roles at runtime via `set_role` tool
+- **Role-Based Agents**: Agents are spawned with specific roles via `MYCELIUM_CURRENT_ROLE` environment variable
 - **Interactive CLI**: REPL interface with Claude Agent SDK for role-aware conversations
 
 ## MYCELIUM Architecture Rules
@@ -49,7 +49,7 @@ Mycelium-CLI is a **skill-driven Role-Based Access Control (RBAC) MCP proxy rout
 │  - allowedRoles: ["*"] → 全ロールに展開                     │
 │  - allowedTools: [server__*] → ワイルドカードマッチ          │
 └───────────────────────┬─────────────────────────────────────┘
-                        │ set_role / MCP tools
+                        │ spawn_sub_agent / MCP tools
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              @mycelium/cli (Interactive REPL)                 │
@@ -134,21 +134,51 @@ Myceliumは2つの実行モードを提供します：**Workflow**（制限付�
 
 #### Workflow → Adhoc Handoff
 
+When a workflow script fails, context is saved for Adhoc agent investigation:
+
 ```typescript
-// Workflow失敗時のコンテキスト構造
+// packages/cli/src/lib/context.ts
 interface WorkflowContext {
-  skillId: string;           // 失敗したスキルID
-  scriptPath: string;        // 実行したスクリプトパス
-  args?: string[];           // スクリプト引数
+  /** Skill ID that was executed */
+  skillId: string;
+
+  /** Path to the script within the skill */
+  scriptPath: string;
+
+  /** Arguments passed to the script */
+  args?: string[];
+
+  /** Error details from the failed execution */
   error: {
     message: string;
     exitCode: number;
     stdout: string;
     stderr: string;
   };
+
+  /** ISO8601 timestamp of when the failure occurred */
   timestamp: string;
-  conversationSummary?: string;  // LLMとの会話要約
+
+  /** Optional summary of the conversation before failure */
+  conversationSummary?: string;
+
+  /** Optional additional metadata */
+  metadata?: Record<string, unknown>;
 }
+```
+
+**Context File Operations**:
+```typescript
+import { writeContext, readContext, formatContextForDisplay } from '@mycelium/cli';
+
+// Save context on workflow failure
+const contextPath = await writeContext(context, './workflow-context.json');
+
+// Load context in adhoc agent
+const context = await readContext(contextPath);
+
+// Display context to user
+console.log(formatContextForDisplay(context));
 ```
 
 このパターンにより：
@@ -169,15 +199,18 @@ packages/
 │       │   ├── init.ts           # mycelium init - project scaffolding
 │       │   ├── skill.ts          # mycelium skill add/list/templates
 │       │   ├── policy.ts         # mycelium policy check/roles
-│       │   ├── mcp.ts            # mycelium mcp start/status
+│       │   ├── mcp.ts            # mycelium mcp start/status/stop
 │       │   ├── workflow.ts       # mycelium workflow - skill-based workflows
 │       │   └── adhoc.ts          # mycelium adhoc - full tool access
 │       ├── agents/
 │       │   ├── workflow-agent.ts # Skill-restricted workflow agent
-│       │   └── adhoc-agent.ts    # Unrestricted adhoc agent
+│       │   └── adhoc-agent.ts    # Unrestricted adhoc agent with approval workflow
 │       └── lib/
 │           ├── interactive-cli.ts # REPL with dynamic command generation
-│           └── mcp-client.ts      # MCP client wrapper
+│           ├── mcp-client.ts      # MCP client wrapper
+│           ├── context.ts         # Workflow → Adhoc context handoff
+│           ├── agent.ts           # Agent utilities
+│           └── ui.ts              # UI utilities (chalk formatting)
 │
 ├── shared/               # @mycelium/shared - Common types and interfaces
 │   └── src/
@@ -188,23 +221,36 @@ packages/
 │   │   ├── index.ts              # Re-exports all packages
 │   │   ├── mcp-server.ts         # MCP server entry point
 │   │   ├── mcp-client.ts         # MCP client implementation
+│   │   ├── agent.ts              # Agent SDK integration
+│   │   ├── sub-agent.ts          # Sub-agent spawning utilities
 │   │   ├── rbac/
 │   │   │   ├── role-manager.ts           # Role definitions and permissions
 │   │   │   ├── tool-visibility-manager.ts # Tool filtering by role
 │   │   │   └── role-memory.ts            # Role-based memory store
 │   │   ├── router/
-│   │   │   ├── mycelium-router-core.ts  # Central routing system (司令塔)
-│   │   │   ├── rate-limiter.ts       # Rate limiting
-│   │   │   └── audit-logger.ts       # Audit logging
+│   │   │   ├── mycelium-core.ts          # Central routing system (司令塔)
+│   │   │   ├── router-adapter.ts         # Router adapter for MCP server
+│   │   │   └── remote-prompt-fetcher.ts  # Fetch prompts from remote servers
 │   │   ├── mcp/
-│   │   │   ├── stdio-router.ts       # Stdio-based MCP routing
-│   │   │   └── tool-discovery.ts     # Tool discovery
+│   │   │   ├── stdio-router.ts           # Stdio-based MCP routing
+│   │   │   ├── tool-discovery.ts         # Tool discovery
+│   │   │   └── dynamic-tool-discovery.ts # Dynamic tool discovery
+│   │   ├── types/
+│   │   │   ├── index.ts                  # Type re-exports
+│   │   │   ├── mcp-types.ts              # MCP-specific types
+│   │   │   └── router-types.ts           # Router-specific types
+│   │   ├── constants/
+│   │   │   └── index.ts                  # Shared constants
 │   │   └── utils/
-│   │       └── logger.ts             # Winston logger
+│   │       └── logger.ts                 # Winston logger
 │   └── tests/
-│       ├── mycelium-router-core.test.ts
-│       ├── role-manager.test.ts
-│       ├── tool-visibility-manager.test.ts
+│       ├── mycelium-core.test.ts
+│       ├── router-adapter.test.ts
+│       ├── stdio-router.test.ts
+│       ├── mcp-server.test.ts
+│       ├── mcp-client.test.ts
+│       ├── agent.test.ts
+│       ├── sub-agent.test.ts
 │       └── ...
 │
 ├── orchestrator/         # @mycelium/orchestrator - Worker Agent Management
@@ -229,11 +275,21 @@ packages/
 │
 ├── session/              # @mycelium/session - Session Management
 │   └── src/
-│       └── index.ts      # Session persistence via MCP
+│       ├── index.ts              # Package exports
+│       ├── mcp-server.ts         # Session MCP server
+│       ├── session-store.ts      # Session persistence store
+│       └── types.ts              # Session types
 │
 └── sandbox/              # @mycelium/sandbox - Sandboxed Execution
     └── src/
-        └── index.ts      # OS-level sandbox for command execution
+        ├── index.ts              # Package exports
+        ├── mcp-server.ts         # Sandbox MCP server
+        ├── sandbox-manager.ts    # Sandbox lifecycle management
+        ├── executor.ts           # Command executor interface
+        ├── linux-executor.ts     # Linux sandbox (bubblewrap)
+        ├── darwin-executor.ts    # macOS sandbox (sandbox-exec)
+        ├── docker-executor.ts    # Docker-based sandbox
+        └── types.ts              # Sandbox types
 ```
 
 ## Packages
@@ -265,7 +321,7 @@ Handles role definitions and permission checking:
 Manages tool discovery and role-based visibility:
 - Registers tools from backend servers
 - Filters visible tools based on current role
-- Always includes `set_role` system tool
+- Includes system tools for context and role management
 - Checks tool access before allowing calls
 
 ### 3. RoleMemoryStore (`packages/core/src/rbac/role-memory.ts`)
@@ -284,21 +340,45 @@ Worker agent management with skill-based restrictions:
 - Worker lifecycle management (spawn, execute, terminate)
 - Parallel worker execution support
 
-### 5. AdhocAgent (`packages/adhoc/src/adhoc-agent.ts`)
-Unrestricted agent for edge cases:
-- Full tool access (not skill-restricted)
-- Approval workflow for dangerous operations
-- Risk level classification (low, medium, high, critical)
-- Parallel to Orchestrator (not hierarchical)
-- For bash execution, file editing, one-off tasks
+### 5. AdhocAgent (`packages/cli/src/agents/adhoc-agent.ts`)
+Unrestricted agent for edge cases with approval workflow:
+- Full tool access through mycelium-router with `adhoc` role
+- Interactive approval workflow for dangerous operations
+- Risk level classification: `low`, `medium`, `high`, `critical`
+- Session-based approval caching (`always`/`never` options)
+- Context injection from failed workflow execution
+- For investigation, debugging, and one-off fixes
 
-### 7. MyceliumRouterCore (`packages/core/src/router/mycelium-router-core.ts`)
+**Dangerous Tool Categories**:
+```typescript
+const DANGEROUS_TOOL_CATEGORIES = {
+  FILE_WRITE: ['filesystem__write_file', 'filesystem__delete_file'],
+  SHELL_EXEC: ['shell__exec', 'bash__run', 'sandbox__exec'],
+  NETWORK: ['http__request', 'fetch__url'],
+  DATABASE: ['postgres__execute', 'database__write'],
+};
+```
+
+**Approval Options**:
+- `y/yes` - Approve once
+- `n/no` - Deny once
+- `always` - Always approve this tool in this session
+- `never` - Never approve this tool in this session
+
+### 6. MyceliumCore (`packages/core/src/router/mycelium-core.ts`)
 Central routing system (司令塔) that orchestrates all components:
 - Manages connections to multiple sub-MCP servers via StdioRouter
 - Maintains virtual tool table filtered by current role
-- Handles role switching via `set_role` tool
-- Integrates RoleManager, ToolVisibilityManager, AuditLogger, RateLimiter
+- Integrates RoleManager, ToolVisibilityManager, and RoleMemoryStore
 - Loads roles dynamically from mycelium-skills server
+- Provides router-level tools: `get_context`, `list_roles`, `spawn_sub_agent`
+- Handles memory tools: `save_memory`, `recall_memory`, `list_memories`
+
+### 7. WorkflowContext (`packages/cli/src/lib/context.ts`)
+Handles Workflow → Adhoc agent handoff:
+- Saves failure context when workflow scripts fail
+- Provides context to Adhoc agent for investigation
+- Includes error details, stdout/stderr, and conversation summary
 
 ### 8. InteractiveCLI (`packages/cli/src/lib/interactive-cli.ts`)
 REPL interface with MCP-driven command system:
@@ -383,7 +463,8 @@ mycelium policy roles                        # List all available roles
 mycelium mcp start                           # Start MCP server
 mycelium mcp start --dev                     # Development mode (tsx)
 mycelium mcp start --background              # Run in background
-mycelium mcp status                          # Check server status
+mycelium mcp status                          # Check server status (PID, port)
+mycelium mcp stop                            # Stop running MCP server
 ```
 
 ### Workflow Mode (Skill-Restricted)
@@ -392,6 +473,8 @@ mycelium mcp status                          # Check server status
 mycelium workflow                    # Start interactive workflow mode
 mycelium workflow "task"             # Execute a single workflow task
 mycelium workflow --list             # List available skills
+mycelium workflow --on-failure=auto  # Auto-escalate to adhoc on failure
+mycelium workflow --on-failure=exit  # Exit on failure (for CI)
 
 # On failure, context is saved for adhoc investigation
 # mycelium adhoc --context <file>
@@ -484,14 +567,33 @@ interface SkillGrants {
 ```json
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
-    },
     "mycelium-skills": {
       "command": "node",
-      "args": ["node_modules/mycelium-skills/index.js", "..."]
+      "args": ["packages/skills/dist/index.js", "packages/skills/skills"],
+      "comment": "Skill MCP Server - provides list_skills tool"
+    },
+    "mycelium-session": {
+      "command": "node",
+      "args": ["packages/session/dist/mcp-server.js", "sessions"],
+      "comment": "Session MCP Server - save, resume, compress conversations"
+    },
+    "mycelium-sandbox": {
+      "command": "node",
+      "args": ["packages/sandbox/dist/mcp-server.js"],
+      "comment": "Sandbox MCP Server - secure code execution with OS-level isolation"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      "comment": "Filesystem server - defaults to project root"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"]
     }
+  },
+  "roles": {
+    "defaultRole": "default"
   }
 }
 ```
@@ -513,8 +615,9 @@ interface SkillGrants {
 
 ## Environment Variables
 
-- `MYCELIUM_ROUTER_PATH` - Path to MCP server (default: `dist/mcp-server.js`)
+- `MYCELIUM_ROUTER_PATH` - Path to MCP server (default: `packages/core/dist/mcp-server.js`)
 - `MYCELIUM_CONFIG_PATH` - Path to config file (default: `config.json`)
+- `MYCELIUM_CURRENT_ROLE` - Role to activate on startup (e.g., `orchestrator`, `adhoc`)
 - `MYCELIUM_CLI_PATH` - Path to CLI for sub-agent spawning
 - `ANTHROPIC_API_KEY` - API key for direct API usage (optional)
 
@@ -524,19 +627,25 @@ Tests use Vitest and are distributed across packages:
 
 | Package | Test Files | Description |
 |---------|------------|-------------|
-| `@mycelium/core` | 18+ | Router, MCP client, RBAC, tool discovery, rate limiting, audit logging, wildcard handling |
+| `@mycelium/core` | 15+ | Router (mycelium-core, router-adapter), MCP (stdio-router, mcp-server, mcp-client), tool discovery, agent integration |
 | `@mycelium/orchestrator` | 1 | Worker management, task delegation, skill-based restrictions |
 | `@mycelium/adhoc` | 1 | Approval workflow, dangerous tool detection, event emission |
-| `@mycelium/cli` | 1 | CLI command tests |
+| `@mycelium/cli` | 4 | CLI commands, workflow-agent, adhoc-agent, context handling |
 | `@mycelium/shared` | 1 | Error classes, type exports |
 | `@mycelium/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
-| `@mycelium/session` | 1 | Session persistence, compression, export |
-| `@mycelium/sandbox` | 6 | OS-level sandboxing, profile validation |
+| `@mycelium/session` | 1 | Session persistence (session-store) |
+| `@mycelium/sandbox` | 1 | OS-level sandboxing, profile validation |
 
-**Key Test Areas**:
-- `role-manager.test.ts`: Includes tests for `allowedRoles: ["*"]` wildcard expansion
-- `tool-visibility-manager.test.ts`: Tests for `allowedTools` pattern matching (`server__*`)
-- `red-team-verification.test.ts`: Security tests for permission bypass attempts
+**Key Test Files in Core**:
+- `mycelium-core.test.ts`: Central routing system tests
+- `router-adapter.test.ts`: MCP server adapter tests
+- `stdio-router.test.ts`: Stdio-based MCP routing tests
+- `mcp-server.test.ts`: MCP server initialization and request handling
+- `agent.test.ts`: Agent SDK integration tests
+- `sub-agent.test.ts`: Sub-agent spawning tests
+- `tool-discovery.test.ts`: Tool discovery from backend servers
+- `dynamic-tool-discovery.test.ts`: Dynamic tool registration tests
+- `remote-prompt-fetcher.test.ts`: Remote prompt fetching tests
 
 ```bash
 # Run all tests (from root)
@@ -566,50 +675,42 @@ npx vitest --watch
 - **リファクタリング時**: 既存テストが通ることを確認しながら進める
 
 ### Test Categories
-- **Unit tests**: RoleManager, ToolVisibilityManager, IdentityResolver, types
-- **Integration tests**: Skill integration, role switching, memory permissions
+- **Unit tests**: Router, MCP client/server, tool discovery, agent utilities
+- **Integration tests**: Skill integration, role assignment, memory permissions
 - **E2E tests**: Full flow with mycelium-skills server (`packages/core/tests/real-e2e.test.ts`)
-- **Red Team tests**: Security verification loop (`packages/rbac/tests/red-team-verification.test.ts`)
+- **CLI tests**: Workflow/Adhoc agents, context handling (`packages/cli/tests/`)
 
-### Red Team Verification Loop (検証ループ)
+### Security Testing Guidelines
 
-セキュリティ製品であるMYCELIUMでは、「自分で自分の成果物をテストさせる」検証ループを採用しています。
+セキュリティ製品であるMYCELIUMでは、以下のセキュリティテストパターンを採用しています：
 
 **原則**: Routerのコードを書いた後、許可されていないロールで危険なツールを呼び出し、正しく拒否されることを確認する
 
-**Red Team テストスイート** (`packages/core/tests/red-team-verification.test.ts`):
+**推奨セキュリティテストケース**:
 
-| Suite | Description | Example Attack |
-|-------|-------------|----------------|
-| Unauthorized Role Access | 権限のないロールが危険なツールにアクセス | `guest → delete_database` |
+| Category | Description | Example Test |
+|----------|-------------|--------------|
+| Unauthorized Role Access | 権限のないロールが危険なツールにアクセス | `guest → delete_file` |
 | Memory Access Bypass | メモリ権限のないロールがメモリ操作 | `guest → save_memory` |
-| Pattern Matching Exploits | ツール名の操作による権限バイパス | `read_file_and_delete`, `query\u0000drop` |
-| Privilege Escalation | 存在しないロールへの切り替え試行 | `admin; DROP TABLE users` |
+| Pattern Matching Exploits | ツール名の操作による権限バイパス | `read_file_and_delete` |
 | Server Access Control | 許可されていないサーバーへのアクセス | `filesystem_user → database__query` |
-| Tool Visibility Consistency | ロール切り替え時のツール漏洩確認 | Admin → Guest downgrade |
 
-```bash
-# Run Red Team tests
-npx vitest run packages/core/tests/red-team-verification.test.ts
-
-# Run with verbose output
-npx vitest run packages/core/tests/red-team-verification.test.ts --reporter=verbose
-```
-
-**検証ループの実行例**:
+**セキュリティテストの例**:
 ```typescript
-// Attack: Guest tries to access delete_database
-it('MUST deny guest access to delete_database', () => {
-  const guestRole = roleManager.getRole('guest');
-  toolVisibility.setCurrentRole(guestRole!);
+// Test: Role without memory grant cannot save memory
+it('should deny memory access for role without grant', async () => {
+  // Set role without memory permissions
+  router.setRole({ role: 'guest' });
 
-  // Verify the tool is not visible
-  expect(toolVisibility.isVisible('database__delete_database')).toBe(false);
+  // Attempt to save memory
+  const result = await router.routeRequest({
+    method: 'tools/call',
+    params: { name: 'save_memory', arguments: { content: 'test' } }
+  });
 
-  // Verify checkAccess throws an error
-  expect(() => {
-    toolVisibility.checkAccess('database__delete_database');
-  }).toThrow(/not accessible for role 'guest'/);
+  // Should return error
+  expect(result.result.isError).toBe(true);
+  expect(result.result.content[0].text).toContain('does not have memory access');
 });
 ```
 
@@ -648,19 +749,29 @@ unwrapToolResponse(text: string): unknown {
 
 Used by `listSkills()` and `listCommands()` to properly extract skill data.
 
-### Role Switching Flow
-1. Agent calls `set_role` with `role_id`
-2. Router validates role exists
+### Role Assignment Flow
+Roles are assigned at agent spawn time via environment variables:
+
+1. Agent spawned with `MYCELIUM_CURRENT_ROLE=<role_id>` environment variable
+2. Router validates role exists and loads role configuration
 3. Router starts required servers if needed (lazy loading)
-4. Router updates `currentRole` and filters tools
-5. Router sends `tools/list_changed` notification
-6. Agent receives new tool list
+4. Router sets `currentRole` and filters tools based on role
+5. Agent receives filtered tool list via `tools/list`
+
+**Example: Workflow Agent**
+```bash
+MYCELIUM_CURRENT_ROLE=orchestrator  # Can only use mycelium-skills tools
+```
+
+**Example: Adhoc Agent**
+```bash
+MYCELIUM_CURRENT_ROLE=adhoc  # Full access to all tools
+```
 
 ### Permission Checking
 1. Check if server is allowed for role
 2. Check tool-level permissions (allow/deny patterns)
-3. System tools always allowed: `set_role`
-4. Memory tools require skill grant (see Role Memory section)
+3. Memory tools require skill grant (see Role Memory section)
 
 ### Wildcard Handling in allowedRoles
 
@@ -914,16 +1025,16 @@ const result = await adhoc.execute({
 });
 ```
 
-#### Dangerous Tool Categories
+#### Dangerous Tool Categories and Risk Levels
 
-```typescript
-const DANGEROUS_TOOL_CATEGORIES = {
-  FILE_WRITE: ['filesystem__write_file', 'filesystem__delete_file'],
-  SHELL_EXEC: ['shell__exec', 'bash__run', 'sandbox__exec'],
-  NETWORK: ['http__request', 'fetch__url'],
-  DATABASE: ['postgres__execute', 'database__write'],
-};
-```
+The Adhoc Agent classifies tools by risk level for approval workflow:
+
+| Category | Tools | Risk Level |
+|----------|-------|------------|
+| `SHELL_EXEC` | `shell__exec`, `bash__run`, `sandbox__exec` | **critical** |
+| `FILE_WRITE` | `filesystem__write_file`, `filesystem__delete_file` | **high** |
+| `DATABASE` | `postgres__execute`, `database__write` | **high** |
+| `NETWORK` | `http__request`, `fetch__url` | **medium** |
 
 ## Code Style and Conventions
 
@@ -979,7 +1090,7 @@ Roles are auto-generated from skill definitions. To add a new role:
 1. Create/modify skill with `allowedRoles` including the new role
 2. Use `mycelium skill add <name>` or create `skills/<name>/SKILL.md` manually
 3. Restart router to reload skill manifest
-4. Role will be available via `set_role` or in interactive mode
+4. Role will be available for agents spawned with `MYCELIUM_CURRENT_ROLE=<role_id>`
 
 ### Verifying Policies
 ```bash
