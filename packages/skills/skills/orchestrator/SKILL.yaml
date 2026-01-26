@@ -8,7 +8,4 @@ allowedRoles:
 allowedTools:
   - mycelium-router__list_roles
   - mycelium-router__spawn_sub_agent
-  - mycelium-skills__list_skills
-  - mycelium-skills__get_skill
-  - mycelium-skills__get_resource
-  # Note: run_script はサブエージェント側で実行
+  # Note: スキル情報はlist_rolesの結果に含まれる
