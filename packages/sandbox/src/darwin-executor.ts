@@ -9,7 +9,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { SandboxExecutor } from './executor.js';
 import type {
-  SandboxConfig,
   SandboxResult,
   SandboxRequest,
   SandboxPlatform,
@@ -50,10 +49,38 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
       throw new Error('Sandbox profile not generated');
     }
 
+    // On Apple Silicon, use arch -arm64 to force native execution
+    // sandbox-exec defaults to x86_64 which requires Rosetta
+    // Note: process.arch may show 'x64' if Node.js itself runs under Rosetta,
+    // so we detect Apple Silicon by checking the CPU brand string
+    const isAppleSilicon = this.isAppleSilicon();
+
+    if (isAppleSilicon) {
+      return {
+        command: 'arch',
+        args: ['-arm64', 'sandbox-exec', '-f', this.profilePath, command, ...args],
+      };
+    }
+
     return {
       command: 'sandbox-exec',
       args: ['-f', this.profilePath, command, ...args],
     };
+  }
+
+  /**
+   * Detect if running on Apple Silicon (even if Node.js uses Rosetta)
+   */
+  private isAppleSilicon(): boolean {
+    try {
+      const cpuBrand = execSync('sysctl -n machdep.cpu.brand_string', {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe']
+      }).trim();
+      return cpuBrand.toLowerCase().includes('apple');
+    } catch {
+      return false;
+    }
   }
 
   async execute(request: SandboxRequest): Promise<SandboxResult> {
@@ -66,36 +93,11 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
         request.args || []
       );
 
-      console.error(`[sandbox] Using sandbox-exec (Seatbelt) for macOS sandboxing`);
-
-      // Wrap with timeout
-      const timeoutCmd = 'gtimeout';
-      const hasGtimeout = await this.commandExists(timeoutCmd);
-
-      let finalCommand: string;
-      let finalArgs: string[];
-
-      if (hasGtimeout) {
-        // Use GNU timeout if available (from coreutils)
-        finalCommand = timeoutCmd;
-        finalArgs = [
-          '--signal=KILL',
-          `${this.config.process.timeoutSeconds}s`,
-          command,
-          ...args,
-        ];
-      } else {
-        // macOS doesn't have timeout by default, use perl workaround
-        finalCommand = 'perl';
-        finalArgs = [
-          '-e',
-          `alarm ${this.config.process.timeoutSeconds}; exec @ARGV`,
-          command,
-          ...args,
-        ];
-      }
-
-      return this.runWithLimits(finalCommand, finalArgs, request.stdin, request.config.environment);
+      // Run sandbox-exec directly - timeout is handled by runWithLimits
+      // No need for perl/gtimeout wrapper which can cause Rosetta issues on ARM Macs
+      // IMPORTANT: Must await here, otherwise finally block runs before process completes
+      const result = await this.runWithLimits(command, args, request.stdin, request.config.environment);
+      return result;
     } finally {
       // Clean up profile
       if (this.profilePath) {
@@ -139,36 +141,10 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
     // File system
     lines.push('; File system');
 
-    // Always allow reading system libraries
-    lines.push('(allow file-read*');
-    lines.push('  (subpath "/usr/lib")');
-    lines.push('  (subpath "/System/Library")');
-    lines.push('  (subpath "/Library/Frameworks")');
-    lines.push('  (subpath "/usr/share")');
-    lines.push('  (literal "/dev/null")');
-    lines.push('  (literal "/dev/random")');
-    lines.push('  (literal "/dev/urandom")');
-    lines.push('  (literal "/dev/zero")');
-    lines.push(')');
-    lines.push('');
-
-    // User-specified read paths
-    if (this.config.filesystem.readPaths.length > 0) {
-      lines.push('; Allowed read paths');
-      lines.push('(allow file-read*');
-      for (const p of this.config.filesystem.readPaths) {
-        const resolved = this.resolvePath(p);
-        lines.push(`  (subpath "${this.escapePath(resolved)}")`);
-      }
-      lines.push(')');
-      lines.push('');
-    }
-
-    // Working directory - read access
-    lines.push('; Working directory read');
-    lines.push('(allow file-read*');
-    lines.push(`  (subpath "${this.escapePath(this.config.workingDirectory)}")`);
-    lines.push(')');
+    // Allow reading all files - security comes from write/network restrictions
+    // Attempting to restrict reads to specific paths breaks many common commands
+    // (bash, node, python, etc. need to read from various system locations)
+    lines.push('(allow file-read*)');
     lines.push('');
 
     // Write paths
@@ -233,15 +209,4 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
     return p.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   }
 
-  /**
-   * Check if a command exists
-   */
-  private async commandExists(cmd: string): Promise<boolean> {
-    try {
-      execSync(`which ${cmd}`, { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
-  }
 }

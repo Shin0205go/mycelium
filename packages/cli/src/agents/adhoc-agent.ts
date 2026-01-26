@@ -306,11 +306,23 @@ export class AdhocAgent {
       output: process.stdout,
     });
 
-    const prompt = (): Promise<string> => {
+    let stdinClosed = false;
+    const prompt = (): Promise<string | null> => {
       return new Promise((resolve) => {
-        this.rl!.question(chalk.magenta('adhoc> '), resolve);
+        if (stdinClosed) {
+          resolve(null);
+          return;
+        }
+        this.rl!.question(chalk.magenta('adhoc> '), (answer) => {
+          resolve(answer);
+        });
       });
     };
+
+    // Handle stdin close gracefully
+    this.rl.on('close', () => {
+      stdinClosed = true;
+    });
 
     // If context is loaded, offer to start investigation
     if (this.context) {
@@ -319,7 +331,15 @@ export class AdhocAgent {
     }
 
     while (true) {
-      const input = await prompt();
+      let input: string | null;
+      try {
+        input = await prompt();
+      } catch {
+        // readline closed (stdin ended)
+        break;
+      }
+
+      if (input === null) break;
       const trimmed = input.trim();
 
       if (!trimmed) continue;

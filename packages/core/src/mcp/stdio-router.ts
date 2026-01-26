@@ -272,7 +272,16 @@ export class StdioRouter extends EventEmitter {
       const toolName = request.params?.name || '';
       const serverName = this.getServerForTool(toolName);
       if (serverName) {
-        return this.routeToServer(serverName, request);
+        // Strip the server prefix from tool name before sending to backend
+        const originalToolName = this.stripServerPrefix(toolName, serverName);
+        const modifiedRequest = {
+          ...request,
+          params: {
+            ...request.params,
+            name: originalToolName,
+          },
+        };
+        return this.routeToServer(serverName, modifiedRequest);
       }
     }
 
@@ -347,6 +356,18 @@ export class StdioRouter extends EventEmitter {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Strip server prefix from tool name
+   * e.g., "mycelium-sandbox__bash" -> "bash"
+   */
+  private stripServerPrefix(toolName: string, serverName: string): string {
+    const prefix = `${serverName}__`;
+    if (toolName.startsWith(prefix)) {
+      return toolName.slice(prefix.length);
+    }
+    return toolName;
   }
 
   /**
