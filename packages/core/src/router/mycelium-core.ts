@@ -287,6 +287,16 @@ export class MyceliumCore extends EventEmitter {
         this.state.availableRoles.set(role.id, role);
       }
 
+      // Re-register ROUTER_TOOLS now that roles are loaded
+      // (discoverAllTools was called before roles were loaded, so ROUTER_TOOLS may have been skipped)
+      const skillDefinedRouterTools = ROUTER_TOOLS.filter(
+        tool => this.roleManager.isToolDefinedInAnySkill(tool.name)
+      );
+      if (skillDefinedRouterTools.length > 0) {
+        this.toolVisibility.registerTools(skillDefinedRouterTools, 'mycelium-router');
+        this.logger.info(`Registered ${skillDefinedRouterTools.length} router tools after loading roles`);
+      }
+
       // Set default role and apply tool filtering
       const defaultRole = this.roleManager.getDefaultRole();
       if (defaultRole) {

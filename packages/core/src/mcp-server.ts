@@ -303,8 +303,15 @@ async function main() {
     // Build tools list from backend and router tools
     const allTools = [...backendTools];
 
+    // Track existing tool names to avoid duplicates
+    const existingToolNames = new Set(backendTools.map((t: any) => t.name));
+
     // Add router-level tools if current role/skill has access (defined in ROUTER_TOOLS)
+    // Only add if not already included in backendTools
     for (const tool of ROUTER_TOOLS) {
+      if (existingToolNames.has(tool.name)) {
+        continue;  // Already included from backendTools
+      }
       try {
         routerCore.checkToolAccess(tool.name);
         allTools.push(tool);

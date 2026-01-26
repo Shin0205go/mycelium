@@ -3,9 +3,8 @@ name: common
 description: 全ロール共通で使用できる基本ツール。スキル情報の取得やリソースへのアクセスを提供。
 
 # MYCELIUM RBAC extensions
-# Note: Add specific roles that need these tools
+# Note: orchestrator は subAgent 委譲のみ（run_script は worker 側で実行）
 allowedRoles:
-  - orchestrator
   - admin
   - developer
   - analyst
