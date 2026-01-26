@@ -128,7 +128,7 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
     lines.push('; Basic process operations');
     lines.push('(allow process-fork)');
     lines.push('(allow process-exec)');
-    lines.push('(allow signal (target self))');
+    lines.push('(allow signal)');  // Allow signaling any process (needed for test runners)
     lines.push('');
 
     // System calls needed for basic operation
@@ -147,23 +147,30 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
     lines.push('(allow file-read*)');
     lines.push('');
 
-    // Write paths
-    if (this.config.filesystem.writePaths.length > 0) {
-      lines.push('; Allowed write paths');
-      lines.push('(allow file-write*');
-      for (const p of this.config.filesystem.writePaths) {
-        const resolved = this.resolvePath(p);
+    // Write paths - always include working directory for common operations
+    lines.push('; Allowed write paths');
+    lines.push('(allow file-write*');
+    lines.push(`  (subpath "${this.escapePath(this.config.workingDirectory)}")`);
+    for (const p of this.config.filesystem.writePaths) {
+      const resolved = this.resolvePath(p);
+      if (resolved !== this.config.workingDirectory) {
         lines.push(`  (subpath "${this.escapePath(resolved)}")`);
       }
-      lines.push(')');
-      lines.push('');
     }
+    lines.push(')');
+    lines.push('');
 
-    // Temp directory
+    // Temp directory - include both symlink and real paths
+    // /var -> private/var, so /var/folders is really /private/var/folders
+    const tmpDir = os.tmpdir();
+    const realTmpDir = tmpDir.replace(/^\/var\//, '/private/var/');
     lines.push('; Temp directory');
     lines.push('(allow file-read* file-write*');
     lines.push('  (subpath "/private/tmp")');
-    lines.push(`  (subpath "${this.escapePath(os.tmpdir())}")`);
+    lines.push(`  (subpath "${this.escapePath(tmpDir)}")`);
+    if (tmpDir !== realTmpDir) {
+      lines.push(`  (subpath "${this.escapePath(realTmpDir)}")`);
+    }
     lines.push(')');
     lines.push('');
 
