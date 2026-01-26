@@ -7,5 +7,5 @@ allowedRoles:
   - orchestrator
 allowedTools:
   - mycelium-router__list_roles
-  - mycelium-router__spawn_sub_agent
+  # Note: サブエージェントはSDKのTaskツールで生成（spawn_sub_agentは廃止）
   # Note: スキル情報はlist_rolesの結果に含まれる

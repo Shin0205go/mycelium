@@ -42,6 +42,8 @@ interface ApprovalInfo {
 
 export interface AdhocAgentConfig {
   model?: string;
+  /** Role to use (default: adhoc, can be overridden for sub-agent spawning) */
+  role?: string;
   contextPath?: string;
   systemPrompt?: string;
   useApiKey?: boolean;
@@ -99,7 +101,7 @@ export function createAdhocAgentOptions(
     model: config.model,
     systemPrompt,
     useApiKey: config.useApiKey,
-    currentRole: 'adhoc',
+    currentRole: config.role || 'adhoc',  // Use custom role or default to adhoc
     maxTurns: 50,
   });
 }

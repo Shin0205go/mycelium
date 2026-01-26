@@ -190,7 +190,8 @@ export class InteractiveCLI {
     // Load dynamic commands from skills (including session commands)
     await this.loadSkillCommands();
 
-    await this.switchRole(this.currentRole);
+    // Initialize state from router context (role is already set via MYCELIUM_CURRENT_ROLE env var)
+    await this.initializeFromContext();
     this.startREPL();
   }
 
@@ -408,115 +409,59 @@ export class InteractiveCLI {
     }
   }
 
-  private async switchRole(roleId: string): Promise<void> {
+  /**
+   * Initialize state from router context
+   * Role is already set via MYCELIUM_CURRENT_ROLE env var - no switching needed
+   */
+  private async initializeFromContext(): Promise<void> {
     try {
-      console.log(chalk.gray(`Switching to role: ${roleId}...`));
-      this.manifest = await this.mcp.switchRole(roleId);
-      this.currentRole = roleId;
+      const context = await this.mcp.getContext();
+      this.currentRole = context.role?.id || 'default';
 
-      // Register tool commands from available tools
-      this.registerToolCommands(this.manifest.availableTools);
+      // Get tools list to register tool commands
+      const tools = await this.mcp.listTools() as Array<{ name: string; description?: string }>;
+      // Map to expected format with source field
+      const toolsWithSource = tools.map(t => ({
+        name: t.name,
+        source: t.name.split('__')[0] || 'unknown',
+        description: t.description
+      }));
+      this.registerToolCommands(toolsWithSource);
 
-      console.log(chalk.green(`\n✓ Role: ${chalk.bold(this.manifest.role.name)}`));
-      console.log(chalk.gray(`  ${this.manifest.role.description}`));
-      console.log(chalk.gray(`  Tools: ${this.manifest.metadata.toolCount} (${this.toolCommands.size} as commands)`));
-      console.log(chalk.gray(`  Servers: ${this.manifest.availableServers.join(', ')}\n`));
+      console.log(chalk.green(`✓ Role: ${chalk.bold(context.role?.name || this.currentRole)}`));
+      console.log(chalk.gray(`  Tools: ${tools.length} (${this.toolCommands.size} as commands)`));
+      console.log(chalk.gray(`  Servers: ${context.availableServers?.join(', ') || 'none'}\n`));
     } catch (error: unknown) {
       const err = error as Error;
-      console.error(chalk.red(`Failed to switch role: ${err.message}`));
+      console.error(chalk.red(`Failed to initialize: ${err.message}`));
     }
   }
 
+  /**
+   * List available roles (display only - no switching)
+   * Role changes require spawning a new agent with different MYCELIUM_CURRENT_ROLE
+   */
   private async listRoles(): Promise<void> {
     try {
       const result = await this.mcp.listRoles();
-      const selectedRole = await this.interactiveRoleSelector(result.roles);
 
-      if (selectedRole && selectedRole !== this.currentRole) {
-        await this.switchRole(selectedRole);
-        this.rl!.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
+      console.log(chalk.bold('\nAvailable Roles:\n'));
+      for (const role of result.roles) {
+        const isCurrent = role.id === this.currentRole;
+        const marker = isCurrent ? chalk.green('●') : chalk.gray('○');
+        const name = isCurrent ? chalk.green(role.name) : role.name;
+        console.log(`  ${marker} ${name} (${role.toolCount} tools)`);
+        if (role.skills && role.skills.length > 0) {
+          console.log(chalk.gray(`    Skills: ${role.skills.join(', ')}`));
+        }
       }
+      console.log(chalk.gray('\n  Note: Use spawn_sub_agent to delegate tasks to other roles\n'));
     } catch (error: unknown) {
       const err = error as Error;
       console.error(chalk.red(`Failed to list roles: ${err.message}`));
     }
   }
 
-  private async interactiveRoleSelector(roles: ListRolesResult['roles']): Promise<string | null> {
-    return new Promise((resolve) => {
-      let selectedIndex = roles.findIndex(r => r.isCurrent);
-      if (selectedIndex === -1) selectedIndex = 0;
-
-      const render = () => {
-        process.stdout.write('\x1B[?25l');
-        console.log(chalk.cyan('\nSelect Role:') + chalk.gray(' (↑↓: move, Enter: select, q: cancel)\n'));
-
-        for (let i = 0; i < roles.length; i++) {
-          const role = roles[i];
-          const isSelected = i === selectedIndex;
-          const isCurrent = role.isCurrent;
-
-          const marker = isSelected ? chalk.cyan('▶') : ' ';
-          const name = isSelected ? chalk.cyan.bold(role.id) : (isCurrent ? chalk.green(role.id) : role.id);
-          const currentTag = isCurrent ? chalk.green(' (current)') : '';
-
-          console.log(`  ${marker} ${name}${currentTag}`);
-          console.log(chalk.gray(`    Skills: ${role.skills.join(', ') || 'none'}`));
-          console.log(chalk.gray(`    Tools: ${role.toolCount} | Servers: ${role.serverCount}\n`));
-        }
-      };
-
-      const clearScreen = () => {
-        const totalLines = roles.length * 4 + 3;
-        process.stdout.write(`\x1B[${totalLines}A`);
-        for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\x1B[2K\n');
-        }
-        process.stdout.write(`\x1B[${totalLines}A`);
-      };
-
-      render();
-
-      const wasRaw = process.stdin.isRaw;
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
-      }
-      process.stdin.resume();
-
-      const cleanup = () => {
-        if (process.stdin.isTTY) {
-          process.stdin.setRawMode(wasRaw || false);
-        }
-        process.stdin.removeListener('data', onKeyPress);
-        process.stdout.write('\x1B[?25h');
-      };
-
-      const onKeyPress = (key: Buffer) => {
-        const keyStr = key.toString();
-
-        if (keyStr === '\x1B[A' || keyStr === 'k') {
-          clearScreen();
-          selectedIndex = (selectedIndex - 1 + roles.length) % roles.length;
-          render();
-        } else if (keyStr === '\x1B[B' || keyStr === 'j') {
-          clearScreen();
-          selectedIndex = (selectedIndex + 1) % roles.length;
-          render();
-        } else if (keyStr === '\r' || keyStr === '\n') {
-          clearScreen();
-          cleanup();
-          resolve(roles[selectedIndex].id);
-        } else if (keyStr === 'q' || keyStr === '\x1B' || keyStr === '\x03') {
-          clearScreen();
-          cleanup();
-          console.log(chalk.gray('Cancelled'));
-          resolve(null);
-        }
-      };
-
-      process.stdin.on('data', onKeyPress);
-    });
-  }
 
   private completer(line: string): [string[], string] {
     if (line.startsWith('/')) {
@@ -830,7 +775,6 @@ export class InteractiveCLI {
       });
 
       let hasStartedOutput = false;
-      let pendingRoleSwitch: string | null = null;
 
       for await (const msg of queryResult) {
         if (msg.type === 'system' && msg.subtype === 'init') {
@@ -866,12 +810,6 @@ export class InteractiveCLI {
               }
               spinner.text = status;
               if (!spinner.isSpinning) spinner.start();
-
-              if (shortName === 'set_role') {
-                if (input.role_id && input.role_id !== 'list') {
-                  pendingRoleSwitch = input.role_id as string;
-                }
-              }
             }
           }
         }
@@ -882,15 +820,6 @@ export class InteractiveCLI {
             if (block.type === 'tool_result') {
               if (block.is_error) {
                 console.log(chalk.red(`\n  ❌ Tool error: ${JSON.stringify(block.content).substring(0, 200)}`));
-                pendingRoleSwitch = null;
-              } else if (pendingRoleSwitch) {
-                this.currentRole = pendingRoleSwitch;
-                this.rl?.setPrompt(chalk.cyan(`[${this.currentRole}] `) + chalk.gray('> '));
-                console.log(chalk.green(`\n  ✓ Role switched to: ${this.currentRole}`));
-                this.mcp.switchRole(pendingRoleSwitch).then(manifest => {
-                  this.manifest = manifest;
-                }).catch(() => {});
-                pendingRoleSwitch = null;
               }
             }
           }

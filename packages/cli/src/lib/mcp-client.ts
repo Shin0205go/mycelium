@@ -276,29 +276,6 @@ export class MCPClient extends EventEmitter {
     }
   }
 
-  async switchRole(roleId: string): Promise<AgentManifest> {
-    const result = await this.sendRequest('tools/call', {
-      name: 'set_role',
-      arguments: { role_id: roleId }
-    }) as { content?: Array<{ text?: string }>; isError?: boolean };
-
-    const text = result?.content?.[0]?.text;
-    if (!text) {
-      throw new Error('Failed to switch role: no response');
-    }
-
-    // Check if response is an error message (not JSON)
-    if (result.isError || text.startsWith('Error:') || text.startsWith('Access denied:')) {
-      throw new Error(text);
-    }
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error(`Failed to switch role: ${text}`);
-    }
-  }
-
   async getContext(): Promise<RouterContext> {
     const result = await this.sendRequest('tools/call', {
       name: 'mycelium-router__get_context',

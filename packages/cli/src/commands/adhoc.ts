@@ -16,6 +16,7 @@ export const adhocCommand = new Command('adhoc')
   .description('Full tool access for investigation and fixes')
   .argument('[task]', 'Task to execute (optional, starts interactive mode if not provided)')
   .option('-m, --model <model>', 'Model to use', 'claude-sonnet-4-5-20250929')
+  .option('-r, --role <role>', 'Role to use (default: adhoc)')
   .option('-c, --context <path>', 'Path to workflow context file (from failed workflow)')
   .option('--api-key', 'Use ANTHROPIC_API_KEY for authentication')
   .option('--auto-approve', 'Auto-approve dangerous tool operations (non-interactive mode only)')
@@ -23,6 +24,7 @@ export const adhocCommand = new Command('adhoc')
   .action(async (task, options) => {
     const agent = new AdhocAgent({
       model: options.model,
+      role: options.role,  // Pass custom role
       contextPath: options.context,
       useApiKey: options.apiKey,
       autoApprove: options.autoApprove,

@@ -48,32 +48,6 @@ export const ROUTER_TOOLS: Tool[] = [
       properties: {},
     },
   },
-  {
-    name: 'mycelium-router__spawn_sub_agent',
-    description: 'Spawn a sub-agent with a specific role to handle a task. The sub-agent runs independently with its own tools and capabilities based on the role. Use this to delegate specialized tasks to role-specific agents.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        role: {
-          type: 'string',
-          description: 'The role for the sub-agent (e.g., "mentor", "frontend", "guest")',
-        },
-        task: {
-          type: 'string',
-          description: 'The task/prompt to send to the sub-agent',
-        },
-        model: {
-          type: 'string',
-          description: 'Optional: Model to use (default: claude-3-5-haiku-20241022)',
-        },
-        interactive: {
-          type: 'boolean',
-          description: 'If true, opens a new terminal window for interactive session with the sub-agent (macOS only)',
-        },
-      },
-      required: ['role', 'task'],
-    },
-  },
 ];
 
 /**

@@ -17,6 +17,7 @@ import {
   type WorkflowContext,
 } from '../lib/context.js';
 import { createAgentOptions } from '../lib/agent.js';
+import { createBanner, createSpinner } from '../lib/ui.js';
 import { AdhocAgent } from './adhoc-agent.js';
 
 export interface WorkflowAgentConfig {
@@ -98,6 +99,8 @@ async function saveFailureContext(
 export class WorkflowAgent {
   private config: WorkflowAgentConfig;
   private rl: readline.Interface | null = null;
+  private sdk: any = null;
+  private isProcessing: boolean = false;
   private lastScriptCall: {
     skillId: string;
     scriptPath: string;
@@ -112,63 +115,61 @@ export class WorkflowAgent {
    * Run the workflow agent interactively
    */
   async run(): Promise<void> {
-    const sdk = await import('@anthropic-ai/claude-agent-sdk');
+    this.sdk = await import('@anthropic-ai/claude-agent-sdk');
 
-    console.log(chalk.cyan('┌─────────────────────────────────────┐'));
-    console.log(chalk.cyan('│  Workflow Agent                     │'));
-    console.log(chalk.cyan('│  Type your request or /help         │'));
-    console.log(chalk.cyan('└─────────────────────────────────────┘'));
-    console.log();
+    console.log(createBanner());
+    console.log(chalk.gray('    Workflow Orchestrator | /help for commands\n'));
 
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
+      prompt: chalk.yellow('orchestrator> '),
     });
 
-    let stdinClosed = false;
-    const prompt = (): Promise<string | null> => {
-      return new Promise((resolve) => {
-        if (stdinClosed) {
-          resolve(null);
-          return;
-        }
-        this.rl!.question(chalk.green('workflow> '), (answer) => {
-          resolve(answer);
-        });
-      });
-    };
+    // Handle line input (event-driven, more robust than question())
+    this.rl.on('line', async (line) => {
+      const input = line.trim();
 
-    // Handle stdin close gracefully
-    this.rl.on('close', () => {
-      stdinClosed = true;
-    });
-
-    while (true) {
-      let input: string | null;
-      try {
-        input = await prompt();
-      } catch {
-        // readline closed (stdin ended)
-        break;
+      if (!input) {
+        this.rl!.prompt();
+        return;
       }
 
-      if (input === null) break;
-      const trimmed = input.trim();
-
-      if (!trimmed) continue;
+      // Prevent concurrent processing
+      if (this.isProcessing) {
+        console.log(chalk.dim('(processing...)'));
+        return;
+      }
 
       // Handle commands
-      if (trimmed.startsWith('/')) {
-        const handled = await this.handleCommand(trimmed);
-        if (handled === 'exit') break;
-        continue;
+      if (input.startsWith('/')) {
+        const handled = await this.handleCommand(input);
+        if (handled === 'exit') {
+          this.rl!.close();
+          return;
+        }
+        this.rl!.prompt();
+        return;
       }
 
       // Process with LLM
-      await this.processInput(trimmed, sdk);
-    }
+      this.isProcessing = true;
+      try {
+        await this.processInput(input, this.sdk);
+      } finally {
+        this.isProcessing = false;
+        this.rl!.prompt();
+      }
+    });
 
-    this.rl.close();
+    // Handle close event
+    this.rl.on('close', () => {
+      console.log(chalk.gray('\nGoodbye!\n'));
+      process.exit(0);
+    });
+
+    // Start prompting
+    this.rl.prompt();
   }
 
   /**
@@ -209,6 +210,9 @@ ${chalk.bold('Commands:')}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     sdk: any
   ): Promise<void> {
+    const spinner = createSpinner('Thinking...');
+    spinner.start();
+
     try {
       const options = createWorkflowAgentOptions(this.config);
       const queryResult = await sdk.query({ prompt: input, options });
@@ -218,14 +222,23 @@ ${chalk.bold('Commands:')}
       for await (const message of queryResult) {
         // Handle text output
         if (message.type === 'assistant' && message.message?.content) {
+          let hasTextBlock = false;
           for (const block of message.message.content) {
             if (block.type === 'text') {
-              console.log(block.text);
+              // Stop spinner and display AI response with header
+              spinner.stop();
+              if (!hasTextBlock) {
+                console.log(chalk.cyan('\n● [Orchestrator]'));
+                hasTextBlock = true;
+              }
+              console.log(chalk.cyan(block.text));
             } else if (block.type === 'tool_use') {
-              // Show all tool calls for transparency
-              console.log(chalk.cyan(`\n[Using: ${block.name}]`));
+              // Update spinner with tool info
+              const toolName = block.name.split('__').pop() || block.name;
+              spinner.text = `Running ${toolName}...`;
+              if (!spinner.isSpinning) spinner.start();
 
-              // Track run_script calls specifically
+              // Track run_script calls for failure context
               if (block.name === 'mycelium-skills__run_script') {
                 this.lastScriptCall = {
                   skillId: (block.input as any)?.skill || '',
@@ -238,22 +251,31 @@ ${chalk.bold('Commands:')}
         }
 
         // Handle tool results
-        // Check for tool results (type assertion needed due to SDK types)
         if ((message as any).type === 'tool_result') {
-          const result = parseScriptResult((message as any).result);
+          const toolResult = (message as any).result;
+
+          // Check for script failures
+          const result = parseScriptResult(toolResult);
           if (result && !result.success) {
             lastFailedResult = result;
           }
+
+          // Reset spinner for next action
+          spinner.text = 'Thinking...';
         }
 
         // Handle final result
         if (message.type === 'result') {
+          spinner.stop();
           if (message.subtype !== 'success' || lastFailedResult) {
             await this.handleFailure(lastFailedResult);
           }
         }
       }
+
+      spinner.stop();
     } catch (error) {
+      spinner.stop();
       console.error(chalk.red(`Error: ${(error as Error).message}`));
     }
   }

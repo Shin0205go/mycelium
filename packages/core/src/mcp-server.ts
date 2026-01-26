@@ -15,7 +15,6 @@ import {
 
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 import { Logger } from './utils/logger.js';
 import { MyceliumCore, createMyceliumCore, ROUTER_TOOLS } from './router/mycelium-core.js';
 
@@ -25,191 +24,7 @@ const __dirname = dirname(__filename);
 // Go up from dist/ -> packages/core/ -> packages/ -> project root
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
-// Path to mycelium-cli for sub-agent spawning
-const MYCELIUM_CLI_PATH = process.env.MYCELIUM_CLI_PATH ||
-  join(PROJECT_ROOT, 'packages', 'cli', 'dist', 'index.js');
-
 const logger = new Logger('info');
-
-/**
- * Spawn a sub-agent with a specific role
- * Streams progress to logger for visibility
- */
-async function spawnSubAgent(
-  role: string,
-  task: string,
-  model?: string
-): Promise<{
-  success: boolean;
-  role: string;
-  result?: string;
-  error?: string;
-  toolsUsed?: string[];
-  usage?: { inputTokens: number; outputTokens: number; costUSD: number };
-  streamedOutput?: string;
-}> {
-  return new Promise((resolve, reject) => {
-    // Don't use --json so we can stream output
-    const args = ['--role', role];
-    if (model) {
-      args.push('--model', model);
-    }
-    args.push(task);
-
-    logger.info(`\n${'='.repeat(60)}`);
-    logger.info(`🤖 Sub-Agent [${role}] Starting...`);
-    logger.info(`📝 Task: ${task.substring(0, 100)}${task.length > 100 ? '...' : ''}`);
-    logger.info(`${'='.repeat(60)}\n`);
-
-    const child = spawn('node', [MYCELIUM_CLI_PATH, ...args], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        MYCELIUM_CURRENT_ROLE: role  // Pass role to sub-agent's mycelium-router
-      },
-    });
-
-    let stdout = '';
-    let stderr = '';
-    const toolsUsed: string[] = [];
-
-    child.stdout.on('data', (data) => {
-      const text = data.toString();
-      stdout += text;
-
-      // Stream output with prefix
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (line.trim()) {
-          // Check for tool usage
-          const toolMatch = line.match(/⚙️\s+Using:\s+(\S+)/);
-          if (toolMatch) {
-            toolsUsed.push(toolMatch[1]);
-          }
-          logger.info(`[${role}] ${line}`);
-        }
-      }
-    });
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-      // Log errors/warnings from sub-agent
-      const lines = data.toString().split('\n');
-      for (const line of lines) {
-        if (line.trim() && !line.includes('[mycelium]')) {
-          logger.info(`[${role}:err] ${line.trim()}`);
-        }
-      }
-    });
-
-    child.on('close', (code) => {
-      logger.info(`\n${'='.repeat(60)}`);
-      logger.info(`🏁 Sub-Agent [${role}] Completed (exit: ${code})`);
-      logger.info(`${'='.repeat(60)}\n`);
-
-      // Extract the actual response (after "Claude: ")
-      const claudeMatch = stdout.match(/Claude:\s*([\s\S]*?)(?:\n\s*📊|$)/);
-      const result = claudeMatch ? claudeMatch[1].trim() : stdout.trim();
-
-      // Extract usage info
-      const usageMatch = stdout.match(/Tokens:\s*(\d+)\s*in\s*\/\s*(\d+)\s*out.*\$([0-9.]+)/);
-      const usage = usageMatch ? {
-        inputTokens: parseInt(usageMatch[1]),
-        outputTokens: parseInt(usageMatch[2]),
-        costUSD: parseFloat(usageMatch[3])
-      } : undefined;
-
-      resolve({
-        success: code === 0,
-        role,
-        result,
-        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
-        usage,
-        streamedOutput: stdout
-      });
-    });
-
-    child.on('error', (error) => {
-      reject(error);
-    });
-
-    // Timeout after 5 minutes
-    setTimeout(() => {
-      child.kill();
-      reject(new Error('Sub-agent timeout (5 minutes)'));
-    }, 5 * 60 * 1000);
-  });
-}
-
-/**
- * Spawn an interactive sub-agent in a new terminal window (macOS)
- * Uses AppleScript to open Terminal, start mycelium-cli, switch role, and send initial prompt
- */
-async function spawnInteractiveSubAgent(
-  role: string,
-  initialPrompt: string,
-  model?: string
-): Promise<void> {
-  const { exec } = await import('child_process');
-  const fs = await import('fs/promises');
-  const os = await import('os');
-  const path = await import('path');
-
-  // Create AppleScript file (easier to handle escaping)
-  const tmpDir = os.tmpdir();
-  const scriptPath = path.join(tmpDir, `mycelium-subagent-${Date.now()}.scpt`);
-
-  // Escape strings for AppleScript
-  const escapeForAppleScript = (s: string) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  const escapedRole = escapeForAppleScript(role);
-  const escapedPrompt = escapeForAppleScript(initialPrompt);
-  const escapedCliPath = escapeForAppleScript(MYCELIUM_CLI_PATH);
-
-  // Build the task prompt
-  const fullPrompt = `以下のタスクを実行してください：
-
-${initialPrompt}`;
-
-  // Escape for keystroke (different escaping)
-  const keystrokePrompt = fullPrompt.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-
-  const appleScript = `
-tell application "Terminal"
-    activate
-
-    -- Open new window with mycelium-cli (with role env var)
-    do script "clear && echo '🤖 MYCELIUM Sub-Agent [${escapedRole}]' && echo '' && MYCELIUM_CURRENT_ROLE=${escapedRole} node \\"${escapedCliPath}\\""
-
-    -- Wait for CLI to start
-    delay 6
-
-    -- Send the prompt as keystrokes
-    tell application "System Events"
-        tell process "Terminal"
-            keystroke "${keystrokePrompt}"
-            keystroke return
-        end tell
-    end tell
-end tell
-`;
-
-  await fs.writeFile(scriptPath, appleScript);
-
-  return new Promise((resolve, reject) => {
-    exec(`osascript "${scriptPath}"`, (error, stdout, stderr) => {
-      // Clean up
-      fs.unlink(scriptPath).catch(() => {});
-
-      if (error) {
-        logger.error('Failed to open Terminal window:', error);
-        reject(error);
-      } else {
-        logger.info(`Opened interactive sub-agent window for role: ${role}`);
-        resolve();
-      }
-    });
-  });
-}
 
 async function main() {
   logger.info('Starting MYCELIUM Router MCP Server...', { projectRoot: PROJECT_ROOT });
@@ -336,8 +151,7 @@ async function main() {
     // Check tool access (skip for router system tools - always available)
     const ROUTER_SYSTEM_TOOLS = [
       'mycelium-router__get_context',
-      'mycelium-router__list_roles',
-      'mycelium-router__spawn_sub_agent'
+      'mycelium-router__list_roles'
     ];
     // Also skip check if tool name ends with system tool suffix
     const isSystemTool = ROUTER_SYSTEM_TOOLS.includes(name) ||
@@ -349,66 +163,6 @@ async function main() {
         logger.warn(`🚫 Tool access denied: ${name}`);
         return {
           content: [{ type: 'text', text: `Access denied: ${error.message}` }],
-          isError: true,
-        };
-      }
-    }
-
-    // Handle spawn_sub_agent
-    if (name === 'mycelium-router__spawn_sub_agent' || name.endsWith('__spawn_sub_agent')) {
-      logger.info(`🚀 Spawning sub-agent`);
-      const { role, task, model, interactive } = args as {
-        role: string;
-        task: string;
-        model?: string;
-        interactive?: boolean;
-      };
-
-      if (!role || !task) {
-        return {
-          content: [{ type: 'text', text: 'Error: role and task are required' }],
-          isError: true,
-        };
-      }
-
-      try {
-        if (interactive) {
-          // Open in new terminal window
-          await spawnInteractiveSubAgent(role, task, model);
-          return {
-            content: [{
-              type: 'text',
-              text: `Opened interactive sub-agent in new terminal window with role: ${role}`,
-            }],
-          };
-        } else {
-          const result = await spawnSubAgent(role, task, model);
-
-          // Format output to show sub-agent activity
-          let output = `\n${'═'.repeat(50)}\n`;
-          output += `🤖 Sub-Agent [${result.role}] Result\n`;
-          output += `${'═'.repeat(50)}\n\n`;
-
-          if (result.toolsUsed && result.toolsUsed.length > 0) {
-            output += `🔧 Tools Used: ${result.toolsUsed.join(', ')}\n\n`;
-          }
-
-          output += result.result || '(no output)';
-
-          if (result.usage) {
-            output += `\n\n📊 Usage: ${result.usage.inputTokens} in / ${result.usage.outputTokens} out | $${result.usage.costUSD.toFixed(4)}`;
-          }
-
-          output += `\n${'═'.repeat(50)}\n`;
-
-          return {
-            content: [{ type: 'text', text: output }],
-          };
-        }
-      } catch (error: any) {
-        logger.error('Sub-agent spawn failed:', error);
-        return {
-          content: [{ type: 'text', text: `Error: ${error.message}` }],
           isError: true,
         };
       }
