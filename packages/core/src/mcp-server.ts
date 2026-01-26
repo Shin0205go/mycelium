@@ -267,6 +267,18 @@ async function main() {
   await routerCore.loadRolesFromSkillsServer();
   logger.info('Roles loaded');
 
+  // Set initial role if MYCELIUM_CURRENT_ROLE is set
+  const currentRoleEnv = process.env.MYCELIUM_CURRENT_ROLE;
+  if (currentRoleEnv) {
+    logger.info(`Switching to role from env: ${currentRoleEnv}`);
+    try {
+      await routerCore.setRole({ role: currentRoleEnv });
+      logger.info(`Role switched to: ${currentRoleEnv}`);
+    } catch (error) {
+      logger.warn(`Failed to switch to role '${currentRoleEnv}':`, error);
+    }
+  }
+
   // Set initial skill if MYCELIUM_CURRENT_SKILL is set
   const currentSkillEnv = process.env.MYCELIUM_CURRENT_SKILL;
   if (currentSkillEnv) {
