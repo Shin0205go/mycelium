@@ -222,14 +222,16 @@ ${chalk.bold('Commands:')}
             if (block.type === 'text') {
               console.log(block.text);
             } else if (block.type === 'tool_use') {
-              // Track run_script calls
+              // Show all tool calls for transparency
+              console.log(chalk.cyan(`\n[Using: ${block.name}]`));
+
+              // Track run_script calls specifically
               if (block.name === 'mycelium-skills__run_script') {
                 this.lastScriptCall = {
                   skillId: (block.input as any)?.skill || '',
                   scriptPath: (block.input as any)?.path || '',
                   args: (block.input as any)?.args,
                 };
-                console.log(chalk.dim(`\n[Executing: ${this.lastScriptCall.skillId}/${this.lastScriptCall.scriptPath}]`));
               }
             }
           }

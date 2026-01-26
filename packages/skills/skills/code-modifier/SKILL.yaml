@@ -1,0 +1,27 @@
+# Code Modifier Skill
+# Allows reading and writing code files for refactoring and improvements
+name: code-modifier
+description: コードの作成・編集・リファクタリングを行うスキル。ファイルの読み書き、ディレクトリ作成、検索機能を提供。
+
+# MYCELIUM RBAC extensions
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+
+allowedTools:
+  # Read operations
+  - filesystem__read_file
+  - filesystem__read_text_file
+  - filesystem__read_multiple_files
+  - filesystem__list_directory
+  - filesystem__directory_tree
+  - filesystem__search_files
+  - filesystem__get_file_info
+  # Write operations
+  - filesystem__write_file
+  - filesystem__create_directory
+  - filesystem__move_file
+  # Sandbox for running builds/tests
+  - mycelium-sandbox__bash
+  - mycelium-sandbox__sandbox_exec
