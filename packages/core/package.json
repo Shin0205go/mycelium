@@ -26,9 +26,6 @@
   "license": "MIT",
   "dependencies": {
     "@mycelium/shared": "*",
-    "@mycelium/a2a": "*",
-    "@mycelium/gateway": "*",
-    "@mycelium/audit": "*",
     "@mycelium/skills": "*",
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@modelcontextprotocol/sdk": "^1.0.0",

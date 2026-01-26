@@ -281,22 +281,6 @@ packages/
 │       ├── sub-agent.test.ts
 │       └── ...
 │
-├── orchestrator/         # @mycelium/orchestrator - Worker Agent Management
-│   ├── src/
-│   │   ├── index.ts              # Package exports
-│   │   ├── orchestrator.ts       # Worker lifecycle management
-│   │   └── types.ts              # Worker, Task, Result types
-│   └── tests/
-│       └── orchestrator.test.ts
-│
-├── adhoc/                # @mycelium/adhoc - Unrestricted Agent for Edge Cases
-│   ├── src/
-│   │   ├── index.ts              # Package exports
-│   │   ├── adhoc-agent.ts        # Adhoc agent with approval workflow
-│   │   └── types.ts              # Adhoc types, DANGEROUS_TOOL_CATEGORIES
-│   └── tests/
-│       └── adhoc-agent.test.ts
-│
 ├── skills/               # @mycelium/skills - Skill MCP Server
 │   └── src/
 │       └── index.ts      # Skill definition loading and serving
@@ -327,8 +311,6 @@ packages/
 | `@mycelium/cli` | Command-line interface with workflow/adhoc modes | **エントリーポイント**: Workflow優先の実行フロー |
 | `@mycelium/shared` | Common types and interfaces | 型定義の一元管理 |
 | `@mycelium/core` | Integration layer with RBAC, MCP proxy | **中核**: ツールフィルタリングによるコンテキスト保護 |
-| `@mycelium/orchestrator` | Worker agent management | **並列実行**: スキル単位でワーカーを分離 |
-| `@mycelium/adhoc` | Unrestricted agent for edge cases | **例外処理**: 調査・デバッグ専用 |
 | `@mycelium/skills` | Skill MCP Server | **ツール定義**: 最小限のツールセットを宣言 |
 | `@mycelium/session` | Session persistence | 会話状態の保存・復元 |
 | `@mycelium/sandbox` | OS-level sandboxed execution | 安全なコード実行環境 |
@@ -485,7 +467,6 @@ mycelium skill templates                     # Show available templates
 
 # Policy verification
 mycelium policy check --role <role>          # Check permissions for role
-mycelium policy roles                        # List all available roles
 
 # MCP server management
 mycelium mcp start                           # Start MCP server
@@ -500,7 +481,6 @@ mycelium mcp stop                            # Stop running MCP server
 # Run skill-based workflows (limited to skill scripts)
 mycelium workflow                    # Start interactive workflow mode
 mycelium workflow "task"             # Execute a single workflow task
-mycelium workflow --list             # List available skills
 mycelium workflow --on-failure=auto  # Auto-escalate to adhoc on failure
 mycelium workflow --on-failure=exit  # Exit on failure (for CI)
 
@@ -539,21 +519,6 @@ Session Management Commands:
 - `/compress <id>` - Compress session to reduce size
 - `/fork <id>` - Fork session from a point
 - `/export <id>` - Export session (markdown, JSON, HTML)
-
-### Sub-Agent Mode
-```bash
-# Simple query
-mycelium-cli "What is 2+2?"
-
-# With specific role
-mycelium-cli --role mentor "Review this code"
-
-# JSON output for orchestration
-mycelium-cli --role frontend --json "Create a button"
-
-# Read from stdin
-echo "Explain this" | mycelium-cli --role mentor
-```
 
 ## Key Type Definitions
 
@@ -687,8 +652,6 @@ Tests use Vitest and are distributed across packages:
 | Package | Test Files | Description |
 |---------|------------|-------------|
 | `@mycelium/core` | 15+ | Router (mycelium-core, router-adapter), MCP (stdio-router, mcp-server, mcp-client), tool discovery, agent integration |
-| `@mycelium/orchestrator` | 1 | Worker management, task delegation, skill-based restrictions |
-| `@mycelium/adhoc` | 1 | Approval workflow, dangerous tool detection, event emission |
 | `@mycelium/cli` | 4 | CLI commands, workflow-agent, adhoc-agent, context handling |
 | `@mycelium/shared` | 1 | Error classes, type exports |
 | `@mycelium/skills` | 1 | YAML/MD parsing, skill filtering, MCP tool definitions |
@@ -1028,69 +991,6 @@ When granted, these tools become available:
 - `recall_memory` - Search and retrieve memories (with `all_roles=true` for admin)
 - `list_memories` - Get memory statistics
 
-### Orchestrator-Worker Pattern
-
-The Orchestrator manages skill-restricted worker agents:
-
-```typescript
-import { Orchestrator, createOrchestrator } from '@mycelium/orchestrator';
-
-const orchestrator = createOrchestrator({
-  logger,
-  maxConcurrentWorkers: 5,
-});
-
-// Load skills from MCP server
-await orchestrator.loadSkills(skills);
-
-// Spawn a worker with skill restrictions
-const worker = orchestrator.spawnWorker({
-  skillId: 'frontend-dev',
-  taskId: 'task-123',
-});
-
-// Worker can ONLY use tools allowed by 'frontend-dev' skill
-const result = await orchestrator.executeTask(worker.id, {
-  prompt: 'Create a React component',
-});
-```
-
-### Adhoc Agent Usage
-
-The Adhoc agent handles unrestricted tasks with approval workflow:
-
-```typescript
-import { AdhocAgent, createAdhocAgent } from '@mycelium/adhoc';
-
-const adhoc = createAdhocAgent({
-  logger,
-  requireApproval: true,  // Require approval for dangerous ops
-});
-
-// Set approval callback
-adhoc.setApprovalCallback(async (request) => {
-  console.log(`Approval needed: ${request.toolName} (${request.riskLevel})`);
-  // Return approval decision
-  return { requestId: request.id, approved: true, respondedAt: new Date() };
-});
-
-// Execute task
-const result = await adhoc.execute({
-  prompt: 'Fix the deployment script',
-});
-```
-
-#### Dangerous Tool Categories and Risk Levels
-
-The Adhoc Agent classifies tools by risk level for approval workflow:
-
-| Category | Tools | Risk Level |
-|----------|-------|------------|
-| `SHELL_EXEC` | `shell__exec`, `bash__run`, `sandbox__exec` | **critical** |
-| `FILE_WRITE` | `filesystem__write_file`, `filesystem__delete_file` | **high** |
-| `DATABASE` | `postgres__execute`, `database__write` | **high** |
-| `NETWORK` | `http__request`, `fetch__url` | **medium** |
-
 ## Code Style and Conventions
 
 - **TypeScript**: Strict mode enabled, ES2022 target
@@ -1113,7 +1013,7 @@ The Adhoc Agent classifies tools by risk level for approval workflow:
 
 ```
 [1] スキルを確認
-    $ mycelium workflow --list
+    $ mycelium skill list
 
 [2] Workflowで実行（推奨）
     $ mycelium workflow "run tests"
@@ -1172,9 +1072,6 @@ Roles are auto-generated from skill definitions. To add a new role:
 ```bash
 # Check what a role can access
 mycelium policy check --role developer
-
-# List all roles derived from skills
-mycelium policy roles
 ```
 
 ### Debugging（デバッグ）
