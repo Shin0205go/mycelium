@@ -10,6 +10,7 @@
  *   mycelium skill add/list  - Manage skills
  *   mycelium policy check    - Verify policies
  *   mycelium mcp start       - Start MCP server
+ *   mycelium config          - Manage configuration
  */
 
 import { Command } from 'commander';
@@ -19,6 +20,7 @@ import { policyCommand } from './commands/policy.js';
 import { mcpCommand } from './commands/mcp.js';
 import { workflowCommand } from './commands/workflow.js';
 import { adhocCommand } from './commands/adhoc.js';
+import { configCommand } from './commands/config.js';
 import { InteractiveCLI } from './lib/interactive-cli.js';
 
 const program = new Command();
@@ -38,6 +40,7 @@ program.addCommand(policyCommand);
 program.addCommand(mcpCommand);
 program.addCommand(workflowCommand);
 program.addCommand(adhocCommand);
+program.addCommand(configCommand);
 
 // Default action: run interactive mode when no subcommand is provided
 program.action(async () => {

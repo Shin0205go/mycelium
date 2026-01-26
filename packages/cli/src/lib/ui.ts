@@ -273,3 +273,52 @@ ${chalk.yellow('    ●───●───●')}     ${chalk.gray('           
 `;
   return art;
 }
+
+// ============================================================================
+// Formatting Utilities
+// ============================================================================
+
+/**
+ * Format JSON with syntax highlighting
+ */
+export function formatJSON(obj: any, indent: number = 2): string {
+  const json = JSON.stringify(obj, null, indent);
+  return json
+    .replace(/"([^"]+)":/g, chalk.blue('"$1"') + ':')
+    .replace(/: "([^"]*)"/g, ': ' + chalk.green('"$1"'))
+    .replace(/: (\d+)/g, ': ' + chalk.yellow('$1'))
+    .replace(/: (true|false)/g, ': ' + chalk.magenta('$1'))
+    .replace(/: null/g, ': ' + chalk.gray('null'));
+}
+
+/**
+ * Format YAML with syntax highlighting
+ */
+export function formatYAML(content: string): string {
+  return content
+    .split('\n')
+    .map(line => {
+      // Keys
+      if (line.match(/^(\s*)([a-zA-Z_][a-zA-Z0-9_]*):(.*)$/)) {
+        return line.replace(/^(\s*)([a-zA-Z_][a-zA-Z0-9_]*):(.*)$/, '$1' + chalk.blue('$2') + ':$3');
+      }
+      // String values
+      if (line.includes(': "') || line.includes(": '")) {
+        return line.replace(/(: ["'])([^"']*)(["'])/, '$1' + chalk.green('$2') + '$3');
+      }
+      // Numbers
+      if (line.match(/: \d+$/)) {
+        return line.replace(/(\d+)$/, chalk.yellow('$1'));
+      }
+      // Booleans
+      if (line.match(/: (true|false)$/)) {
+        return line.replace(/(true|false)$/, chalk.magenta('$1'));
+      }
+      // Comments
+      if (line.trim().startsWith('#')) {
+        return chalk.gray(line);
+      }
+      return line;
+    })
+    .join('\n');
+}
