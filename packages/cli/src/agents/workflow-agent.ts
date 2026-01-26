@@ -125,14 +125,34 @@ export class WorkflowAgent {
       output: process.stdout,
     });
 
-    const prompt = (): Promise<string> => {
+    let stdinClosed = false;
+    const prompt = (): Promise<string | null> => {
       return new Promise((resolve) => {
-        this.rl!.question(chalk.green('workflow> '), resolve);
+        if (stdinClosed) {
+          resolve(null);
+          return;
+        }
+        this.rl!.question(chalk.green('workflow> '), (answer) => {
+          resolve(answer);
+        });
       });
     };
 
+    // Handle stdin close gracefully
+    this.rl.on('close', () => {
+      stdinClosed = true;
+    });
+
     while (true) {
-      const input = await prompt();
+      let input: string | null;
+      try {
+        input = await prompt();
+      } catch {
+        // readline closed (stdin ended)
+        break;
+      }
+
+      if (input === null) break;
       const trimmed = input.trim();
 
       if (!trimmed) continue;
