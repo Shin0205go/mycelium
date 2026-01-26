@@ -160,6 +160,15 @@ export class DarwinSandboxExecutor extends SandboxExecutor {
     lines.push(')');
     lines.push('');
 
+    // Device files needed by common tools (git, etc.)
+    lines.push('; Device files');
+    lines.push('(allow file-write*');
+    lines.push('  (literal "/dev/null")');
+    lines.push('  (literal "/dev/zero")');
+    lines.push('  (literal "/dev/tty")');
+    lines.push(')');
+    lines.push('');
+
     // Temp directory - include both symlink and real paths
     // /var -> private/var, so /var/folders is really /private/var/folders
     const tmpDir = os.tmpdir();

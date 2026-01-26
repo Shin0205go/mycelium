@@ -1,0 +1,19 @@
+# Git Workflow Skill
+# Allows version control operations for development workflows
+name: git-workflow
+description: Gitバージョン管理操作を行うスキル。コミット、プッシュ、ブランチ操作、差分確認などを提供。
+
+# MYCELIUM RBAC extensions
+allowedRoles:
+  - developer
+  - senior-developer
+  - admin
+
+allowedTools:
+  # File operations for staging
+  - filesystem__read_file
+  - filesystem__list_directory
+  - filesystem__search_files
+  - filesystem__get_file_info
+  # Sandbox for git commands
+  - mycelium-sandbox__bash
