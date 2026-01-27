@@ -279,16 +279,36 @@ export class ChatAgent {
         console.error(chalk.red(`Error: ${(err as Error).message}`));
       } finally {
         this.isProcessing = false;
+        // Ensure stdin is still open after SDK query
+        if (!process.stdin.destroyed) {
+          process.stdin.resume();
+        }
         if (this.rl) {
           this.rl.prompt();
         }
       }
     });
 
-    // Handle close
+    // Handle close - only exit if not processing
     this.rl.on('close', () => {
+      if (this.isProcessing) {
+        // Unexpected close during processing - try to recover
+        console.log(chalk.dim('\n(readline closed unexpectedly, restarting...)'));
+        this.rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+          prompt: chalk.green('myc> '),
+        });
+        this.rl.prompt();
+        return;
+      }
       console.log(chalk.gray('\nGoodbye!\n'));
       process.exit(0);
+    });
+
+    // Handle stdin errors
+    process.stdin.on('error', (err) => {
+      console.error(chalk.red(`stdin error: ${err.message}`));
     });
 
     // Start prompting
