@@ -105,10 +105,11 @@ export class ChatAgent {
       },
     });
 
-    // Create intent classifier
+    // Create intent classifier (protect default skills from de-escalation)
     this.intentClassifier = createIntentClassifier({
       skills: this.skills,
       activeSkills: sessionState.getActiveSkills(),
+      protectedSkills: this.config.defaultSkills,
     });
   }
 

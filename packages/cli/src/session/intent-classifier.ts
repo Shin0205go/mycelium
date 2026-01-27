@@ -67,6 +67,9 @@ export interface IntentClassifierConfig {
 
   /** Custom trigger overrides */
   customTriggers?: Record<string, string[]>;
+
+  /** Skills that should never be de-escalated */
+  protectedSkills?: string[];
 }
 
 /**
@@ -76,10 +79,12 @@ export class IntentClassifier {
   private skills: Map<string, SkillDefinition>;
   private triggers: Map<string, string[]>;
   private activeSkills: Set<string>;
+  private protectedSkills: Set<string>;
 
   constructor(config: IntentClassifierConfig) {
     this.skills = new Map(config.skills.map((s) => [s.id, s]));
     this.activeSkills = new Set(config.activeSkills);
+    this.protectedSkills = new Set(config.protectedSkills || []);
 
     // Build trigger map: skill triggers from definition > default > custom override
     this.triggers = new Map();
@@ -132,10 +137,10 @@ export class IntentClassifier {
     }
 
     // If task is ending and we have new required skills,
-    // consider de-escalating skills not in the new set
+    // consider de-escalating skills not in the new set (except protected skills)
     if (isTaskEnding && requiredSkills.length > 0) {
       for (const activeSkill of this.activeSkills) {
-        if (!requiredSkills.includes(activeSkill)) {
+        if (!requiredSkills.includes(activeSkill) && !this.protectedSkills.has(activeSkill)) {
           deescalateSkills.push(activeSkill);
         }
       }
