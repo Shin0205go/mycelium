@@ -16,7 +16,7 @@ import {
   getDefaultContextPath,
   type WorkflowContext,
 } from '../lib/context.js';
-import { createAgentOptions } from '../lib/agent.js';
+import { createAgentOptions, type SubAgentDefinition } from '../lib/agent.js';
 import { createBanner, createSpinner } from '../lib/ui.js';
 import { AdhocAgent } from './adhoc-agent.js';
 
@@ -35,12 +35,39 @@ interface ScriptResult {
   stderr: string;
 }
 
-// Minimal system prompt - RBAC handles tool restrictions
-const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator. Use the available tools to complete user requests.`;
+// Sub-agents available to the orchestrator
+const ORCHESTRATOR_SUB_AGENTS: SubAgentDefinition[] = [
+  {
+    name: 'developer',
+    description: 'Developer agent for file operations, code reading/writing, and development tasks. Use this for any file access.',
+    prompt: 'You are a developer assistant. Read, analyze, and modify files as requested. Use the available tools to complete the task.',
+    tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash'],
+  },
+  {
+    name: 'admin',
+    description: 'Admin agent with full tool access for system administration, debugging, and complex tasks.',
+    prompt: 'You are an admin assistant with full access. Complete the requested task using all available tools.',
+  },
+];
+
+// System prompt for orchestrator
+const WORKFLOW_SYSTEM_PROMPT = `You are a Workflow Orchestrator. You have NO direct file or tool access. You MUST delegate ALL tasks to sub-agents using the Task tool.
+
+Available sub-agents (use Task tool with subagent_type parameter):
+- "developer": For file operations, code reading/writing, development tasks
+- "admin": For system administration, debugging, tasks requiring full access
+
+IMPORTANT: You cannot read files directly. Always use the Task tool to delegate.
+
+When asked to do anything, immediately use the Task tool:
+- subagent_type: "developer" or "admin"
+- prompt: Clear description of what to do
+- description: Brief summary (3-5 words)
+`;
 
 /**
  * Create agent options for Workflow Agent
- * Uses centralized createAgentOptions with orchestrator role
+ * Uses centralized createAgentOptions with orchestrator role and sub-agents
  */
 export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Record<string, unknown> {
   return createAgentOptions({
@@ -49,6 +76,7 @@ export function createWorkflowAgentOptions(config: WorkflowAgentConfig = {}): Re
     useApiKey: config.useApiKey,
     currentRole: 'orchestrator',
     maxTurns: 20,
+    subAgents: ORCHESTRATOR_SUB_AGENTS,
   });
 }
 
@@ -120,6 +148,9 @@ export class WorkflowAgent {
     console.log(createBanner());
     console.log(chalk.gray('    Workflow Orchestrator | /help for commands\n'));
 
+    // Ensure stdin stays open
+    process.stdin.resume();
+
     this.rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -156,9 +187,13 @@ export class WorkflowAgent {
       this.isProcessing = true;
       try {
         await this.processInput(input, this.sdk);
+      } catch (err) {
+        console.error(chalk.red(`Processing error: ${(err as Error).message}`));
       } finally {
         this.isProcessing = false;
-        this.rl!.prompt();
+        if (this.rl) {
+          this.rl.prompt();
+        }
       }
     });
 
@@ -166,6 +201,16 @@ export class WorkflowAgent {
     this.rl.on('close', () => {
       console.log(chalk.gray('\nGoodbye!\n'));
       process.exit(0);
+    });
+
+    // Catch uncaught errors
+    process.on('uncaughtException', (err) => {
+      console.error(chalk.red(`Uncaught exception: ${err.message}`));
+      console.error(err.stack);
+    });
+
+    process.on('unhandledRejection', (reason) => {
+      console.error(chalk.red(`Unhandled rejection: ${reason}`));
     });
 
     // Start prompting
@@ -176,7 +221,7 @@ export class WorkflowAgent {
    * Handle slash commands
    */
   private async handleCommand(input: string): Promise<string | void> {
-    const [cmd, ...args] = input.slice(1).split(' ');
+    const [cmd] = input.slice(1).split(' ');
 
     switch (cmd.toLowerCase()) {
       case 'help':
