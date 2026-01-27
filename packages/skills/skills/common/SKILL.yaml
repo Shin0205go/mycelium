@@ -8,6 +8,10 @@ allowedRoles:
   - admin
   - developer
   - analyst
+
+# This is a base skill - no specific triggers (always active)
+# triggers: []
+
 allowedTools:
   - mycelium-skills__get_skill
   - mycelium-skills__get_resource

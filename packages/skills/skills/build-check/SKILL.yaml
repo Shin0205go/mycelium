@@ -7,6 +7,17 @@ allowedRoles:
   - senior-developer
   - admin
 
+# Intent classification triggers
+triggers:
+  - ビルド
+  - build
+  - compile
+  - コンパイル
+  - bundle
+  - tsc
+  - 型チェック
+  - type check
+
 allowedTools:
   - mycelium-sandbox__bash
   - filesystem__read_file

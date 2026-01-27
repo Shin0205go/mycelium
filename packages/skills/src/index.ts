@@ -56,6 +56,7 @@ interface SkillCommand {
  * - allowedRoles: Roles that can use this skill
  * - allowedTools: MCP tools this skill grants access to
  * - commands: Custom slash commands this skill provides
+ * - triggers: Keywords for automatic intent-based skill detection
  */
 interface SkillDefinition {
   id: string;           // Internal ID (defaults to name)
@@ -65,6 +66,7 @@ interface SkillDefinition {
   allowedRoles: string[];  // Mycelium: roles that can use this skill
   allowedTools: string[];  // Mycelium: tools this skill grants
   commands?: SkillCommand[];  // Mycelium: custom slash commands
+  triggers?: string[];  // Keywords for auto-detection (e.g., ["編集", "edit", "modify"])
   version?: string;
   category?: string;
   tags?: string[];
@@ -86,6 +88,9 @@ interface RawSkillYaml {
   'allowed-roles'?: string[];
   allowedTools?: string[];
   'allowed-tools'?: string[];
+
+  // Intent classification triggers
+  triggers?: string[];     // Keywords for auto-detection
 
   // Custom slash commands
   commands?: SkillCommand[];
@@ -198,6 +203,7 @@ async function loadSkills(skillsDir: string): Promise<SkillDefinition[]> {
             description: manifest.description || '',
             allowedRoles: allowedRoles,
             allowedTools: allowedTools,
+            triggers: manifest.triggers,  // Keywords for intent-based auto-detection
             commands: manifest.commands,
             version: manifest.version,
             category: manifest.category,

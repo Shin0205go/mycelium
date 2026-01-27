@@ -9,6 +9,23 @@ allowedRoles:
   - senior-developer
   - admin
 
+# Intent classification triggers
+triggers:
+  - commit
+  - push
+  - pull
+  - branch
+  - merge
+  - git
+  - コミット
+  - プッシュ
+  - ブランチ
+  - マージ
+  - diff
+  - 差分
+  - ステージ
+  - stage
+
 allowedTools:
   # File operations for staging
   - filesystem__read_file
