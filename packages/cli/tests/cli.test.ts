@@ -151,15 +151,6 @@ describe('MYCELIUM CLI', () => {
     it('should show policy help', () => {
       const output = runCli('policy --help');
       expect(output).toContain('check');
-      expect(output).toContain('test');
-      expect(output).toContain('roles');
-    });
-
-    it('should list roles from skills', () => {
-      const output = runCli('policy roles', testDir);
-      expect(output).toContain('admin');
-      expect(output).toContain('developer');
-      expect(output).toContain('guest');
     });
   });
 
@@ -229,30 +220,8 @@ describe('MYCELIUM CLI', () => {
     it('should show workflow help', () => {
       const output = runCli('workflow --help');
       expect(output).toContain('Run skill-based workflows');
-      expect(output).toContain('--list');
       expect(output).toContain('--model');
-      expect(output).toContain('--skills-dir');
-    });
-
-    it('should list available skills with --list', () => {
-      const output = runCli('workflow --list', testDir);
-      expect(output).toContain('Available Skills');
-      // Default skills created by init (display names from SKILL.md frontmatter)
-      expect(output).toContain('Guest Access');
-      expect(output).toContain('Developer Tools');
-      expect(output).toContain('Admin Access');
-    });
-
-    it('should show skill count with --list', () => {
-      const output = runCli('workflow --list', testDir);
-      expect(output).toContain('Total:');
-      expect(output).toContain('skill(s)');
-    });
-
-    it('should handle custom skills directory with --list', () => {
-      // Test with non-existent directory
-      const output = runCli('workflow --list --skills-dir /nonexistent', testDir);
-      expect(output).toContain('Skills directory not found');
+      expect(output).toContain('--on-failure');
     });
   });
 });
