@@ -467,3 +467,86 @@ export interface MCPServerConfig {
 export interface DesktopConfig {
   mcpServers: Record<string, MCPServerConfig>;
 }
+
+// ============================================================================
+// Session-based Skill Management Types
+// ============================================================================
+
+/**
+ * Extended skill definition with trigger keywords for intent classification
+ */
+export interface SkillDefinition extends BaseSkillDefinition {
+  /** Trigger keywords for automatic skill detection (optional) */
+  triggers?: string[];
+}
+
+/**
+ * Session state for dynamic skill management
+ */
+export interface SessionState {
+  /** Currently active skills in this session */
+  activeSkills: string[];
+
+  /** Available tools from active skills (merged) */
+  availableTools: string[];
+
+  /** User's role (determines skill upper limit) */
+  userRole: string;
+
+  /** Skill change history for transparency */
+  skillHistory: SkillChange[];
+
+  /** Session start timestamp */
+  startedAt: Date;
+}
+
+/**
+ * Record of a skill change during session
+ */
+export interface SkillChange {
+  /** Type of change */
+  type: 'escalate' | 'deescalate';
+
+  /** Skill that was added or removed */
+  skillId: string;
+
+  /** Reason for the change */
+  reason: string;
+
+  /** Timestamp */
+  timestamp: Date;
+}
+
+/**
+ * Result of intent classification
+ */
+export interface IntentClassificationResult {
+  /** Skills required for this intent */
+  requiredSkills: string[];
+
+  /** Skills that should be deescalated (no longer needed) */
+  deescalateSkills: string[];
+
+  /** Confidence score (0-1) */
+  confidence: number;
+
+  /** Classification reason */
+  reason: string;
+}
+
+/**
+ * Options for skill manager
+ */
+export interface SkillManagerOptions {
+  /** All available skill definitions */
+  skills: SkillDefinition[];
+
+  /** User's role (determines allowed skills) */
+  userRole: string;
+
+  /** Default skills to start with */
+  defaultSkills?: string[];
+
+  /** Skills allowed for this role (from role config) */
+  allowedSkillsForRole?: string[];
+}

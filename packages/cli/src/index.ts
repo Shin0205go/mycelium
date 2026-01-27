@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * MYCELIUM CLI - Skill-driven RBAC for AI Agents
+ * MYCELIUM CLI - Session-based Dynamic Skill Management
  *
  * Usage:
- *   mycelium              - Start workflow agent (default)
+ *   mycelium              - Start chat agent with dynamic skills (default)
  *   mycelium adhoc        - Adhoc agent (full tool access)
  *   mycelium init         - Initialize a new project
  *   mycelium skill        - Manage skills
@@ -15,15 +15,16 @@ import { initCommand } from './commands/init.js';
 import { skillCommand } from './commands/skill.js';
 import { mcpCommand } from './commands/mcp.js';
 import { adhocCommand } from './commands/adhoc.js';
-import { WorkflowAgent } from './agents/workflow-agent.js';
+import { ChatAgent } from './agents/chat-agent.js';
 
 const program = new Command();
 
 program
   .name('mycelium')
-  .description('MYCELIUM CLI - Skill-driven RBAC for AI Agents')
+  .description('MYCELIUM CLI - Session-based Dynamic Skill Management')
   .version('1.0.0')
   .option('-m, --model <model>', 'Model to use')
+  .option('-r, --role <role>', 'User role (determines skill upper limit)', 'developer')
   .option('-c, --config <path>', 'Path to config.json');
 
 // Register subcommands
@@ -32,11 +33,12 @@ program.addCommand(skillCommand);
 program.addCommand(mcpCommand);
 program.addCommand(adhocCommand);
 
-// Default action: run workflow agent
+// Default action: run chat agent with dynamic skill management
 program.action(async () => {
   const opts = program.opts();
-  const agent = new WorkflowAgent({
+  const agent = new ChatAgent({
     model: opts.model,
+    userRole: opts.role,
   });
   await agent.run();
 });
