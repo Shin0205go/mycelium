@@ -6,6 +6,14 @@
 import { join } from 'path';
 import { existsSync } from 'fs';
 
+export interface SubAgentDefinition {
+  name: string;
+  description: string;
+  prompt: string;
+  tools?: string[];
+  model?: 'sonnet' | 'opus' | 'haiku';
+}
+
 export interface AgentConfig {
   model?: string;
   cwd?: string;
@@ -16,6 +24,7 @@ export interface AgentConfig {
   includePartialMessages?: boolean;
   useApiKey?: boolean;
   currentRole?: string;  // Role to auto-switch to in mycelium-router
+  subAgents?: SubAgentDefinition[];  // Sub-agents available via Task tool
 }
 
 export interface AgentResult {
@@ -81,11 +90,28 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
     ? parseInt(process.env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR, 10)
     : undefined;
 
+  // Build sub-agent definitions for SDK's agents parameter
+  // SDK expects: { [name]: { description, prompt, tools?, model? } }
+  const agents: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }> | undefined =
+    config.subAgents?.reduce((acc, subAgent) => {
+      acc[subAgent.name] = {
+        description: subAgent.description,
+        prompt: subAgent.prompt,
+        ...(subAgent.tools && { tools: subAgent.tools }),
+        ...(subAgent.model && { model: subAgent.model }),
+      };
+      return acc;
+    }, {} as Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>);
+
+  const hasAgents = agents && Object.keys(agents).length > 0;
+
   return {
     tools: [],
-    // Only allow MCP tools from mycelium-router - disable all built-in tools
-    // This ensures all tool access goes through RBAC
-    allowedTools: ['mcp__mycelium-router__*'],
+    // Allow MCP tools from mycelium-router + Task tool for sub-agent delegation
+    allowedTools: [
+      'mcp__mycelium-router__*',
+      ...(hasAgents ? ['Task'] : []),
+    ],
     env: envToUse,
     mcpServers: {
       'mycelium-router': {
@@ -94,6 +120,8 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
         env: routerEnv
       }
     },
+    // Sub-agents available via Task tool
+    ...(hasAgents && { agents }),
     model: config.model || 'claude-sonnet-4-5-20250929',
     cwd: config.cwd || process.cwd(),
     systemPrompt: config.systemPrompt,
