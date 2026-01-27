@@ -9,10 +9,11 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces --if-present",
-    "dev": "npm run dev --workspace=@mycelium/core",
+    "dev": "npm run dev --workspace=@mycelium/cli",
     "dev:mcp": "npm run dev:mcp --workspace=@mycelium/core",
-    "start": "npm run start --workspace=@mycelium/core",
-    "start:mcp": "npm run start:mcp --workspace=@mycelium/core"
+    "start": "npm run start --workspace=@mycelium/cli",
+    "start:mcp": "npm run start:mcp --workspace=@mycelium/core",
+    "myc": "node packages/cli/dist/index.js"
   },
   "keywords": [
     "mycelium",
