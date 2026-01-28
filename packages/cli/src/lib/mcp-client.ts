@@ -49,6 +49,7 @@ export interface SkillInfo {
   description: string;
   allowedRoles: string[];
   allowedTools: string[];
+  triggers?: string[];  // Keywords for intent-based auto-detection
   grants?: {
     memory?: 'none' | 'isolated' | 'team' | 'all';
     memoryTeamRoles?: string[];
@@ -311,9 +312,11 @@ export class MCPClient extends EventEmitter {
     return result;
   }
 
-  async listSkills(role?: string): Promise<ListSkillsResult> {
+  async listSkills(role?: string, direct: boolean = true): Promise<ListSkillsResult> {
+    // Use unprefixed name for direct connection, prefixed for router
+    const toolName = direct ? 'list_skills' : 'mycelium-skills__list_skills';
     const result = await this.sendRequest('tools/call', {
-      name: 'mycelium-skills__list_skills',
+      name: toolName,
       arguments: role ? { role } : {}
     }) as { content?: Array<{ type?: string; text?: string }>; isError?: boolean };
 

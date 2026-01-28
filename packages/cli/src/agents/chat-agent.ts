@@ -19,7 +19,7 @@ import {
   type SkillManager,
   type IntentClassifier,
 } from '../session/index.js';
-import { loadSkillsFromDisk } from '../lib/skill-loader.js';
+import { loadSkillsFromMCP } from '../lib/mcp-skill-loader.js';
 
 export interface ChatAgentConfig {
   /** Claude model to use */
@@ -76,7 +76,7 @@ export class ChatAgent {
     if (this.config.skills) {
       this.skills = this.config.skills;
     } else {
-      this.skills = await this.loadSkillsFromMCP();
+      this.skills = await this.loadSkillsFromMCPServer();
     }
 
     // Determine allowed skills for role
@@ -115,20 +115,24 @@ export class ChatAgent {
   }
 
   /**
-   * Load skills from disk (packages/skills/skills)
-   * Falls back to hardcoded skills if disk loading fails
+   * Load skills from MCP server (mycelium-skills)
+   * Falls back to disk loading if MCP fails
    */
-  private async loadSkillsFromMCP(): Promise<SkillDefinition[]> {
+  private async loadSkillsFromMCPServer(): Promise<SkillDefinition[]> {
     try {
-      const skills = await loadSkillsFromDisk();
+      const skills = await loadSkillsFromMCP({
+        role: this.config.userRole,
+        timeout: 10000,
+        fallbackToDisk: true,
+      });
       if (skills.length > 0) {
         return skills;
       }
     } catch (err) {
-      console.error('Failed to load skills from disk, using fallback:', err);
+      console.error('Failed to load skills:', err);
     }
 
-    // Fallback to hardcoded skills
+    // Final fallback to minimal hardcoded skills
     return [
       {
         id: 'common',
@@ -139,49 +143,6 @@ export class ChatAgent {
           'mycelium-skills__get_skill',
           'mycelium-skills__list_skills',
         ],
-      },
-      {
-        id: 'code-modifier',
-        displayName: 'Code Modifier',
-        description: 'コードの作成・編集・リファクタリング',
-        allowedRoles: ['developer', 'admin'],
-        allowedTools: [
-          'filesystem__read_file',
-          'filesystem__read_text_file',
-          'filesystem__list_directory',
-          'filesystem__write_file',
-          'filesystem__create_directory',
-          'mycelium-sandbox__bash',
-        ],
-        triggers: ['編集', '修正', '作成', 'edit', 'modify', 'create', 'fix'],
-      },
-      {
-        id: 'git-workflow',
-        displayName: 'Git Workflow',
-        description: 'Gitバージョン管理操作',
-        allowedRoles: ['developer', 'admin'],
-        allowedTools: [
-          'filesystem__read_file',
-          'filesystem__list_directory',
-          'mycelium-sandbox__bash',
-        ],
-        triggers: ['commit', 'push', 'git', 'コミット', 'プッシュ', 'diff'],
-      },
-      {
-        id: 'test-runner',
-        displayName: 'Test Runner',
-        description: 'テストの実行',
-        allowedRoles: ['developer', 'admin'],
-        allowedTools: ['mycelium-sandbox__bash', 'filesystem__read_file'],
-        triggers: ['テスト', 'test', 'spec'],
-      },
-      {
-        id: 'build-check',
-        displayName: 'Build Check',
-        description: 'ビルドの実行と確認',
-        allowedRoles: ['developer', 'admin'],
-        allowedTools: ['mycelium-sandbox__bash', 'filesystem__read_file'],
-        triggers: ['ビルド', 'build', 'compile'],
       },
     ];
   }
