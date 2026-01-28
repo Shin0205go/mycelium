@@ -25,6 +25,7 @@ export interface AgentConfig {
   useApiKey?: boolean;
   currentRole?: string;  // Role to auto-switch to in mycelium-router
   subAgents?: SubAgentDefinition[];  // Sub-agents available via Task tool
+  allowedTools?: string[];  // Override default allowedTools (for skill-based filtering)
 }
 
 export interface AgentResult {
@@ -105,13 +106,17 @@ export function createAgentOptions(config: AgentConfig = {}): Record<string, unk
 
   const hasAgents = agents && Object.keys(agents).length > 0;
 
+  // Default allowedTools: all mycelium-router tools
+  // Can be overridden by config.allowedTools for skill-based filtering
+  const defaultAllowedTools = [
+    'mcp__mycelium-router__*',
+    ...(hasAgents ? ['Task'] : []),
+  ];
+
   return {
     tools: [],
     // Allow MCP tools from mycelium-router + Task tool for sub-agent delegation
-    allowedTools: [
-      'mcp__mycelium-router__*',
-      ...(hasAgents ? ['Task'] : []),
-    ],
+    allowedTools: config.allowedTools || defaultAllowedTools,
     env: envToUse,
     mcpServers: {
       'mycelium-router': {

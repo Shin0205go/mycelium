@@ -204,25 +204,26 @@ export class ChatAgent {
 
   /**
    * Create agent options with current skill tools
+   * Tools are filtered based on active skills (policy-in-the-loop)
    */
   private createAgentOptionsWithSkills(): Record<string, unknown> {
     const availableTools = this.skillManager?.getAvailableTools() || [];
 
     // Build allowed tools pattern from active skills
+    // e.g., "filesystem__read_file" -> "mcp__mycelium-router__filesystem__read_file"
     const allowedToolPatterns = availableTools.map((tool) => {
-      // Convert MCP tool format to allowedTools pattern
-      // e.g., "filesystem__read_file" -> "mcp__mycelium-router__filesystem__read_file"
       return `mcp__mycelium-router__${tool}`;
     });
 
-    // Always allow mycelium-router tools
-    allowedToolPatterns.push('mcp__mycelium-router__*');
+    // Always allow mycelium-router meta tools (get_context, list_roles)
+    allowedToolPatterns.push('mcp__mycelium-router__mycelium-router__*');
 
     return createAgentOptions({
       model: this.config.model,
       useApiKey: this.config.useApiKey,
       currentRole: this.config.userRole,
       maxTurns: 50,
+      allowedTools: allowedToolPatterns,  // Pass skill-filtered tools
     });
   }
 
