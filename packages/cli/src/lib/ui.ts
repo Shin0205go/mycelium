@@ -59,6 +59,7 @@ export function createSpinner(text: string): Ora {
     text,
     spinner: 'dots',
     color: 'cyan',
+    discardStdin: false,  // Don't discard stdin (we manage it ourselves)
   });
 }
 

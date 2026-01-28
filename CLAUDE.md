@@ -73,6 +73,85 @@ Myceliumのアプローチ：
 2. 許可されていないツールは選択肢に存在しない
 3. 「危険な操作を試みて拒否」ではなく「そもそも選択肢にない」
 
+## MYCELIUM Design Principles
+
+### スキル駆動型RBACの究極形：認知の外への完全排除
+
+#### 1. 宣言が唯一の真実（Declaration is the Single Source of Truth）
+
+スキル（SKILL.yaml）の`allowedTools`に明示的に記載されたツールだけが、システム内に「存在する」ものとして扱われる。
+
+- 記載されていないツール（ビルトインBash、code_executionのraw機能、filesystem writeなど）は、**存在しないもの**として扱う
+- **名前すらAIに渡さない**
+
+#### 2. ツールの完全隠蔽（Total Non-Existence for Unauthorized Tools）
+
+`ToolVisibilityManager`は、ロールごとのツールカタログをホワイトリスト専用に生成。
+
+許可外ツールの扱い：
+- ツールIDが存在しない（名前空間プレフィックスで強制マスキング or 削除）
+- ツール記述・パラメータ・例示すらプロンプトに含めない
+- AIが「そんなツールあるかも？」と推測する余地をゼロにする
+
+**結果**: AIは許可ツールしか「知らない」状態になる
+
+#### 3. 迂回・代替手段の構造的排除（No Bypass by Design）
+
+- ビルトイン機能（Bash, Python raw exec, code interpreter fallbackなど）をラップせずに直接呼べる状態にしない
+- すべてのツール呼び出しはmyceliumのRouterを経由し、Routerは宣言外を即座に拒否（存在しない扱い）
+- 「似た機能だから自前で実装しよう」というAIの試みも、code generationツール自体を宣言外にすれば防げる
+
+#### 4. 宣言ミスは悪影響ゼロ（Fail-Safe by Ignorance）
+
+不正・不明なツールが`allowedTools`に書かれていた場合：
+- そのスキル全体を無効化（ロードせず）
+- AI側に一切の情報漏洩なし
+- 過剰宣言が起きても、intersection（共通部分）採用で最もrestrictiveな権限だけ適用
+
+#### 5. 動的・薄いCLI中心の可視性（Developer Trust via Transparency）
+
+外部AI（Claudeなど）依存を排除した薄いCLIで：
+- 今のロールで本当に見えているツールだけを表示
+- スキル追加/変更 → 即時プレビュー & 反映確認
+- 開発者が「これでAIは本当にこれしか知らない」とCLIで即確信できる体験を提供
+
+#### 6. 最小権限の自動強制（Least Privilege by Construction）
+
+- ロールはスキル宣言のintersection（共通部分）で自動生成
+- 継承・union的な拡張を禁止（明示的に複数スキルで宣言が必要）
+- **結果**: adminでも「必要なツールだけ」しか見えず、過剰権限が設計上発生しない
+
+### 実装指針（優先順）
+
+#### 1. ToolVisibilityManagerの進化
+
+```typescript
+// ツールIDに必須プレフィックス（skill_id__tool_name）を強制
+// getVisibleToolsForRole() で許可外を完全に抹消（空リスト or null）
+// AIプロンプト生成時にツール記述をロール専用にカスタム生成
+```
+
+#### 2. スキルロード時の厳格検証
+
+- `allowedTools`を既知ツールカタログと照合 → 不一致でスキル無効化
+- ログに「スキル 'xxx' 無効：不明ツール 'bash__raw'」と明記（AIには絶対漏らさない）
+
+#### 3. CLIコマンドセット（薄く・動的）
+
+```bash
+list tools [role]          # 今見えているツールだけ表示
+preview skill <name>       # 追加したらどうなるか差分表示
+load / reload skill <name> # 動的反映
+set-role <role>            # ロール切り替え → 即ツールリスト更新
+status                     # 隠蔽率・有効スキル数・invalidスキル表示
+watch                      # ファイル変更監視 + auto-reload
+```
+
+#### 4. ビルトイン迂回対策の最強形
+
+- デフォルトで code interpreter / bash を mycelium のツールリストから除外
+- 必要な場合のみ、専用スキル（`safe-code-exec`など）でラップして宣言
+
 ## Architecture
 
 ```
@@ -183,21 +262,38 @@ myc adhoc              # 全ツール、デバッグ用
 ```
 $ myc --role developer
 
-myc> こんにちは
-[base]
+● [common]
 こんにちは！何かお手伝いしましょうか？
 
-myc> CLAUDE.mdを読んで
-[base] → [reader]  ← スキル昇格通知
-CLAUDE.mdの内容は...
+myc> CLAUDE.mdを編集して
 
-myc> 少し修正して
-[reader] → [reader, editor]  ← スキル追加
-修正しました。
+⚠️  スキル昇格: [code-modifier] - コードの作成・編集・リファクタリング
+有効にしますか？ [y/N]: y
+✓ [code-modifier] を有効化
 
-myc> 終わり、テスト実行して
-[reader, editor] → [reader, tester]  ← editor降格、tester昇格
+● [common, code-modifier]
+CLAUDE.mdを編集しました。内容は...
+
+myc> テストして
+
+⚠️  スキル昇格: [test-runner] - テストの実行
+有効にしますか？ [y/N]: y
+✓ [test-runner] を有効化
+
+● [common, code-modifier, test-runner]
 テスト結果は...
+```
+
+### REPL Commands
+
+```
+/help      - ヘルプを表示
+/skills    - 有効なスキルを表示
+/all       - 全スキルを表示（有効/無効マーク付き）
+/add <id>  - スキルを手動追加
+/remove <id> - スキルを削除
+/tools     - 使用可能なツールを表示
+/exit      - 終了
 ```
 
 ## Directory Structure
@@ -206,35 +302,59 @@ myc> 終わり、テスト実行して
 packages/
 ├── cli/                  # @mycelium/cli - Command-Line Interface
 │   └── src/
-│       ├── index.ts              # CLI entry point
+│       ├── index.ts              # CLI entry point (myc / mycelium)
 │       ├── session/
-│       │   ├── session-state.ts  # セッション状態管理
-│       │   ├── skill-manager.ts  # スキル昇格/降格ロジック
-│       │   └── intent-classifier.ts  # 意図→スキルマッピング
+│       │   ├── index.ts          # Re-exports
+│       │   ├── session-state.ts  # SessionStateManager
+│       │   ├── skill-manager.ts  # SkillManager (昇格/降格)
+│       │   └── intent-classifier.ts  # IntentClassifier
 │       ├── agents/
-│       │   └── chat-agent.ts     # 単一エージェント（orchestrator/worker統合）
+│       │   ├── chat-agent.ts     # Chat Agent（推奨）
+│       │   ├── workflow-agent.ts # Workflow Agent（スキル制限付き）
+│       │   └── adhoc-agent.ts    # Adhoc Agent（全ツールアクセス）
+│       ├── commands/
+│       │   ├── skill.ts          # mycelium skill add/list
+│       │   ├── init.ts           # mycelium init
+│       │   ├── mcp.ts            # mycelium mcp start/stop
+│       │   ├── config.ts         # mycelium config
+│       │   ├── adhoc.ts          # mycelium adhoc
+│       │   ├── policy.ts         # mycelium policy check
+│       │   └── workflow.ts       # mycelium workflow
 │       └── lib/
-│           ├── tool-filter.ts    # activeSkillsベースのツールフィルタ
-│           └── ui.ts             # UI utilities
+│           ├── skill-loader.ts   # ディスクからスキル読み込み
+│           ├── agent.ts          # Agent SDK wrapper
+│           └── ui.ts             # UI utilities (chalk, ora)
 │
 ├── core/                 # @mycelium/core - Router & RBAC
 │   └── src/
 │       ├── router/
 │       │   └── mycelium-core.ts  # ツールルーティング
 │       └── rbac/
-│           └── tool-visibility-manager.ts  # ツール可視性制御
+│           └── tool-visibility-manager.ts
 │
-├── skills/               # @mycelium/skills - Skill Definitions
-│   └── skills/
-│       ├── base/SKILL.yaml
-│       ├── reader/SKILL.yaml
-│       ├── editor/SKILL.yaml
-│       ├── tester/SKILL.yaml
+├── skills/               # @mycelium/skills - Skill MCP Server
+│   ├── src/
+│   │   └── index.ts      # MCP Server entry point
+│   └── skills/           # スキル定義（30+）
+│       ├── common/SKILL.yaml
+│       ├── code-modifier/SKILL.yaml
+│       ├── test-runner/SKILL.yaml
+│       ├── git-workflow/SKILL.yaml
 │       └── ...
+│
+├── session/              # @mycelium/session - Session persistence
+│   └── src/
+│       ├── mcp-server.ts
+│       └── session-store.ts
+│
+├── sandbox/              # @mycelium/sandbox - Sandboxed execution
+│   └── src/
+│       ├── mcp-server.ts
+│       └── sandbox-manager.ts
 │
 └── shared/               # @mycelium/shared - Common types
     └── src/
-        └── index.ts
+        └── index.ts      # SkillDefinition, Role, etc.
 ```
 
 ## Skill Definition Format
@@ -292,16 +412,23 @@ npm test             # Run tests
 ## Implementation Status
 
 ### Completed
-- [x] 基本的なMCPルーター
-- [x] スキル定義の読み込み
+- [x] 基本的なMCPルーター (`@mycelium/core`)
+- [x] スキル定義の読み込み (`@mycelium/skills`)
 - [x] ツールフィルタリング
+- [x] セッション状態管理 (`SessionStateManager`)
+- [x] 意図分類器 (`IntentClassifier`)
+- [x] 動的スキル昇格/降格
+- [x] スキル変更通知 (`● [skill名]`)
+- [x] ロールベースのスキル上限
+- [x] 全スキル承認フロー（`requireApproval: true`）
+- [x] 会話履歴によるコンテキスト維持
+- [x] Protected Skills（降格禁止スキル）
 
-### TODO (新アーキテクチャ)
-- [ ] セッション状態管理 (SessionState)
-- [ ] 意図分類器 (IntentClassifier)
-- [ ] 動的スキル昇格/降格
-- [ ] スキル変更通知 (`[skill名]`)
-- [ ] ロールベースのスキル上限
+### Future Enhancements
+- [ ] スキルロード時の厳格検証（不明ツールでスキル無効化）
+- [ ] CLIの`preview skill`コマンド（差分プレビュー）
+- [ ] ファイル変更監視 + auto-reload
+- [ ] 隠蔽率・有効スキル数の統計表示
 
 ## Best Practices
 

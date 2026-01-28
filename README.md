@@ -1,134 +1,119 @@
 # MYCELIUM
 
-**Skill-Driven RBAC for the Agentic AI Era**
+**Session-Based Dynamic Skill Management for AI Agents**
 
-> ロールを定義するな。スキルに宣言させろ。
+> AIに必要なツールだけを見せる。それ以外は存在しない。
 >
-> *Don't define roles. Let skills declare them.*
+> *Show AI only the tools it needs. Everything else doesn't exist.*
+
+## なぜ Mycelium?
+
+従来のコーディングエージェント（Claude Code、Cursor等）の課題：
+- **なんでもできる**: 全ツールにアクセス可能で、タスクに不要なツールも使える
+- **コンテキストが汚れる**: 無関係な操作でコンテキストが肥大化
+- **承認疲れ**: human-in-the-loopで毎回確認が必要
+
+Myceliumのアプローチ：
+- **Policy-in-the-loop**: ポリシーが自動的にツールアクセスを制御
+- **動的スキル管理**: 必要な時だけ必要なスキルを有効化（ユーザー承認付き）
+- **認知の外への完全排除**: 許可されていないツールは**名前すら見せない**
 
 ## パッケージ構成
 
 ```
 mycelium/
 ├── packages/
-│   ├── shared/     # @mycelium/shared - 共通型定義
-│   ├── rbac/       # @mycelium/rbac - ロール管理・ツール可視性
-│   ├── a2a/        # @mycelium/a2a - A2Aエージェント間認証
-│   ├── audit/      # @mycelium/audit - 監査ログ・レート制限
-│   ├── gateway/    # @mycelium/gateway - MCPゲートウェイ
-│   ├── core/       # @mycelium/core - 統合レイヤー
-│   └── skills/     # @mycelium/skills - スキルMCPサーバー
+│   ├── cli/       # @mycelium/cli - コマンドラインインターフェース
+│   ├── core/      # @mycelium/core - MCPルーター・RBAC統合
+│   ├── shared/    # @mycelium/shared - 共通型定義
+│   ├── skills/    # @mycelium/skills - スキルMCPサーバー
+│   ├── session/   # @mycelium/session - セッション永続化
+│   └── sandbox/   # @mycelium/sandbox - サンドボックス実行環境
 ```
 
 | パッケージ | 説明 |
 |-----------|------|
-| `@mycelium/shared` | 共通型定義（Role, Skill, ToolPermissions等） |
-| `@mycelium/rbac` | RoleManager, ToolVisibilityManager, RoleMemoryStore |
-| `@mycelium/a2a` | A2A Agent Card スキルベースのアイデンティティ解決 |
-| `@mycelium/audit` | 監査ログとレート制限（プレースホルダー） |
-| `@mycelium/gateway` | MCPサーバー接続管理（プレースホルダー） |
-| `@mycelium/core` | 全パッケージの統合・再エクスポート |
-| `@mycelium/skills` | スキル定義を提供するMCPサーバー |
+| `@mycelium/cli` | Chat Agent, Workflow Agent, Adhoc Agent を提供 |
+| `@mycelium/core` | MCPサーバー接続管理、ツールルーティング |
+| `@mycelium/shared` | SkillDefinition, Role 等の共通型定義 |
+| `@mycelium/skills` | スキル定義を提供するMCPサーバー（30+スキル） |
+| `@mycelium/session` | 会話セッションの保存・復元 |
+| `@mycelium/sandbox` | OS レベルのサンドボックス実行 |
 
-## スキル駆動RBACとは？
+## コアコンセプト
 
-従来のRBACは「ロールがツールを定義」する。MYCELIUMは逆転の発想：
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  従来のRBAC                    MYCELIUM (スキル駆動)            │
-│                                                              │
-│  Role: admin                   Skill: docx-handler           │
-│    └── tools: [a, b, c]          └── allowedRoles: [admin]   │
-│                                                              │
-│  Role: user                    Skill: data-analysis          │
-│    └── tools: [a]                └── allowedRoles: [analyst] │
-│                                                              │
-│  中央集権                       分散宣言                      │
-│  設定ファイル変更が必要         スキル追加だけで拡張           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**スキルが「誰に使わせるか」を宣言** → ロールは自動生成
-
-## なぜスキル駆動か？
-
-### 1. サーバー側が権限を宣言（Trust Boundary）
+### Session-Based Dynamic Skill Management
 
 ```
-従来: Agent → "俺はadminだ" → Server（信じるしかない）
-MYCELIUM: Server → "このスキルはadmin専用" → Router → Agent
-                     ↑
-               サーバーが権限を決める
+セッション開始
+    │
+    ▼
+[common] ← 最小限の基本スキル
+    │
+    │ "ファイル編集して"
+    ▼
+⚠️ スキル昇格: [code-modifier]
+有効にしますか？ [y/N]: y
+    │
+    ▼
+[common] + [code-modifier] ← 承認後に昇格
+    │
+    │ "テストして"
+    ▼
+⚠️ スキル昇格: [test-runner]
+有効にしますか？ [y/N]: y
+    │
+    ▼
+[common] + [code-modifier] + [test-runner]
 ```
 
-クライアント（エージェント）を**信頼しなくていい設計**。
+### Policy-in-the-loop vs Human-in-the-loop
 
-### 2. マルチエージェント時代のアクセス制御
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Orchestrator Agent                        │
-│         ┌────────────────┼────────────────┐                  │
-│         ▼                ▼                ▼                  │
-│   ┌──────────┐    ┌──────────┐    ┌──────────┐              │
-│   │SubAgent A│    │SubAgent B│    │SubAgent C│  ← 100並行   │
-│   │(analyst) │    │(writer)  │    │(reviewer)│              │
-│   └────┬─────┘    └────┬─────┘    └────┬─────┘              │
-│        ▼               ▼               ▼                     │
-│   [DB読取のみ]    [ファイル書込]   [読取のみ]   ← ロールで制限│
-└─────────────────────────────────────────────────────────────┘
-
-Human-in-the-loop → 100回承認？ 非現実的
-Policy-in-the-loop → 事前宣言で自律実行 ✅
-```
-
-### 3. 設定ファイル不要
-
-```yaml
-# スキルを追加するだけ（packages/skills/skills/に配置）
----
-id: new-skill
-allowedRoles: [developer, admin]
-allowedTools: [git__*, npm__*]
----
-
-# → developerロールが自動生成
-# → git__*, npm__* が自動的に許可
-```
+| 項目 | Human-in-the-loop | Policy-in-the-loop |
+|------|-------------------|-------------------|
+| **ツール承認** | 毎回人間が承認 | ポリシーが自動判定 |
+| **スキル昇格** | - | ユーザー承認が必要 |
+| **許可外ツール** | 拒否される | **存在しない** |
 
 ## アーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                 @mycelium/skills (MCP Server)                  │
+│                    Session State                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  Skill: docx-handler                                 │   │
-│  │  - allowedRoles: [formatter, admin]  ← スキルが宣言  │   │
-│  │  - allowedTools: [filesystem__read, docx__parse]     │   │
+│  │  activeSkills: [common, code-modifier]              │   │
+│  │  availableTools: [read_file, write_file, ...]       │   │
+│  │  userRole: developer (使用可能スキルの上限)          │   │
 │  └─────────────────────────────────────────────────────┘   │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ list_skills
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 @mycelium/core (司令塔)                         │
-│  ├── @mycelium/rbac   (RoleManager, ToolVisibilityManager)    │
-│  ├── @mycelium/a2a    (IdentityResolver)                      │
-│  └── @mycelium/shared (共通型定義)                             │
-│                                                              │
-│  Skills → Roles 変換（Inverted RBAC）                       │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────┼─────────────────────────────────┐
+│              Intent Classifier                               │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  Role: formatter (自動生成)                          │   │
-│  │  - skills: [docx-handler]                            │   │
-│  │  - tools: [filesystem__read, docx__parse]            │   │
+│  │  User Input → 必要なスキルを判定                     │   │
+│  │  "ファイル編集して" → code-modifier 必要            │   │
+│  │                                                      │   │
+│  │  昇格: ユーザー承認後に追加                         │   │
+│  │  降格: 自動（タスク終了検出時）                     │   │
 │  └─────────────────────────────────────────────────────┘   │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ set_role
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Agent (Claude / ChatGPT / Gemini)              │
-│  - set_role("formatter") → 許可されたツールのみ表示          │
-│  - 許可されていないツールは見えない・呼べない                 │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────┼─────────────────────────────────┐
+│                 Tool Filter                                  │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  activeSkillsのallowedToolsをマージ                 │   │
+│  │  → LLMに見えるツールリストを生成                    │   │
+│  │  → 許可外ツールは名前すら渡さない                   │   │
+│  └─────────────────────────────────────────────────────┘   │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────┼─────────────────────────────────┐
+│              Chat Agent (Claude Agent SDK)                   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  - 見えるツールのみで応答                           │   │
+│  │  - 会話履歴を維持                                   │   │
+│  │  - スキル変更時に [skill名] を表示                   │   │
+│  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -141,89 +126,133 @@ npm run build
 
 ## 使用方法
 
-### CLIとして起動
+### Chat Agent（推奨）
 
 ```bash
-npm start
-# または
-npm run dev
+# 基本的な使い方
+myc
+
+# ロール指定（使用可能スキルの上限を設定）
+myc --role developer
+myc --role admin
 ```
 
-### MCPサーバーとして起動（Claude Desktop等から利用）
+### セッション例
 
-```bash
-npm run start:mcp
+```
+$ myc
+
+● [common]
+こんにちは！何かお手伝いしましょうか？
+
+myc> CLAUDE.mdを編集して
+
+⚠️  スキル昇格: [code-modifier] - コードの作成・編集・リファクタリング
+有効にしますか？ [y/N]: y
+✓ [code-modifier] を有効化
+
+● [common, code-modifier]
+CLAUDE.mdを編集しました。
+
+myc> テストして
+
+⚠️  スキル昇格: [test-runner] - テストの実行
+有効にしますか？ [y/N]: y
+✓ [test-runner] を有効化
+
+● [common, code-modifier, test-runner]
+テスト結果は...
+```
+
+### REPL コマンド
+
+```
+/help      - ヘルプを表示
+/skills    - 有効なスキルを表示
+/all       - 全スキルを表示
+/add <id>  - スキルを手動追加
+/remove <id> - スキルを削除
+/tools     - 使用可能なツールを表示
+/exit      - 終了
 ```
 
 ## スキル定義
 
-スキルは `packages/skills/skills/` に配置し、`allowedRoles` を宣言：
+スキルは `packages/skills/skills/` に配置：
 
 ```yaml
-# packages/skills/skills/data-analyst/SKILL.md
----
-id: data-analyst
-displayName: Data Analyst
+# packages/skills/skills/code-modifier/SKILL.yaml
+name: code-modifier
+description: コードの作成・編集・リファクタリング
+
 allowedRoles:
-  - analyst
+  - developer
   - admin
+
 allowedTools:
-  - postgres__select
-  - postgres__explain
-  # postgres__drop は含めない → 自動的に拒否
----
+  - filesystem__read_file
+  - filesystem__write_file
+  - filesystem__list_directory
+  - mycelium-sandbox__bash
 
-# Data Analyst Skill
-
-データ分析のためのスキル。SELECT文の実行と実行計画の確認が可能。
+triggers:
+  - 編集
+  - 修正
+  - 作成
+  - edit
+  - modify
+  - create
 ```
+
+### 利用可能なスキル（30+）
+
+| カテゴリ | スキル |
+|---------|--------|
+| **開発** | code-modifier, test-runner, build-check, git-workflow |
+| **ドキュメント** | doc-updater, docx, pdf, pptx, xlsx |
+| **デザイン** | frontend-design, canvas-design, algorithmic-art |
+| **その他** | data-analyst, browser-testing, mcp-builder |
 
 ## 設定
 
-### サーバー設定 (`config.json`)
+### config.json
 
 ```json
 {
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
     },
     "mycelium-skills": {
       "command": "node",
       "args": ["packages/skills/dist/index.js", "packages/skills/skills"]
+    },
+    "mycelium-sandbox": {
+      "command": "node",
+      "args": ["packages/sandbox/dist/mcp-server.js"]
     }
   }
 }
 ```
 
-## 追加機能
-
-### 監査ログ
-
-全ツール呼び出しを自動記録：
-
-```typescript
-const stats = router.getAuditStats();
-const csv = router.exportAuditLogsCsv();  // コンプライアンス対応
-```
-
-### Rate Limiting（オプション）
-
-ロールごとのQuota設定：
-
-```typescript
-router.setRoleQuota('guest', {
-  maxCallsPerMinute: 10,
-  maxConcurrent: 3
-});
-```
-
-## テスト
+## 開発
 
 ```bash
-npm test
+npm install          # 依存関係インストール
+npm run build        # TypeScriptビルド
+npm start            # CLI起動 (myc)
+npm test             # テスト実行
 ```
+
+## Design Principles
+
+詳細は [CLAUDE.md](./CLAUDE.md) を参照。
+
+- **宣言が唯一の真実**: `allowedTools` に明示されたツールのみが存在
+- **ツールの完全隠蔽**: 許可外ツールは名前すら渡さない
+- **迂回の構造的排除**: 全ツール呼び出しはRouter経由
+- **最小権限の自動強制**: スキル宣言のintersectionで権限決定
 
 ## ライセンス
 
