@@ -19,6 +19,7 @@ import {
   type SkillManager,
   type IntentClassifier,
 } from '../session/index.js';
+import { loadSkillsFromDisk } from '../lib/skill-loader.js';
 
 export interface ChatAgentConfig {
   /** Claude model to use */
@@ -114,11 +115,20 @@ export class ChatAgent {
   }
 
   /**
-   * Load skills from MCP server
+   * Load skills from disk (packages/skills/skills)
+   * Falls back to hardcoded skills if disk loading fails
    */
   private async loadSkillsFromMCP(): Promise<SkillDefinition[]> {
-    // For now, return hardcoded skills
-    // TODO: Load from mycelium-skills MCP server
+    try {
+      const skills = await loadSkillsFromDisk();
+      if (skills.length > 0) {
+        return skills;
+      }
+    } catch (err) {
+      console.error('Failed to load skills from disk, using fallback:', err);
+    }
+
+    // Fallback to hardcoded skills
     return [
       {
         id: 'common',

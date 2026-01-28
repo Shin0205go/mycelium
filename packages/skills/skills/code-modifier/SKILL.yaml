@@ -9,6 +9,23 @@ allowedRoles:
   - senior-developer
   - admin
 
+# Intent classification triggers (keywords for auto-detection)
+triggers:
+  - 編集
+  - 修正
+  - 作成
+  - 書いて
+  - 変更
+  - リファクタ
+  - edit
+  - modify
+  - create
+  - fix
+  - write
+  - refactor
+  - update
+  - change
+
 allowedTools:
   # Read operations
   - filesystem__read_file

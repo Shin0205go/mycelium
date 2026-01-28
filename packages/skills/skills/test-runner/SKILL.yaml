@@ -8,6 +8,17 @@ allowedRoles:
   - admin
   - tester
 
+# Intent classification triggers
+triggers:
+  - テスト
+  - test
+  - spec
+  - jest
+  - vitest
+  - pytest
+  - 検証
+  - verify
+
 allowedTools:
   - mycelium-sandbox__bash
   - filesystem__read_file
