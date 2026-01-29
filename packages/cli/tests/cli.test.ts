@@ -34,6 +34,8 @@ describe('MYCELIUM CLI', () => {
       expect(output).toContain('skill');
       expect(output).toContain('policy');
       expect(output).toContain('mcp');
+      expect(output).toContain('server');
+      expect(output).toContain('client');
     });
 
     it('should show version with --version', () => {
@@ -222,6 +224,25 @@ describe('MYCELIUM CLI', () => {
       expect(output).toContain('Run skill-based workflows');
       expect(output).toContain('--model');
       expect(output).toContain('--on-failure');
+    });
+  });
+
+  describe('mycelium server', () => {
+    it('should show server help', () => {
+      const output = runCli('server --help');
+      expect(output).toContain('Start MYCELIUM as a standalone MCP server');
+      expect(output).toContain('--config');
+      expect(output).toContain('--role');
+      expect(output).toContain('--verbose');
+    });
+  });
+
+  describe('mycelium client', () => {
+    it('should show client help', () => {
+      const output = runCli('client --help');
+      expect(output).toContain('Connect to a Mycelium MCP server');
+      expect(output).toContain('--config');
+      expect(output).toContain('--role');
     });
   });
 });

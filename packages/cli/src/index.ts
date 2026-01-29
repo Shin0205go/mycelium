@@ -5,6 +5,7 @@
  * Usage:
  *   mycelium              - Start chat agent with dynamic skills (default)
  *   mycelium server       - Start as standalone MCP server (for Claude Desktop/Cursor)
+ *   mycelium client       - Connect to running MCP server (thin client)
  *   mycelium adhoc        - Adhoc agent (full tool access)
  *   mycelium init         - Initialize a new project
  *   mycelium skill        - Manage skills
@@ -17,6 +18,7 @@ import { skillCommand } from './commands/skill.js';
 import { mcpCommand } from './commands/mcp.js';
 import { adhocCommand } from './commands/adhoc.js';
 import { serverCommand } from './commands/server.js';
+import { clientCommand } from './commands/client.js';
 import { policyCommand } from './commands/policy.js';
 import { workflowCommand } from './commands/workflow.js';
 import { ChatAgent } from './agents/chat-agent.js';
@@ -33,6 +35,7 @@ program
 
 // Register subcommands
 program.addCommand(serverCommand);  // MCP server standalone mode
+program.addCommand(clientCommand);  // MCP client thin mode
 program.addCommand(initCommand);
 program.addCommand(skillCommand);
 program.addCommand(mcpCommand);
