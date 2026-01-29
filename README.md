@@ -151,6 +151,31 @@ myc server --config /path/to/config.json --role admin
 
 詳細は [Claude Desktop統合](./docs/claude-desktop-integration.md) / [Cursor統合](./docs/cursor-integration.md) を参照。
 
+### Claude Code Hooks 統合
+
+Claude Codeのビルトインツール（Bash, Edit, Write）にもPolicy-in-the-loopを適用:
+
+```bash
+# viewerロールに切り替え
+mcp__mycelium-router__set_role(role: "viewer")
+
+# Bashはブロックされる（viewerは読み取り専用）
+$ mkdir test
+[Mycelium Policy] Access denied: Tool 'Bash' is not allowed for role 'viewer'
+```
+
+#### サブエージェントにロール指定
+
+```
+「role: viewer でファイル構造を確認して」
+→ サブエージェントは読み取り専用、Bashブロック
+
+「role: developer でテストを実行して」
+→ サブエージェントはBash使用可能
+```
+
+詳細は [Claude Code Hooks統合](./docs/claude-code-hooks.md) を参照。
+
 ### セッション例
 
 ```

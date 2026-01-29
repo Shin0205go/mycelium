@@ -423,12 +423,15 @@ npm test             # Run tests
 - [x] 全スキル承認フロー（`requireApproval: true`）
 - [x] 会話履歴によるコンテキスト維持
 - [x] Protected Skills（降格禁止スキル）
+- [x] **Claude Code Hooks統合** - ビルトインツール（Bash/Edit/Write）のアクセス制御
+- [x] **サブエージェントロール指定** - `role: <name>` 構文でサブエージェントにロール付与
 
 ### Future Enhancements
 - [ ] スキルロード時の厳格検証（不明ツールでスキル無効化）
 - [ ] CLIの`preview skill`コマンド（差分プレビュー）
 - [ ] ファイル変更監視 + auto-reload
 - [ ] 隠蔽率・有効スキル数の統計表示
+- [ ] Hooks統合のロール定義動的同期（ROLE_TOOLSの自動生成）
 
 ## Best Practices
 
