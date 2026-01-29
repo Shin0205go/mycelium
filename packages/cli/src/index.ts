@@ -17,6 +17,8 @@ import { skillCommand } from './commands/skill.js';
 import { mcpCommand } from './commands/mcp.js';
 import { adhocCommand } from './commands/adhoc.js';
 import { serverCommand } from './commands/server.js';
+import { policyCommand } from './commands/policy.js';
+import { workflowCommand } from './commands/workflow.js';
 import { ChatAgent } from './agents/chat-agent.js';
 
 const program = new Command();
@@ -35,6 +37,8 @@ program.addCommand(initCommand);
 program.addCommand(skillCommand);
 program.addCommand(mcpCommand);
 program.addCommand(adhocCommand);
+program.addCommand(policyCommand);
+program.addCommand(workflowCommand);
 
 // Default action: run chat agent with dynamic skill management
 program.action(async () => {
