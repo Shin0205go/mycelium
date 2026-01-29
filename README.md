@@ -137,6 +137,20 @@ myc --role developer
 myc --role admin
 ```
 
+### MCP Server モード
+
+MyceliumをClaude Desktop、Cursor、Clineと統合：
+
+```bash
+# MCPサーバーとして起動
+myc server --role developer --verbose
+
+# 別の設定ファイルを指定
+myc server --config /path/to/config.json --role admin
+```
+
+詳細は [Claude Desktop統合](./docs/claude-desktop-integration.md) / [Cursor統合](./docs/cursor-integration.md) を参照。
+
 ### セッション例
 
 ```
