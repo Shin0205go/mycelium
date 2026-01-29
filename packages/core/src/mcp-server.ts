@@ -121,18 +121,13 @@ async function main() {
     // Track existing tool names to avoid duplicates
     const existingToolNames = new Set(backendTools.map((t: any) => t.name));
 
-    // Add router-level tools if current role/skill has access (defined in ROUTER_TOOLS)
-    // Only add if not already included in backendTools
+    // Add router-level system tools (always visible, no access check)
+    // These are management tools that should always be available
     for (const tool of ROUTER_TOOLS) {
       if (existingToolNames.has(tool.name)) {
         continue;  // Already included from backendTools
       }
-      try {
-        routerCore.checkToolAccess(tool.name);
-        allTools.push(tool);
-      } catch {
-        // Skill doesn't have access to this tool
-      }
+      allTools.push(tool);
     }
 
     logger.info(`Returning ${allTools.length} total tools`);
@@ -154,7 +149,9 @@ async function main() {
       'mycelium-router__list_roles',
       'mycelium-router__set_active_skills',
       'mycelium-router__get_active_skills',
-      'mycelium-router__list_skills'
+      'mycelium-router__list_skills',
+      'mycelium-router__suggest_skills',
+      'mycelium-router__set_role'
     ];
     // Also skip check if tool name ends with system tool suffix
     const isSystemTool = ROUTER_SYSTEM_TOOLS.includes(name) ||
@@ -261,6 +258,59 @@ async function main() {
         };
       } catch (error: any) {
         logger.error(`Failed to list skills:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle suggest_skills
+    if (name === 'mycelium-router__suggest_skills' || name.endsWith('__suggest_skills')) {
+      logger.info(`✅ Handling suggest_skills`);
+      try {
+        const suggestArgs = args as { intent: string };
+        if (!suggestArgs.intent) {
+          return {
+            content: [{ type: 'text', text: 'Error: intent parameter is required' }],
+            isError: true,
+          };
+        }
+        const suggestions = routerCore.suggestSkills(suggestArgs.intent);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(suggestions, null, 2) }],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to suggest skills:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle set_role
+    if (name === 'mycelium-router__set_role' || name.endsWith('__set_role')) {
+      logger.info(`✅ Handling set_role`);
+      try {
+        const roleArgs = args as { role: string };
+        if (!roleArgs.role) {
+          return {
+            content: [{ type: 'text', text: 'Error: role parameter is required' }],
+            isError: true,
+          };
+        }
+        const manifest = await routerCore.setRole({ role: roleArgs.role });
+        return {
+          content: [{ type: 'text', text: JSON.stringify({
+            success: true,
+            role: manifest.role,
+            toolCount: manifest.availableTools?.length || 0,
+            availableServers: manifest.availableServers,
+          }, null, 2) }],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to set role:`, error);
         return {
           content: [{ type: 'text', text: `Error: ${error.message}` }],
           isError: true,

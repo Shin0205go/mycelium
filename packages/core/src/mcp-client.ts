@@ -189,32 +189,6 @@ export class MCPClient extends EventEmitter {
     return result;
   }
 
-  async listRoles(): Promise<ListRolesResult> {
-    const result = await this.sendRequest('tools/call', {
-      name: 'set_role',
-      arguments: { role_id: 'list' }
-    });
-
-    const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
-    }
-    throw new Error('Failed to list roles');
-  }
-
-  async switchRole(roleId: string): Promise<AgentManifest> {
-    const result = await this.sendRequest('tools/call', {
-      name: 'set_role',
-      arguments: { role_id: roleId }
-    });
-
-    const text = result?.content?.[0]?.text;
-    if (text) {
-      return JSON.parse(text);
-    }
-    throw new Error('Failed to switch role');
-  }
-
   async listTools(): Promise<any[]> {
     const result = await this.sendRequest('tools/list', {});
     return result?.tools || [];

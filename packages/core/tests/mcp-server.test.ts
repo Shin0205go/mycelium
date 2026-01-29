@@ -2,23 +2,13 @@
  * Unit Tests for MCP Server Entry Point
  *
  * Tests the MCP server's request handlers for tools/list, tools/call,
- * prompts/list, prompts/get, and sub-agent spawning.
+ * prompts/list, and prompts/get.
  *
  * Note: These tests verify the logic of request handlers without importing
  * the actual mcp-server.ts file since it has side effects on import.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EventEmitter } from 'events';
-
-// Mock child_process for sub-agent tests
-vi.mock('child_process', () => ({
-  spawn: vi.fn()
-}));
-
-import { spawn } from 'child_process';
-
-const mockSpawn = vi.mocked(spawn);
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Create a mock router for testing handler logic
 const createMockRouter = () => ({
@@ -38,37 +28,11 @@ describe('MCP Server Request Handlers', () => {
   let mockRouter: ReturnType<typeof createMockRouter>;
 
   beforeEach(() => {
-    mockSpawn.mockClear();
     mockRouter = createMockRouter();
   });
 
   describe('ListTools Handler', () => {
-    it('should always include spawn_sub_agent tool', async () => {
-      const spawnSubAgentTool = {
-        name: 'spawn_sub_agent',
-        description: 'Spawn a sub-agent with a specific role to handle a task.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            role: { type: 'string', description: 'The role for the sub-agent' },
-            task: { type: 'string', description: 'The task/prompt to send to the sub-agent' },
-            model: { type: 'string', description: 'Optional: Model to use' },
-            interactive: { type: 'boolean', description: 'If true, opens a new terminal window' },
-          },
-          required: ['role', 'task'],
-        },
-      };
-
-      expect(spawnSubAgentTool.name).toBe('spawn_sub_agent');
-      expect(spawnSubAgentTool.inputSchema.required).toContain('role');
-      expect(spawnSubAgentTool.inputSchema.required).toContain('task');
-    });
-
-    it('should combine system tools with backend tools', async () => {
-      const systemTools = [
-        { name: 'spawn_sub_agent' }
-      ];
-
+    it('should return backend tools from router', async () => {
       mockRouter.routeRequest.mockResolvedValue({
         tools: [
           { name: 'filesystem__read_file' },
@@ -77,129 +41,10 @@ describe('MCP Server Request Handlers', () => {
       });
 
       const backendTools = await mockRouter.routeRequest({ method: 'tools/list' });
-      const allTools = [...systemTools, ...backendTools.tools];
 
-      expect(allTools).toHaveLength(3);
-      expect(allTools.map(t => t.name)).toContain('spawn_sub_agent');
-      expect(allTools.map(t => t.name)).toContain('filesystem__read_file');
-    });
-  });
-
-  describe('CallTool Handler - spawn_sub_agent', () => {
-    it('should validate required parameters', () => {
-      const args = { role: 'developer', task: '' };
-
-      const isValid = args.role && args.task;
-      expect(isValid).toBeFalsy();
-    });
-
-    it('should spawn sub-agent with role and task', () => {
-      const args = { role: 'developer', task: 'Build a component' };
-      const mockProcess = new EventEmitter();
-      (mockProcess as any).stdin = { write: vi.fn() };
-      (mockProcess as any).stdout = new EventEmitter();
-      (mockProcess as any).stderr = new EventEmitter();
-      (mockProcess as any).kill = vi.fn();
-
-      mockSpawn.mockReturnValue(mockProcess as any);
-
-      // Simulate spawn
-      spawn('node', ['cli.js', '--role', args.role, args.task], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: process.env
-      });
-
-      expect(mockSpawn).toHaveBeenCalledWith(
-        'node',
-        expect.arrayContaining(['--role', 'developer', 'Build a component']),
-        expect.any(Object)
-      );
-    });
-
-    it('should include model when provided', () => {
-      const args = { role: 'developer', task: 'Build', model: 'claude-3-opus' };
-
-      const spawnArgs = ['--role', args.role];
-      if (args.model) {
-        spawnArgs.push('--model', args.model);
-      }
-      spawnArgs.push(args.task);
-
-      expect(spawnArgs).toContain('--model');
-      expect(spawnArgs).toContain('claude-3-opus');
-    });
-
-    it('should handle sub-agent timeout', async () => {
-      vi.useFakeTimers();
-
-      const mockProcess = new EventEmitter();
-      (mockProcess as any).stdin = { write: vi.fn() };
-      (mockProcess as any).stdout = new EventEmitter();
-      (mockProcess as any).stderr = new EventEmitter();
-      (mockProcess as any).kill = vi.fn();
-
-      mockSpawn.mockReturnValue(mockProcess as any);
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          (mockProcess as any).kill();
-          reject(new Error('Sub-agent timeout (5 minutes)'));
-        }, 5 * 60 * 1000);
-      });
-
-      // Fast-forward time
-      vi.advanceTimersByTime(5 * 60 * 1000);
-
-      await expect(timeoutPromise).rejects.toThrow('Sub-agent timeout');
-      expect((mockProcess as any).kill).toHaveBeenCalled();
-
-      vi.useRealTimers();
-    });
-
-    it('should parse sub-agent output correctly', () => {
-      const stdout = `
-Claude: Here is the result of the task.
-📊 Tokens: 100 in / 50 out | Cost: $0.0025
-`;
-
-      // Extract Claude response
-      const claudeMatch = stdout.match(/Claude:\s*([\s\S]*?)(?:\n\s*📊|$)/);
-      const result = claudeMatch ? claudeMatch[1].trim() : stdout.trim();
-
-      expect(result).toBe('Here is the result of the task.');
-
-      // Extract usage
-      const usageMatch = stdout.match(/Tokens:\s*(\d+)\s*in\s*\/\s*(\d+)\s*out.*\$([0-9.]+)/);
-      const usage = usageMatch ? {
-        inputTokens: parseInt(usageMatch[1]),
-        outputTokens: parseInt(usageMatch[2]),
-        costUSD: parseFloat(usageMatch[3])
-      } : undefined;
-
-      expect(usage).toEqual({
-        inputTokens: 100,
-        outputTokens: 50,
-        costUSD: 0.0025
-      });
-    });
-
-    it('should track tool usage from output', () => {
-      const lines = [
-        '[developer] Starting task...',
-        '[developer] ⚙️  Using: read_file',
-        '[developer] ⚙️  Using: write_file',
-        '[developer] Done'
-      ];
-
-      const toolsUsed: string[] = [];
-      for (const line of lines) {
-        const toolMatch = line.match(/⚙️\s+Using:\s+(\S+)/);
-        if (toolMatch) {
-          toolsUsed.push(toolMatch[1]);
-        }
-      }
-
-      expect(toolsUsed).toEqual(['read_file', 'write_file']);
+      expect(backendTools.tools).toHaveLength(2);
+      expect(backendTools.tools.map((t: any) => t.name)).toContain('filesystem__read_file');
+      expect(backendTools.tools.map((t: any) => t.name)).toContain('filesystem__write_file');
     });
   });
 
@@ -222,15 +67,6 @@ Claude: Here is the result of the task.
       });
 
       expect(() => mockRouter.checkToolAccess(toolName)).toThrow('Access denied');
-    });
-
-    it('should skip access check for system tools', () => {
-      const systemTools = ['spawn_sub_agent'];
-
-      for (const tool of systemTools) {
-        // System tools bypass checkToolAccess
-        expect(systemTools.includes(tool)).toBe(true);
-      }
     });
 
     it('should route tool call to backend', async () => {
@@ -283,108 +119,5 @@ Claude: Here is the result of the task.
         }
       }).toThrow('Unknown prompt: unknown_prompt');
     });
-  });
-});
-
-describe('Sub-Agent Spawning', () => {
-  let mockProcess: any;
-
-  beforeEach(() => {
-    mockProcess = new EventEmitter();
-    mockProcess.stdin = { write: vi.fn() };
-    mockProcess.stdout = new EventEmitter();
-    mockProcess.stderr = new EventEmitter();
-    mockProcess.kill = vi.fn();
-
-    mockSpawn.mockReturnValue(mockProcess as any);
-  });
-
-  describe('spawnSubAgent function', () => {
-    it('should spawn process with correct arguments', () => {
-      spawn('node', ['cli.js', '--role', 'developer', 'Build a component'], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: process.env
-      });
-
-      expect(mockSpawn).toHaveBeenCalledWith(
-        'node',
-        ['cli.js', '--role', 'developer', 'Build a component'],
-        expect.objectContaining({
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-      );
-    });
-
-    it('should handle stdout data', () => {
-      let output = '';
-
-      mockProcess.stdout.on('data', (data: Buffer) => {
-        output += data.toString();
-      });
-
-      mockProcess.stdout.emit('data', Buffer.from('Hello'));
-      mockProcess.stdout.emit('data', Buffer.from(' World'));
-
-      expect(output).toBe('Hello World');
-    });
-
-    it('should handle stderr data', () => {
-      let errors = '';
-
-      mockProcess.stderr.on('data', (data: Buffer) => {
-        errors += data.toString();
-      });
-
-      mockProcess.stderr.emit('data', Buffer.from('Warning: '));
-      mockProcess.stderr.emit('data', Buffer.from('test'));
-
-      expect(errors).toBe('Warning: test');
-    });
-
-    it('should resolve on successful close', async () => {
-      const promise = new Promise<number>((resolve) => {
-        mockProcess.on('close', (code: number) => {
-          resolve(code);
-        });
-      });
-
-      mockProcess.emit('close', 0);
-
-      const exitCode = await promise;
-      expect(exitCode).toBe(0);
-    });
-
-    it('should handle process error', async () => {
-      const promise = new Promise<void>((_, reject) => {
-        mockProcess.on('error', (error: Error) => {
-          reject(error);
-        });
-      });
-
-      mockProcess.emit('error', new Error('Spawn failed'));
-
-      await expect(promise).rejects.toThrow('Spawn failed');
-    });
-  });
-});
-
-describe('Tool Name Handling', () => {
-  it('should match spawn_sub_agent with exact name', () => {
-    const name = 'spawn_sub_agent';
-    const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
-    expect(isSpawn).toBe(true);
-  });
-
-  it('should match spawn_sub_agent with prefixed name', () => {
-    const name = 'mcp__mycelium-router__spawn_sub_agent';
-    const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
-    expect(isSpawn).toBe(true);
-  });
-
-  it('should not match regular tools', () => {
-    const name = 'filesystem__read_file';
-    const isSpawn = name === 'spawn_sub_agent' || name.endsWith('__spawn_sub_agent');
-
-    expect(isSpawn).toBe(false);
   });
 });

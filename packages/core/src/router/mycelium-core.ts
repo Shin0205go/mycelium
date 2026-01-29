@@ -80,6 +80,34 @@ export const ROUTER_TOOLS: Tool[] = [
       properties: {},
     },
   },
+  {
+    name: 'mycelium-router__suggest_skills',
+    description: 'Suggest skills based on user intent. Analyzes the intent and returns matching skills with confidence scores. Use this to determine which skills to activate for a task.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        intent: {
+          type: 'string',
+          description: 'User intent or task description (e.g., "ファイルを編集したい", "テストを実行")',
+        },
+      },
+      required: ['intent'],
+    },
+  },
+  {
+    name: 'mycelium-router__set_role',
+    description: 'Switch to a different role. Each role has different skill permissions and tool access. Use list_roles to see available roles.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        role: {
+          type: 'string',
+          description: 'Role ID to switch to (e.g., "developer", "admin", "tester")',
+        },
+      },
+      required: ['role'],
+    },
+  },
 ];
 
 /**
@@ -347,12 +375,13 @@ export class MyceliumCore extends EventEmitter {
         continue;
       }
 
-      definitions.push({
+      const skillDef: SkillDefinition = {
         id: skill.id,
         displayName: skill.displayName || skill.id,
         description: skill.description || '',
         allowedRoles: skill.allowedRoles,
         allowedTools: skill.allowedTools || [],
+        triggers: skill.triggers || [],
         grants: skill.grants ? {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
@@ -362,10 +391,89 @@ export class MyceliumCore extends EventEmitter {
           category: skill.category,
           tags: skill.tags
         }
-      });
+      };
+
+      // Store in skillDefinitions map for suggest_skills
+      this.skillDefinitions.set(skill.id, skillDef);
+
+      definitions.push(skillDef);
     }
 
     return definitions;
+  }
+
+  /**
+   * Suggest skills based on user intent
+   * Matches intent against skill triggers and descriptions
+   */
+  suggestSkills(intent: string): Array<{
+    skill: string;
+    displayName: string;
+    confidence: number;
+    reason: string;
+    description: string;
+  }> {
+    const suggestions: Array<{
+      skill: string;
+      displayName: string;
+      confidence: number;
+      reason: string;
+      description: string;
+    }> = [];
+
+    const intentLower = intent.toLowerCase();
+    const intentWords = intentLower.split(/\s+/);
+
+    for (const [skillId, skill] of this.skillDefinitions) {
+      let confidence = 0;
+      let reason = '';
+
+      // Check triggers (highest priority)
+      if (skill.triggers && skill.triggers.length > 0) {
+        for (const trigger of skill.triggers) {
+          const triggerLower = trigger.toLowerCase();
+          if (intentLower.includes(triggerLower)) {
+            confidence = Math.max(confidence, 0.9);
+            reason = `キーワード「${trigger}」にマッチ`;
+          }
+        }
+      }
+
+      // Check description match (lower priority)
+      if (confidence === 0 && skill.description) {
+        const descWords = skill.description.toLowerCase().split(/\s+/);
+        const matchCount = intentWords.filter(w =>
+          descWords.some(d => d.includes(w) || w.includes(d))
+        ).length;
+        if (matchCount > 0) {
+          confidence = Math.min(0.5, matchCount * 0.2);
+          reason = `説明文に関連キーワードあり`;
+        }
+      }
+
+      // Check skill name match
+      if (confidence === 0) {
+        if (intentLower.includes(skillId.toLowerCase())) {
+          confidence = 0.8;
+          reason = `スキル名「${skillId}」にマッチ`;
+        }
+      }
+
+      if (confidence > 0) {
+        suggestions.push({
+          skill: skillId,
+          displayName: skill.displayName,
+          confidence,
+          reason,
+          description: skill.description,
+        });
+      }
+    }
+
+    // Sort by confidence (highest first)
+    suggestions.sort((a, b) => b.confidence - a.confidence);
+
+    return suggestions;
   }
 
   /**
