@@ -4,7 +4,7 @@
 // ============================================================================
 
 // Core router
-export { MyceliumCore, createMyceliumCore } from './mycelium-core.js';
+export { MyceliumCore, createMyceliumCore, ROUTER_TOOLS } from './mycelium-core.js';
 
 // Backwards compatibility aliases
 export { MyceliumCore as MyceliumRouterCore } from './mycelium-core.js';
