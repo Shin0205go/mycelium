@@ -4,6 +4,9 @@
 // ============================================================================
 
 import { EventEmitter } from 'events';
+import { promises as fs } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { Logger } from '../utils/logger.js';
 import { StdioRouter, type UpstreamServerInfo } from '../mcp/stdio-router.js';
 import { RoleManager, createRoleManager, ToolVisibilityManager, createToolVisibilityManager, RoleMemoryStore, createRoleMemoryStore, type MemoryEntry, type SaveMemoryOptions, type MemorySearchOptions } from '../rbac/index.js';
@@ -381,7 +384,6 @@ export class MyceliumCore extends EventEmitter {
         description: skill.description || '',
         allowedRoles: skill.allowedRoles,
         allowedTools: skill.allowedTools || [],
-        triggers: skill.triggers || [],
         grants: skill.grants ? {
           memory: skill.grants.memory,
           memoryTeamRoles: skill.grants.memoryTeamRoles
@@ -404,7 +406,7 @@ export class MyceliumCore extends EventEmitter {
 
   /**
    * Suggest skills based on user intent
-   * Matches intent against skill triggers and descriptions
+   * Matches intent against skill name and description
    */
   suggestSkills(intent: string): Array<{
     skill: string;
@@ -428,34 +430,21 @@ export class MyceliumCore extends EventEmitter {
       let confidence = 0;
       let reason = '';
 
-      // Check triggers (highest priority)
-      if (skill.triggers && skill.triggers.length > 0) {
-        for (const trigger of skill.triggers) {
-          const triggerLower = trigger.toLowerCase();
-          if (intentLower.includes(triggerLower)) {
-            confidence = Math.max(confidence, 0.9);
-            reason = `キーワード「${trigger}」にマッチ`;
-          }
-        }
+      // Check skill name match (high priority)
+      if (intentLower.includes(skillId.toLowerCase())) {
+        confidence = 0.8;
+        reason = `スキル名「${skillId}」にマッチ`;
       }
 
-      // Check description match (lower priority)
+      // Check description match
       if (confidence === 0 && skill.description) {
         const descWords = skill.description.toLowerCase().split(/\s+/);
         const matchCount = intentWords.filter(w =>
           descWords.some(d => d.includes(w) || w.includes(d))
         ).length;
         if (matchCount > 0) {
-          confidence = Math.min(0.5, matchCount * 0.2);
+          confidence = Math.min(0.6, matchCount * 0.2);
           reason = `説明文に関連キーワードあり`;
-        }
-      }
-
-      // Check skill name match
-      if (confidence === 0) {
-        if (intentLower.includes(skillId.toLowerCase())) {
-          confidence = 0.8;
-          reason = `スキル名「${skillId}」にマッチ`;
         }
       }
 
@@ -708,6 +697,9 @@ export class MyceliumCore extends EventEmitter {
 
     // Build the manifest response
     const manifest = this.buildManifest(role, includeToolDescriptions);
+
+    // Export session state for Claude Code hooks integration
+    await this.exportSessionState();
 
     this.logger.info(`✅ Role activated: ${role.name}`, {
       toolCount: manifest.availableTools.length,
@@ -1339,8 +1331,9 @@ export class MyceliumCore extends EventEmitter {
 
     this.logger.info(`Active skills set to: [${skillIds.join(', ')}]`);
 
-    // Notify tools changed
+    // Notify tools changed and export session state
     this.notifyToolsChanged();
+    this.exportSessionState().catch(err => this.logger.error('Failed to export session state:', err));
 
     return {
       success: true,
@@ -1462,6 +1455,66 @@ export class MyceliumCore extends EventEmitter {
       allowedTools: skill.allowedTools,
       isActive: activeSkillIds.has(skill.id)
     }));
+  }
+
+  // ============================================================================
+  // Session State Export (for Claude Code Hooks integration)
+  // ============================================================================
+
+  /**
+   * Export current session state to a file for external tools (hooks, CLI)
+   * This enables Claude Code hooks to enforce role-based access control
+   */
+  async exportSessionState(): Promise<void> {
+    const sessionStateDir = join(homedir(), '.mycelium');
+    const sessionStateFile = join(sessionStateDir, 'session-state.json');
+
+    try {
+      // Ensure directory exists
+      await fs.mkdir(sessionStateDir, { recursive: true });
+
+      // Get all allowed tools for current role
+      const allowedTools: string[] = [];
+      for (const toolInfo of this.toolVisibility.getVisibleToolsInfo()) {
+        allowedTools.push(toolInfo.tool.name);
+      }
+
+      const sessionState = {
+        enabled: true,
+        role: this.state.currentRole?.id ?? null,
+        roleName: this.state.currentRole?.name ?? null,
+        activeSkills: this.toolVisibility.getActiveSkills(),
+        allowedTools,
+        sessionId: this.state.metadata.sessionId,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await fs.writeFile(sessionStateFile, JSON.stringify(sessionState, null, 2), 'utf-8');
+      this.logger.debug(`Session state exported to ${sessionStateFile}`);
+    } catch (error) {
+      this.logger.error('Failed to export session state:', error);
+    }
+  }
+
+  /**
+   * Clear session state file (call on shutdown)
+   */
+  async clearSessionState(): Promise<void> {
+    const sessionStateFile = join(homedir(), '.mycelium', 'session-state.json');
+
+    try {
+      const disabledState = {
+        enabled: false,
+        role: null,
+        allowedTools: [],
+        updatedAt: new Date().toISOString(),
+      };
+
+      await fs.writeFile(sessionStateFile, JSON.stringify(disabledState, null, 2), 'utf-8');
+      this.logger.debug('Session state cleared');
+    } catch (error) {
+      this.logger.debug('Failed to clear session state (may not exist)');
+    }
   }
 
 }
