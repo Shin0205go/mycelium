@@ -186,7 +186,13 @@ function setupRequestHandlers(
     logger.info(`Tool call: ${name}`);
 
     // System tools (always allowed)
-    const SYSTEM_TOOLS = ['mycelium-router__get_context', 'mycelium-router__list_roles'];
+    const SYSTEM_TOOLS = [
+      'mycelium-router__get_context',
+      'mycelium-router__list_roles',
+      'mycelium-router__set_active_skills',
+      'mycelium-router__get_active_skills',
+      'mycelium-router__list_skills'
+    ];
     const isSystemTool = SYSTEM_TOOLS.includes(name) ||
       SYSTEM_TOOLS.some(t => name.endsWith(`__${t.replace('mycelium-router__', '')}`));
 
@@ -224,6 +230,53 @@ function setupRequestHandlers(
         const roles = routerCore.listRoles();
         return {
           content: [{ type: 'text', text: JSON.stringify(roles, null, 2) }],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle set_active_skills
+    if (name === 'mycelium-router__set_active_skills' || name.endsWith('__set_active_skills')) {
+      try {
+        const skillArgs = args as { skills: string[] };
+        const result = routerCore.setActiveSkills(skillArgs.skills || []);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle get_active_skills
+    if (name === 'mycelium-router__get_active_skills' || name.endsWith('__get_active_skills')) {
+      try {
+        const result = routerCore.getActiveSkills();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle list_skills
+    if (name === 'mycelium-router__list_skills' || name.endsWith('__list_skills')) {
+      try {
+        const skills = routerCore.listSkills();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(skills, null, 2) }],
         };
       } catch (error: any) {
         return {

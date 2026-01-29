@@ -13,7 +13,8 @@ import type {
   ListRolesResult,
   SkillManifest,
   MCPServerConfig,
-  BaseSkillDefinition
+  BaseSkillDefinition,
+  SkillDefinition
 } from '@mycelium/shared';
 import type {
   MyceliumRouterState,
@@ -34,7 +35,7 @@ import { v4 as uuidv4 } from 'uuid';
 export const ROUTER_TOOLS: Tool[] = [
   {
     name: 'mycelium-router__get_context',
-    description: 'Get current router context including active role, system instruction, available tools count, and connected servers. Use this to query current state without switching roles.',
+    description: 'Get current router context including active role, active skills, available tools count, and connected servers. Use this to query current state without switching roles.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -43,6 +44,37 @@ export const ROUTER_TOOLS: Tool[] = [
   {
     name: 'mycelium-router__list_roles',
     description: 'Get a list of available roles with their skills and capabilities',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'mycelium-router__set_active_skills',
+    description: 'Set active skills for session-based tool filtering. Tools are filtered to only show tools allowed by active skills.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        skills: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of skill IDs to activate',
+        },
+      },
+      required: ['skills'],
+    },
+  },
+  {
+    name: 'mycelium-router__get_active_skills',
+    description: 'Get currently active skills and their allowed tools',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'mycelium-router__list_skills',
+    description: 'List all available skill definitions',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -75,6 +107,9 @@ export class MyceliumCore extends EventEmitter {
   // Initialization state
   private initialized: boolean = false;
   private initializationPromise: Promise<void> | null = null;
+
+  // Skill definitions for session-based filtering
+  private skillDefinitions: Map<string, SkillDefinition> = new Map();
 
   constructor(
     logger: Logger,
@@ -253,6 +288,16 @@ export class MyceliumCore extends EventEmitter {
 
       // Load roles from skill manifest
       await this.roleManager.loadFromSkillManifest(skillManifest);
+
+      // Store skill definitions for session-based filtering
+      this.skillDefinitions.clear();
+      for (const skill of skillManifest.skills) {
+        this.skillDefinitions.set(skill.id, skill as SkillDefinition);
+      }
+      this.logger.info(`Stored ${this.skillDefinitions.size} skill definitions`);
+
+      // Load skill definitions into ToolVisibilityManager for skill-based filtering
+      this.toolVisibility.loadSkillDefinitions(skillManifest.skills as SkillDefinition[]);
 
       // Update state with new roles
       this.state.availableRoles.clear();
@@ -1111,7 +1156,7 @@ export class MyceliumCore extends EventEmitter {
 
   /**
    * Get detailed context for CLI and external tools
-   * Returns current role, manifest-like data, and available resources
+   * Returns current role, active skills, manifest-like data, and available resources
    */
   getContext(): {
     role: {
@@ -1119,6 +1164,7 @@ export class MyceliumCore extends EventEmitter {
       name: string;
       description: string;
     } | null;
+    activeSkills: string[];
     systemInstruction: string | null;
     availableTools: Array<{ name: string; source: string; description?: string }>;
     availableServers: string[];
@@ -1137,6 +1183,7 @@ export class MyceliumCore extends EventEmitter {
         name: role.name,
         description: role.description,
       } : null,
+      activeSkills: this.toolVisibility.getActiveSkills(),
       systemInstruction: role?.systemInstruction ?? null,
       availableTools: visibleToolsInfo.map(info => ({
         name: info.tool.name,
@@ -1152,7 +1199,165 @@ export class MyceliumCore extends EventEmitter {
     };
   }
 
+  // ============================================================================
+  // Skill Management (Session-based Tool Filtering)
+  // ============================================================================
+
+  /**
+   * Set active skills for session-based tool filtering
+   * Tools will be filtered to only show tools allowed by active skills
+   */
+  setActiveSkills(skillIds: string[]): {
+    success: boolean;
+    activeSkills: string[];
+    addedTools: string[];
+    removedTools: string[];
+    error?: string;
+  } {
+    // Validate skill IDs
+    const invalidSkills = skillIds.filter(id => !this.skillDefinitions.has(id));
+    if (invalidSkills.length > 0) {
+      return {
+        success: false,
+        activeSkills: this.toolVisibility.getActiveSkills(),
+        addedTools: [],
+        removedTools: [],
+        error: `Unknown skills: ${invalidSkills.join(', ')}`
+      };
+    }
+
+    // Update active skills in ToolVisibilityManager
+    const result = this.toolVisibility.setActiveSkills(skillIds);
+
+    this.logger.info(`Active skills set to: [${skillIds.join(', ')}]`);
+
+    // Notify tools changed
+    this.notifyToolsChanged();
+
+    return {
+      success: true,
+      activeSkills: result.activeSkills,
+      addedTools: result.added,
+      removedTools: result.removed
+    };
+  }
+
+  /**
+   * Add a skill to active skills
+   */
+  addActiveSkill(skillId: string): {
+    success: boolean;
+    activeSkills: string[];
+    addedTools: string[];
+    error?: string;
+  } {
+    if (!this.skillDefinitions.has(skillId)) {
+      return {
+        success: false,
+        activeSkills: this.toolVisibility.getActiveSkills(),
+        addedTools: [],
+        error: `Unknown skill: ${skillId}`
+      };
+    }
+
+    const result = this.toolVisibility.addActiveSkill(skillId);
+
+    if (result.added.length > 0) {
+      this.logger.info(`Skill added: ${skillId}, new tools: [${result.added.join(', ')}]`);
+      this.notifyToolsChanged();
+    }
+
+    return {
+      success: true,
+      activeSkills: result.activeSkills,
+      addedTools: result.added
+    };
+  }
+
+  /**
+   * Remove a skill from active skills
+   */
+  removeActiveSkill(skillId: string): {
+    success: boolean;
+    activeSkills: string[];
+    removedTools: string[];
+  } {
+    const result = this.toolVisibility.removeActiveSkill(skillId);
+
+    if (result.removed.length > 0) {
+      this.logger.info(`Skill removed: ${skillId}, removed tools: [${result.removed.join(', ')}]`);
+      this.notifyToolsChanged();
+    }
+
+    return {
+      success: true,
+      activeSkills: result.activeSkills,
+      removedTools: result.removed
+    };
+  }
+
+  /**
+   * Get active skills and their allowed tools
+   */
+  getActiveSkills(): {
+    activeSkills: Array<{
+      id: string;
+      displayName: string;
+      description: string;
+      allowedTools: string[];
+    }>;
+    totalAllowedTools: string[];
+  } {
+    const activeSkillIds = this.toolVisibility.getActiveSkills();
+    const activeSkills = activeSkillIds.map(id => {
+      const skill = this.skillDefinitions.get(id);
+      return {
+        id,
+        displayName: skill?.displayName || id,
+        description: skill?.description || '',
+        allowedTools: skill?.allowedTools || []
+      };
+    });
+
+    // Collect all allowed tools from active skills
+    const allAllowedTools = new Set<string>();
+    for (const skill of activeSkills) {
+      for (const tool of skill.allowedTools) {
+        allAllowedTools.add(tool);
+      }
+    }
+
+    return {
+      activeSkills,
+      totalAllowedTools: Array.from(allAllowedTools)
+    };
+  }
+
+  /**
+   * List all available skill definitions
+   */
+  listSkills(): Array<{
+    id: string;
+    displayName: string;
+    description: string;
+    allowedRoles: string[];
+    allowedTools: string[];
+    isActive: boolean;
+  }> {
+    const activeSkillIds = new Set(this.toolVisibility.getActiveSkills());
+
+    return Array.from(this.skillDefinitions.values()).map(skill => ({
+      id: skill.id,
+      displayName: skill.displayName,
+      description: skill.description,
+      allowedRoles: skill.allowedRoles,
+      allowedTools: skill.allowedTools,
+      isActive: activeSkillIds.has(skill.id)
+    }));
+  }
+
 }
+
 
 // Export factory function
 export function createMyceliumCore(

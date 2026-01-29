@@ -151,7 +151,10 @@ async function main() {
     // Check tool access (skip for router system tools - always available)
     const ROUTER_SYSTEM_TOOLS = [
       'mycelium-router__get_context',
-      'mycelium-router__list_roles'
+      'mycelium-router__list_roles',
+      'mycelium-router__set_active_skills',
+      'mycelium-router__get_active_skills',
+      'mycelium-router__list_skills'
     ];
     // Also skip check if tool name ends with system tool suffix
     const isSystemTool = ROUTER_SYSTEM_TOOLS.includes(name) ||
@@ -212,6 +215,58 @@ async function main() {
       }
     }
 
+    // Handle set_active_skills
+    if (name === 'mycelium-router__set_active_skills' || name.endsWith('__set_active_skills')) {
+      logger.info(`✅ Handling set_active_skills`);
+      try {
+        const skillArgs = args as { skills: string[] };
+        const result = routerCore.setActiveSkills(skillArgs.skills || []);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          isError: !result.success,
+        };
+      } catch (error: any) {
+        logger.error(`Failed to set active skills:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle get_active_skills
+    if (name === 'mycelium-router__get_active_skills' || name.endsWith('__get_active_skills')) {
+      logger.info(`✅ Handling get_active_skills`);
+      try {
+        const result = routerCore.getActiveSkills();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to get active skills:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Handle list_skills
+    if (name === 'mycelium-router__list_skills' || name.endsWith('__list_skills')) {
+      logger.info(`✅ Handling list_skills`);
+      try {
+        const skills = routerCore.listSkills();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(skills, null, 2) }],
+        };
+      } catch (error: any) {
+        logger.error(`Failed to list skills:`, error);
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
 
     // Route to backend server
     try {

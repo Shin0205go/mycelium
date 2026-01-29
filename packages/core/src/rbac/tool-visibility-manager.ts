@@ -3,7 +3,7 @@
 // Manages tool discovery and role-based visibility filtering
 // ============================================================================
 
-import type { Logger, Role, ToolInfo, MemoryPolicy } from '@mycelium/shared';
+import type { Logger, Role, ToolInfo, MemoryPolicy, SkillDefinition } from '@mycelium/shared';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { RoleManager } from './role-manager.js';
 
@@ -11,7 +11,8 @@ import { RoleManager } from './role-manager.js';
  * Options for ToolVisibilityManager
  */
 export interface ToolVisibilityOptions {
-  // Reserved for future options
+  /** Initial skill definitions */
+  skillDefinitions?: SkillDefinition[];
 }
 
 /**
@@ -25,16 +26,112 @@ export class ToolVisibilityManager {
   // All discovered tools (unfiltered)
   private allTools: Map<string, ToolInfo> = new Map();
 
-  // Currently visible tools (filtered by role)
+  // Currently visible tools (filtered by role + skills)
   private visibleTools: Map<string, ToolInfo> = new Map();
 
   // Current role reference
   private currentRole: Role | null = null;
 
+  // Active skills for skill-based filtering
+  private activeSkills: string[] = [];
+
+  // Skill definitions for tool filtering
+  private skillDefinitions: Map<string, SkillDefinition> = new Map();
+
+  // Whether skill-based filtering is enabled
+  private skillFilteringEnabled: boolean = false;
+
   constructor(logger: Logger, roleManager: RoleManager, options?: ToolVisibilityOptions) {
     this.logger = logger;
     this.roleManager = roleManager;
+
+    // Load initial skill definitions if provided
+    if (options?.skillDefinitions) {
+      this.loadSkillDefinitions(options.skillDefinitions);
+    }
+
     this.logger.debug('ToolVisibilityManager initialized');
+  }
+
+  // ============================================================================
+  // Skill Management
+  // ============================================================================
+
+  /**
+   * Load skill definitions for skill-based filtering
+   */
+  loadSkillDefinitions(skills: SkillDefinition[]): void {
+    this.skillDefinitions.clear();
+    for (const skill of skills) {
+      this.skillDefinitions.set(skill.id, skill);
+    }
+    this.logger.info(`Loaded ${skills.length} skill definitions`);
+  }
+
+  /**
+   * Set active skills and refilter visible tools
+   * Returns the change in visible tools
+   */
+  setActiveSkills(skillIds: string[]): { added: string[]; removed: string[]; activeSkills: string[] } {
+    const previousVisibleTools = new Set(this.visibleTools.keys());
+
+    this.activeSkills = [...skillIds];
+    this.skillFilteringEnabled = skillIds.length > 0;
+
+    this.updateVisibleTools();
+
+    const currentVisibleTools = new Set(this.visibleTools.keys());
+    const added = [...currentVisibleTools].filter(t => !previousVisibleTools.has(t));
+    const removed = [...previousVisibleTools].filter(t => !currentVisibleTools.has(t));
+
+    this.logger.info(`Active skills updated: [${skillIds.join(', ')}], tools: +${added.length}/-${removed.length}`);
+
+    return { added, removed, activeSkills: this.activeSkills };
+  }
+
+  /**
+   * Get current active skills
+   */
+  getActiveSkills(): string[] {
+    return [...this.activeSkills];
+  }
+
+  /**
+   * Add a skill to active skills
+   */
+  addActiveSkill(skillId: string): { added: string[]; removed: string[]; activeSkills: string[] } {
+    if (this.activeSkills.includes(skillId)) {
+      return { added: [], removed: [], activeSkills: this.activeSkills };
+    }
+    return this.setActiveSkills([...this.activeSkills, skillId]);
+  }
+
+  /**
+   * Remove a skill from active skills
+   */
+  removeActiveSkill(skillId: string): { added: string[]; removed: string[]; activeSkills: string[] } {
+    if (!this.activeSkills.includes(skillId)) {
+      return { added: [], removed: [], activeSkills: this.activeSkills };
+    }
+    return this.setActiveSkills(this.activeSkills.filter(id => id !== skillId));
+  }
+
+  /**
+   * Get allowed tools from active skills (merged)
+   */
+  private getAllowedToolsFromSkills(): Set<string> {
+    const allowedTools = new Set<string>();
+
+    for (const skillId of this.activeSkills) {
+      const skill = this.skillDefinitions.get(skillId);
+      if (skill?.allowedTools) {
+        for (const tool of skill.allowedTools) {
+          allowedTools.add(tool);
+        }
+      }
+    }
+
+    return allowedTools;
   }
 
   // ============================================================================
@@ -111,38 +208,58 @@ export class ToolVisibilityManager {
   }
 
   /**
-   * Update visible tools based on current role
+   * Update visible tools based on current role AND active skills
+   * Filtering: Role permissions ∩ Skill allowedTools = Visible tools
    */
   private updateVisibleTools(): void {
     this.visibleTools.clear();
 
     const roleId = this.currentRole?.id || 'none';
     const allowedServers = this.currentRole?.allowedServers || [];
-    this.logger.debug(`Filtering tools for role: ${roleId}, allowedServers: ${JSON.stringify(allowedServers)}`);
+    const skillAllowedTools = this.skillFilteringEnabled ? this.getAllowedToolsFromSkills() : null;
 
-    let filteredCount = 0;
+    this.logger.debug(`Filtering tools for role: ${roleId}, skills: [${this.activeSkills.join(', ')}]`);
+
+    let roleFilteredCount = 0;
+    let skillFilteredCount = 0;
+
     for (const [name, toolInfo] of this.allTools) {
-      const isVisible = this.isToolVisibleForRole(toolInfo);
-
-      if (isVisible) {
-        toolInfo.visible = true;
-        toolInfo.visibilityReason = 'role_permitted';
-        this.visibleTools.set(name, toolInfo);
-      } else {
+      // Step 1: Role-based filtering
+      const isRoleAllowed = this.isToolVisibleForRole(toolInfo);
+      if (!isRoleAllowed) {
         toolInfo.visible = false;
         toolInfo.visibilityReason = 'role_restricted';
-        filteredCount++;
+        roleFilteredCount++;
+        continue;
       }
+
+      // Step 2: Skill-based filtering (if enabled)
+      if (skillAllowedTools !== null) {
+        const isSkillAllowed = this.isToolAllowedBySkills(toolInfo.prefixedName, skillAllowedTools);
+        if (!isSkillAllowed) {
+          toolInfo.visible = false;
+          toolInfo.visibilityReason = 'skill_restricted';
+          skillFilteredCount++;
+          continue;
+        }
+      }
+
+      // Tool is visible (passed both filters)
+      toolInfo.visible = true;
+      toolInfo.visibilityReason = this.skillFilteringEnabled ? 'role_and_skill_permitted' : 'role_permitted';
+      this.visibleTools.set(name, toolInfo);
     }
 
-    this.logger.debug(`Filtered out ${filteredCount} tools, ${this.visibleTools.size} visible`);
+    this.logger.debug(
+      `Filtered: role=${roleFilteredCount}, skill=${skillFilteredCount}, visible=${this.visibleTools.size}`
+    );
 
     // Always add the set_role system tool
     this.addSystemTool();
   }
 
   /**
-   * Check if a tool is visible for the current role
+   * Check if a tool is visible for the current role (role-level only)
    */
   private isToolVisibleForRole(toolInfo: ToolInfo): boolean {
     if (!this.currentRole) {
@@ -160,6 +277,33 @@ export class ToolVisibilityManager {
       toolInfo.prefixedName,
       toolInfo.sourceServer
     );
+  }
+
+  /**
+   * Check if a tool is allowed by active skills
+   * Supports exact match and wildcard patterns (e.g., "filesystem__*")
+   */
+  private isToolAllowedBySkills(toolName: string, skillAllowedTools: Set<string>): boolean {
+    // Exact match
+    if (skillAllowedTools.has(toolName)) {
+      return true;
+    }
+
+    // Check wildcard patterns
+    for (const pattern of skillAllowedTools) {
+      if (pattern.endsWith('__*')) {
+        // Server wildcard: e.g., "filesystem__*" matches "filesystem__read_file"
+        const prefix = pattern.slice(0, -1); // Remove "*"
+        if (toolName.startsWith(prefix)) {
+          return true;
+        }
+      } else if (pattern === '*') {
+        // Universal wildcard
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
