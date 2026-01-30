@@ -4,7 +4,7 @@
       "command": "node",
       "args": ["packages/core/dist/mcp-server.js"],
       "env": {
-        "MYCELIUM_CONFIG_PATH": "config-test.json"
+        "MYCELIUM_CONFIG_PATH": "config.json"
       }
     }
   }
